@@ -19,6 +19,18 @@
 3. 等一兩分鐘，網址會是 `https://<你的帳號>.github.io/couple-diary/`
 4. 用手機打開網址，接著：iPhone 在 Safari 按「分享 → 加入主畫面」，Android 在 Chrome 按「⋮ → 加到主畫面」，之後就能像 App 一樣從主畫面打開
 
+## 雲端版（Supabase）
+
+填好 `js/config.js` 之後，App 會改成雲端模式：要用 email 和密碼登入，紀錄和照片都存在 Supabase，換手機只要登入就能看到。設定頁可以把手機裡原本的紀錄一鍵搬上雲端。
+
+設定步驟：
+1. 在 Supabase 建立專案
+2. 到 **SQL Editor** 貼上 `supabase/schema.sql` 的內容並按 Run，這一步會建立資料表、照片空間和安全規則（每個人只能讀寫自己的資料）
+3. 到 **Authentication → URL Configuration**，把 Site URL 設成 `https://jasmine-tsaiii.github.io/couple-diary/`，這樣確認信的連結才會回到 App
+4. 把 **Project Settings → API** 裡的 Project URL 和 anon public key 填進 `js/config.js`
+
+`js/config.js` 裡的兩個值是公開的，放進程式沒關係。service_role（secret）key 千萬不要放進來。
+
 ## 在電腦上試用
 
 在這個資料夾執行 `python3 -m http.server`，再打開 http://localhost:8000 就可以了。
@@ -27,7 +39,11 @@
 
 - `index.html`：頁面骨架
 - `css/style.css`：外觀
-- `js/db.js`：資料儲存。之後改成雲端版時，主要只需要換掉這個檔案
+- `js/config.js`：雲端設定（Supabase 網址和公開金鑰）
+- `js/db-local.js`：單人模式的資料儲存（手機瀏覽器的 IndexedDB）
+- `js/db-cloud.js`：雲端模式的資料儲存（Supabase），功能和單人模式一樣
+- `supabase/schema.sql`：雲端資料表和安全規則
+- `vendor/`：Supabase 官方的瀏覽器套件（2.117.2 版），放在這裡就不用靠外部 CDN
 - `js/app.js`：所有畫面和操作
 
 ## 接下來

@@ -1,6 +1,6 @@
 // 資料儲存：用瀏覽器內建的 IndexedDB，紀錄和照片都存在這支手機裡。
 // 之後升級雲端版時，只要把這個檔案換成呼叫 Supabase 的版本，其他畫面不用改。
-const DB = (() => {
+const LocalDB = (() => {
   const DB_NAME = 'couple-diary';
   const DB_VERSION = 1;
   let dbPromise = null;

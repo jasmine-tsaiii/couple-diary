@@ -158,7 +158,7 @@ async function viewHome() {
   const st = (s) => fights.filter((f) => (f.status || 'open') === s).length;
   const recent = all.slice().sort(byDateDesc).slice(0, 5);
   const lastBackup = await DB.getSetting('lastBackupAt', null);
-  const needBackup = all.length > 0 && (!lastBackup || Date.now() - lastBackup > BACKUP_REMIND_DAYS * 86400000);
+  const needBackup = !CLOUD_ENABLED && all.length > 0 && (!lastBackup || Date.now() - lastBackup > BACKUP_REMIND_DAYS * 86400000);
   const isIOS = /iphone|ipad|ipod/i.test(navigator.userAgent);
   const standalone = window.matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
 
@@ -736,17 +736,33 @@ async function viewSettings() {
   const all = await DB.allRecords();
   const lastBackup = await DB.getSetting('lastBackupAt', null);
   const persisted = await isPersisted();
+  // 雲端模式下，看看這支手機裡有沒有還沒搬上去的舊紀錄
+  let localCount = 0;
+  if (CLOUD_ENABLED) { try { localCount = (await LocalDB.allRecords()).length; } catch (e) { localCount = 0; } }
+  const migratedAt = CLOUD_ENABLED ? await LocalDB.getSetting('migratedAt', null) : null;
   app.className = '';
   app.innerHTML = `
     <div class="topbar">
       <a class="icon-btn" href="#/" aria-label="返回">${ICON.back}</a>
       <h1>設定</h1>
     </div>
+    ${CLOUD_ENABLED ? `<div class="card">
+      <div class="bold">雲端帳號</div>
+      <div class="muted">已登入 ${esc(CloudDB.currentEmail())}，紀錄和照片都存在雲端，換手機只要登入同一個帳號就能看到。目前共 ${all.length} 則紀錄。</div>
+      <button class="btn small secondary" id="logout">登出</button>
+    </div>
+    ${localCount ? `<div class="card" style="background:var(--progress-bg);border-color:transparent">
+      <div class="bold" style="color:var(--progress-ink)">把這支手機裡的紀錄搬上雲端</div>
+      <div class="small" style="color:var(--progress-ink)">這支手機裡還有 ${localCount} 則以前存的紀錄。${migratedAt ? `上次搬的時間是 ${daysAgo(migratedAt) === 0 ? '今天' : daysAgo(migratedAt) + ' 天前'}，再搬一次也不會重複。` : '搬上去之後，手機裡的也會留著當備份。'}</div>
+      <button class="btn small" id="migrate">搬上雲端</button>
+    </div>` : ''}` : ''}
     <div class="card">
       <div class="bold">備份</div>
-      <div class="muted">紀錄和照片只存在這支手機的瀏覽器裡。清除瀏覽器資料或換手機前，記得先匯出備份。目前共 ${all.length} 則紀錄。</div>
+      ${CLOUD_ENABLED
+        ? '<div class="muted">資料已經在雲端了，想多一份保險的話，也可以匯出備份存起來。</div>'
+        : `<div class="muted">紀錄和照片只存在這支手機的瀏覽器裡。清除瀏覽器資料或換手機前，記得先匯出備份。目前共 ${all.length} 則紀錄。</div>
       <div class="small">${lastBackup ? `上次備份：${daysAgo(lastBackup) === 0 ? '今天' : daysAgo(lastBackup) + ' 天前'}` : '還沒有備份過'}</div>
-      <div class="small" style="color:${persisted ? 'var(--resolved-ink)' : 'var(--muted)'}">${persisted ? '瀏覽器已同意不自動清除這裡的資料。' : '瀏覽器還沒同意「不自動清除」，請加到主畫面後從主畫面打開，並記得定期備份。'}</div>
+      <div class="small" style="color:${persisted ? 'var(--resolved-ink)' : 'var(--muted)'}">${persisted ? '瀏覽器已同意不自動清除這裡的資料。' : '瀏覽器還沒同意「不自動清除」，請加到主畫面後從主畫面打開，並記得定期備份。'}</div>`}
       <div class="btn-row">
         <button class="btn small" id="export">匯出還原用備份</button>
         <label class="btn small secondary" style="cursor:pointer">匯入備份<input type="file" accept="application/json,.json" class="visually-hidden" id="import"></label>
@@ -765,7 +781,7 @@ async function viewSettings() {
     </div>
     <div class="card">
       <div class="bold" style="color:#9B2C1F">清除所有資料</div>
-      <div class="muted">會刪掉這支手機上所有紀錄和照片，沒辦法復原。</div>
+      <div class="muted">${CLOUD_ENABLED ? '會刪掉雲端上你所有的紀錄和照片，沒辦法復原。' : '會刪掉這支手機上所有紀錄和照片，沒辦法復原。'}</div>
       <button class="btn small danger" id="wipe">全部清除</button>
     </div>
   `;
@@ -824,6 +840,40 @@ async function viewSettings() {
     await DB.setSetting('categories', cats.filter((c) => c !== b.dataset.rmCat));
     viewSettings();
   }));
+  const logout = document.getElementById('logout');
+  if (logout) logout.addEventListener('click', async () => {
+    if (!confirm('要登出嗎？雲端的資料不會不見，之後登入就能看到。')) return;
+    await CloudDB.signOut();
+    photoUrlCache.clear();
+    go('#/login');
+  });
+  const migrate = document.getElementById('migrate');
+  if (migrate) migrate.addEventListener('click', async () => {
+    migrate.disabled = true;
+    try {
+      const records = await LocalDB.allRecords();
+      const photos = await LocalDB.allPhotos();
+      let done = 0;
+      for (const p of photos) {
+        await CloudDB.putPhoto(p);
+        migrate.textContent = `搬照片中… ${++done} / ${photos.length}`;
+      }
+      done = 0;
+      for (const r of records) {
+        await CloudDB.putRecord(r);
+        migrate.textContent = `搬紀錄中… ${++done} / ${records.length}`;
+      }
+      const localCats = await LocalDB.getSetting('categories', null);
+      if (localCats) await CloudDB.setSetting('categories', [...new Set([...(await getCategories()), ...localCats])]);
+      await LocalDB.setSetting('migratedAt', Date.now());
+      toast(`已搬上雲端：${records.length} 則紀錄、${photos.length} 張照片`);
+      viewSettings();
+    } catch (e) {
+      migrate.disabled = false;
+      migrate.textContent = '再試一次';
+      toast('搬移失敗：' + e.message);
+    }
+  });
   document.getElementById('wipe').addEventListener('click', async () => {
     if (!confirm('真的要清除所有紀錄和照片嗎？')) return;
     if (!confirm('再確認一次：清除後無法復原。')) return;
@@ -834,6 +884,63 @@ async function viewSettings() {
   });
 }
 
+// ---------- 登入（雲端模式） ----------
+function viewLogin(mode = 'signin') {
+  app.className = '';
+  const isUp = mode === 'signup';
+  app.innerHTML = `
+    <div style="display:flex;flex-direction:column;align-items:center;gap:10px;text-align:center;margin-top:40px">
+      <div class="thumb" style="width:72px;height:72px;border-radius:99px">${ICON.heart}</div>
+      <h1 class="title-xl">我們的紀錄</h1>
+      <div class="muted">${isUp ? '建立帳號，紀錄就會存在雲端' : '登入你的帳號'}</div>
+    </div>
+    <form id="login-form" style="display:flex;flex-direction:column;gap:14px">
+      <div class="field"><label for="email">Email</label>
+        <input id="email" class="input" type="email" autocomplete="email" required></div>
+      <div class="field"><label for="password">密碼${isUp ? '（至少 6 個字）' : ''}</label>
+        <input id="password" class="input" type="password" autocomplete="${isUp ? 'new-password' : 'current-password'}" minlength="6" required></div>
+      <button class="btn" type="submit" id="login-btn">${isUp ? '建立帳號' : '登入'}</button>
+    </form>
+    <div id="login-msg" class="muted" style="text-align:center"></div>
+    <button class="btn secondary small" id="switch">${isUp ? '已經有帳號？登入' : '第一次使用？建立帳號'}</button>
+  `;
+  document.getElementById('switch').addEventListener('click', () => viewLogin(isUp ? 'signin' : 'signup'));
+  document.getElementById('login-form').addEventListener('submit', async (ev) => {
+    ev.preventDefault();
+    const email = document.getElementById('email').value.trim();
+    const password = document.getElementById('password').value;
+    const btn = document.getElementById('login-btn');
+    const msg = document.getElementById('login-msg');
+    btn.disabled = true;
+    msg.textContent = '';
+    try {
+      if (isUp) {
+        const session = await CloudDB.signUp(email, password);
+        if (!session) {
+          msg.textContent = '帳號建立好了！請到信箱點確認連結，確認後回到這裡登入。';
+          btn.disabled = false;
+          viewLoginAfterSignup(email);
+          return;
+        }
+      } else {
+        await CloudDB.signIn(email, password);
+      }
+      go('#/');
+      route();
+    } catch (e) {
+      btn.disabled = false;
+      msg.textContent = /invalid login/i.test(e.message) ? 'Email 或密碼不對，再試一次。'
+        : /not confirmed/i.test(e.message) ? '這個帳號還沒確認，請先到信箱點確認連結。'
+        : '沒辦法完成：' + e.message;
+    }
+  });
+}
+function viewLoginAfterSignup(email) {
+  viewLogin('signin');
+  document.getElementById('email').value = email;
+  document.getElementById('login-msg').textContent = '帳號建立好了！請到信箱點確認連結，確認後在這裡登入。';
+}
+
 // ---------- 路由 ----------
 async function route() {
   const parts = (location.hash.replace(/^#\/?/, '') || '').split('/');
@@ -841,6 +948,8 @@ async function route() {
   app.className = '';
   window.scrollTo(0, 0);
   try {
+    if (CLOUD_ENABLED && !CloudDB.currentEmail()) { renderTabbar(null); viewLogin(); return; }
+    if (page === 'login') { go('#/'); return; }
     if (!page) { renderTabbar('home'); await viewHome(); }
     else if (page === 'list' && TYPES[arg] && arg !== 'fight') { renderTabbar(arg); await viewList(arg); }
     else if (page === 'fights') { renderTabbar('fight'); await viewFights(); }
@@ -865,6 +974,16 @@ async function requestPersist() {
   } catch (e) { /* 不支援的瀏覽器就略過 */ }
 }
 
+// 沒接住的錯誤（例如雲端連不上）用提示告訴使用者
+window.addEventListener('unhandledrejection', (ev) => {
+  toast((ev.reason && ev.reason.message) || '出了一點問題，請再試一次');
+});
+
 window.addEventListener('hashchange', route);
 requestPersist();
-route();
+(async () => {
+  if (CLOUD_ENABLED) {
+    try { await CloudDB.loadSession(); } catch (e) { toast('連不上雲端：' + e.message); }
+  }
+  route();
+})();
