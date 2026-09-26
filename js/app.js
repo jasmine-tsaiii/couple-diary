@@ -40,6 +40,7 @@ const LIMITS = {
   tag: 12, tagsPerRecord: 10, photosPerRecord: 9, photoFileMB: 20, category: 12, categories: 30, task: 100, taskNote: 500,
 };
 const BACKUP_REMIND_DAYS = 14;
+const CLOUD_BACKUP_REMIND_DAYS = 30;
 
 const ICON = {
   back: '<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18 9 12l6-6"/></svg>',
@@ -95,6 +96,41 @@ function toast(msg) {
   toast.timer = setTimeout(() => t.classList.remove('show'), 1800);
 }
 function go(hash) { location.hash = hash; }
+// 按鈕處理中先停用，避免連點；失敗時說清楚並恢復按鈕讓人重試
+async function withBusy(btn, label, fn) {
+  if (!btn || btn.disabled) return;
+  const old = btn.textContent;
+  btn.disabled = true;
+  if (label) btn.textContent = label;
+  try {
+    await fn();
+  } catch (e) {
+    toast('沒有成功，請再試一次：' + (e.message || '連線問題'));
+  } finally {
+    if (document.body.contains(btn)) { btn.disabled = false; btn.textContent = old; }
+  }
+}
+// 改一則紀錄時先拿最新的版本再改，兩支手機同時加後續也不會互相蓋掉
+async function updateRecord(id, mutate) {
+  const latest = await DB.getRecord(id);
+  if (!latest) throw new Error('找不到這則紀錄，可能已經被刪除');
+  mutate(latest);
+  latest.updatedAt = Date.now();
+  await DB.putRecord(latest);
+  return latest;
+}
+const RECORD_VERSION = 1; // 紀錄的資料格式版本，之後改格式時用來判斷要不要轉換
+// LINE、IG、FB 等 App 內建的瀏覽器：資料和 Safari／Chrome 分開，Google 登入也會被擋
+const IN_APP = /Line\/|FBAN|FBAV|Instagram|MicroMessenger/i.test(navigator.userAgent);
+function inAppNotice() {
+  if (!IN_APP) return '';
+  return `<div class="card" style="background:var(--open-bg);border-color:transparent;gap:4px">
+    <div class="bold" style="color:var(--open-ink)">請改用 Safari 或 Chrome 打開</div>
+    <div class="small" style="color:var(--open-ink)">你現在是在 LINE（或其他 App）裡面打開的。這裡存的資料之後在瀏覽器看不到，也不能用 Google 登入。請點右上角的「⋯」，選「用瀏覽器開啟」。</div>
+  </div>`;
+}
+// 新紀錄預設誰可以看：美好時刻給對方看；烏雲和吵架常在氣頭上寫，預設上鎖
+const defaultVisibility = (type) => (type === 'happy' ? 'shared' : 'locked');
 // 另一半模式：用分享碼加入的人
 function isPartner() { return CLOUD_ENABLED && CloudDB.isPartner(); }
 // 試用中：有雲端設定，但這支手機還沒登入過帳號（登入過一次之後，登出就回到登入畫面）
@@ -233,7 +269,9 @@ async function viewHome() {
   const st = (s) => fights.filter((f) => (f.status || 'open') === s).length;
   const recent = all.slice().sort(byDateDesc).slice(0, 5);
   const lastBackup = await DB.getSetting('lastBackupAt', null);
-  const needBackup = !usingCloud() && all.length > 0 && (!lastBackup || Date.now() - lastBackup > BACKUP_REMIND_DAYS * 86400000);
+  // 手機版 14 天提醒一次；雲端版免費方案沒有自動備份，30 天提醒一次
+  const remindDays = usingCloud() ? CLOUD_BACKUP_REMIND_DAYS : BACKUP_REMIND_DAYS;
+  const needBackup = all.length > 0 && (!lastBackup || Date.now() - lastBackup > remindDays * 86400000);
   const askNames = !NAMES.me && !NAMES.partner && !(await DB.getSetting('namesSkipped', false));
   let pending = [];
   if (usingCloud()) { try { pending = await CloudDB.submissions({ status: 'pending' }); } catch (e) { pending = []; } }
@@ -271,11 +309,12 @@ async function viewHome() {
     </div>` : ''}
     ${needBackup ? `<a class="card" href="#/settings" style="background:var(--progress-bg);border-color:transparent;gap:4px">
       <div class="bold" style="color:var(--progress-ink)">該備份囉</div>
-      <div class="small" style="color:var(--progress-ink)">${lastBackup ? `上次備份是 ${daysAgo(lastBackup)} 天前` : '還沒有備份過'}，點這裡到設定頁匯出備份，再存到 iCloud 雲碟或 Google 雲端硬碟。</div>
+      <div class="small" style="color:var(--progress-ink)">${lastBackup ? `上次備份是 ${daysAgo(lastBackup)} 天前` : '還沒有備份過'}，${usingCloud() ? '雲端免費方案沒有自動備份，' : ''}點這裡到設定頁匯出備份，再存到 iCloud 雲碟或 Google 雲端硬碟。</div>
     </a>` : ''}
+    ${isGuest() ? inAppNotice() : ''}
     ${isGuest() ? `<a class="card" href="#/login" style="background:var(--happy-bg);border-color:transparent;gap:4px">
       <div class="bold" style="color:var(--happy-dark)">${all.length ? '註冊，把紀錄存到雲端' : '歡迎！直接開始記錄吧'}</div>
-      <div class="small" style="color:var(--happy-dark)">${all.length ? `目前 ${all.length} 則紀錄只存在這支手機。` : '不用註冊就能先用，紀錄會先存在這支手機。'}註冊或登入後會自動搬上雲端，換手機不會不見，也能分享給另一半。</div>
+      <div class="small" style="color:var(--happy-dark)">${all.length ? `目前 ${all.length} 則紀錄只存在這支手機。` : '不用註冊就能先用，紀錄會先存在這支手機。'}在這支手機註冊或登入後會自動搬上雲端，換手機不會不見，也能分享給另一半。</div>
     </a>` : ''}
     ${pending.length ? `<a class="card" href="#/view/${esc(pending[0].record_id)}" style="background:var(--lock-bg);border-color:transparent;gap:4px">
       <div class="bold" style="color:var(--lock)">有 ${pending.length} 個任務等你確認</div>
@@ -575,72 +614,84 @@ async function viewDetail(id) {
     go(backHref);
   });
 
-  const setUnlocked = async (on) => {
-    r.unlocked = on;
-    r.updatedAt = Date.now();
-    await DB.putRecord(r);
-  };
-  app.querySelectorAll('[data-approve]').forEach((b) => b.addEventListener('click', async () => {
-    b.disabled = true;
+  app.querySelectorAll('[data-approve]').forEach((b) => b.addEventListener('click', () => withBusy(b, '解鎖中…', async () => {
     await CloudDB.reviewSubmission(b.dataset.approve, true);
-    await setUnlocked(true);
     toast('已解鎖，對方看得到這則了');
     viewDetail(r.id);
-  }));
-  app.querySelectorAll('[data-reject]').forEach((b) => b.addEventListener('click', async () => {
+  })));
+  app.querySelectorAll('[data-reject]').forEach((b) => b.addEventListener('click', () => {
     if (!confirm('退回這次的任務？對方可以再送一次。')) return;
-    await CloudDB.reviewSubmission(b.dataset.reject, false);
-    viewDetail(r.id);
+    withBusy(b, '', async () => {
+      await CloudDB.reviewSubmission(b.dataset.reject, false);
+      viewDetail(r.id);
+    });
   }));
   const relock = document.getElementById('relock');
-  if (relock) relock.addEventListener('click', async () => {
+  if (relock) relock.addEventListener('click', () => {
     if (!confirm('重新上鎖後，對方就看不到這則，要再完成一次任務才能解鎖。')) return;
-    await setUnlocked(false);
-    viewDetail(r.id);
+    withBusy(relock, '', async () => {
+      await updateRecord(r.id, (x) => { x.unlocked = false; });
+      viewDetail(r.id);
+    });
   });
 
   if (r.type === 'cloud') {
-    const saveRf = async (reflections) => {
-      Object.assign(r, { reflections, updatedAt: Date.now() });
-      await DB.putRecord(r);
-      viewDetail(r.id);
-    };
-    document.getElementById('rf-add').addEventListener('click', () => {
+    const rfAdd = document.getElementById('rf-add');
+    rfAdd.addEventListener('click', () => {
       const text = document.getElementById('rf-text').value.trim();
       if (!text) { toast('先寫一點內容'); return; }
       const date = document.getElementById('rf-date').value || today();
       if (!dateOk(date)) { toast('日期要在今天以前'); return; }
-      if ((r.reflections || []).length >= LIMITS.reflectionsPerRecord) { toast(`每則最多 ${LIMITS.reflectionsPerRecord} 則反思`); return; }
-      saveRf((r.reflections || []).concat({ id: DB.uid(), date, text }).sort((a, b) => a.date.localeCompare(b.date)));
+      withBusy(rfAdd, '加入中…', async () => {
+        await updateRecord(r.id, (x) => {
+          const list = x.reflections || [];
+          if (list.length >= LIMITS.reflectionsPerRecord) throw new Error(`每則最多 ${LIMITS.reflectionsPerRecord} 則反思`);
+          x.reflections = list.concat({ id: DB.uid(), date, text }).sort((a, b) => a.date.localeCompare(b.date));
+        });
+        viewDetail(r.id);
+      });
     });
     app.querySelectorAll('[data-del-rf]').forEach((b) => b.addEventListener('click', () => {
       if (!confirm('刪除這則反思？')) return;
-      saveRf((r.reflections || []).filter((f) => f.id !== b.dataset.delRf));
+      withBusy(b, '', async () => {
+        await updateRecord(r.id, (x) => { x.reflections = (x.reflections || []).filter((f) => f.id !== b.dataset.delRf); });
+        viewDetail(r.id);
+      });
     }));
   }
 
   if (r.type === 'fight') {
-    const save = async (patch) => {
-      Object.assign(r, patch, { updatedAt: Date.now() });
-      await DB.putRecord(r);
+    app.querySelectorAll('[data-status]').forEach((b) => b.addEventListener('click', () => withBusy(b, '', async () => {
+      await updateRecord(r.id, (x) => { x.status = b.dataset.status; });
       viewDetail(r.id);
-    };
-    app.querySelectorAll('[data-status]').forEach((b) => b.addEventListener('click', () => save({ status: b.dataset.status })));
+    })));
     const res = document.getElementById('resolution');
-    if (res) res.addEventListener('change', () => { r.resolution = res.value.trim(); r.updatedAt = Date.now(); DB.putRecord(r).then(() => toast('已儲存')); });
-    document.getElementById('fu-add').addEventListener('click', () => {
+    if (res) res.addEventListener('change', async () => {
+      try { await updateRecord(r.id, (x) => { x.resolution = res.value.trim(); }); toast('已儲存'); } catch (e) { toast('沒有存成功：' + e.message); }
+    });
+    const fuAdd = document.getElementById('fu-add');
+    fuAdd.addEventListener('click', () => {
       const text = document.getElementById('fu-text').value.trim();
       if (!text) { toast('先寫一點內容'); return; }
       const date = document.getElementById('fu-date').value || today();
       if (!dateOk(date)) { toast('日期要在今天以前'); return; }
-      if ((r.followUps || []).length >= LIMITS.followUpsPerFight) { toast(`每個議題最多 ${LIMITS.followUpsPerFight} 則後續`); return; }
-      const fu = (r.followUps || []).concat({ id: DB.uid(), date, text }).sort((a, b) => a.date.localeCompare(b.date));
-      // 第一次加後續時，自動從「未解決」變成「處理中」
-      save({ followUps: fu, status: (r.status || 'open') === 'open' ? 'progress' : r.status });
+      withBusy(fuAdd, '加入中…', async () => {
+        await updateRecord(r.id, (x) => {
+          const list = x.followUps || [];
+          if (list.length >= LIMITS.followUpsPerFight) throw new Error(`每個議題最多 ${LIMITS.followUpsPerFight} 則後續`);
+          x.followUps = list.concat({ id: DB.uid(), date, text }).sort((a, b) => a.date.localeCompare(b.date));
+          // 第一次加後續時，自動從「未解決」變成「處理中」
+          if ((x.status || 'open') === 'open') x.status = 'progress';
+        });
+        viewDetail(r.id);
+      });
     });
     app.querySelectorAll('[data-del-fu]').forEach((b) => b.addEventListener('click', () => {
       if (!confirm('刪除這則後續？')) return;
-      save({ followUps: (r.followUps || []).filter((f) => f.id !== b.dataset.delFu) });
+      withBusy(b, '', async () => {
+        await updateRecord(r.id, (x) => { x.followUps = (x.followUps || []).filter((f) => f.id !== b.dataset.delFu); });
+        viewDetail(r.id);
+      });
     }));
   }
 }
@@ -656,12 +707,16 @@ async function viewForm(mode, arg) {
     const type = TYPES[arg] ? arg : 'happy';
     rec = {
       id: DB.uid(), type, authorId: 'me', title: '', date: today(), description: '',
-      photoIds: [], emojis: [], tags: [], visibility: 'shared', task: { text: '', mode: 'confirm' },
+      photoIds: [], emojis: [], tags: [], visibility: defaultVisibility(type), task: { text: '', mode: 'confirm' },
       category: '', reason: '', myView: '', theirView: '', status: 'open', resolution: '', followUps: [],
     };
   }
   const all = await DB.allRecords();
   const cats = await getCategories();
+  const originalType = rec.type;
+  const loadedUpdatedAt = rec.updatedAt || 0;
+  let visTouched = mode === 'edit';
+  let dirty = false;
   // 這次新加、還沒儲存的照片（按取消就丟掉）
   const newPhotos = new Map();
   const removedPhotos = new Set();
@@ -698,7 +753,7 @@ async function viewForm(mode, arg) {
         <h1 style="font-size:20px;text-align:center">${mode === 'edit' ? '編輯紀錄' : '新增紀錄'}</h1>
         <div style="width:44px"></div>
       </div>
-      ${mode === 'new' ? `<div class="seg" style="grid-template-columns:repeat(3,minmax(0,1fr))">
+      ${true ? `<div class="seg" style="grid-template-columns:repeat(3,minmax(0,1fr))">
         ${Object.entries(TYPES).map(([k, t]) => `<button class="${k === rec.type ? 'on' : ''}" data-type="${k}">${t.label}</button>`).join('')}
       </div>` : ''}
       <div class="field"><label for="f-title">${rec.type === 'fight' ? '議題' : '標題'}</label>
@@ -764,8 +819,12 @@ async function viewForm(mode, arg) {
   function bind() {
     app.querySelectorAll('[data-type]').forEach((b) => b.addEventListener('click', () => {
       collect();
+      if (b.dataset.type === rec.type) return;
+      if (mode === 'edit' && b.dataset.type !== originalType && !confirm('換成別的類型後，這則會拿到新類型的新編號。確定要換嗎？')) return;
       rec.type = b.dataset.type;
-      rec.emojis = []; rec.tags = []; customEmojis = []; extraTags = [];
+      if (mode === 'new') { rec.emojis = []; rec.tags = []; customEmojis = []; extraTags = []; }
+      if (!visTouched) rec.visibility = defaultVisibility(rec.type);
+      dirty = true;
       render();
     }));
     app.querySelectorAll('[data-cat]').forEach((b) => b.addEventListener('click', () => { collect(); rec.category = rec.category === b.dataset.cat ? '' : b.dataset.cat; render(); }));
@@ -825,7 +884,12 @@ async function viewForm(mode, arg) {
       if (!rec.tags.includes(t)) rec.tags.push(t);
       render();
     });
-    app.querySelectorAll('[data-vis]').forEach((b) => b.addEventListener('click', () => { collect(); rec.visibility = b.dataset.vis; render(); }));
+    app.querySelectorAll('[data-vis]').forEach((b) => b.addEventListener('click', () => { collect(); rec.visibility = b.dataset.vis; visTouched = true; dirty = true; render(); }));
+    // 有改過內容時，按返回要先確認，免得寫一半的長文不見
+    app.oninput = () => { dirty = true; };
+    app.querySelector('.topbar .icon-btn').addEventListener('click', (ev) => {
+      if ((dirty || newPhotos.size) && !confirm('還沒儲存，確定要離開嗎？寫的內容會不見。')) ev.preventDefault();
+    });
     app.querySelectorAll('[data-taskmode]').forEach((b) => b.addEventListener('click', () => { collect(); rec.task.mode = b.dataset.taskmode; render(); }));
     document.getElementById('f-photos').addEventListener('change', async (ev) => {
       collect();
@@ -853,25 +917,36 @@ async function viewForm(mode, arg) {
       if (newPhotos.has(id)) newPhotos.delete(id); else removedPhotos.add(id);
       render();
     }));
-    document.getElementById('save').addEventListener('click', async () => {
+    const saveBtn = document.getElementById('save');
+    saveBtn.addEventListener('click', () => withBusy(saveBtn, '儲存中…', async () => {
       collect();
       rec.title = rec.title.trim();
       if (!rec.title) { toast(rec.type === 'fight' ? '請填寫議題' : '請填寫標題'); document.getElementById('f-title').focus(); return; }
       if (!rec.date) rec.date = today();
       if (!dateOk(rec.date)) { toast('日期要在 1970 年到今天之間'); return; }
       if (rec.visibility === 'task' && !rec.task.text.trim()) { toast('請填寫解鎖任務'); return; }
+      if (mode === 'edit') {
+        const latest = await DB.getRecord(rec.id);
+        if (latest && (latest.updatedAt || 0) !== loadedUpdatedAt
+          && !confirm('這則剛剛在別的裝置改過了。要用你現在的內容覆蓋嗎？按「取消」會重新載入最新的內容。')) {
+          viewForm('edit', rec.id);
+          return;
+        }
+      }
       for (const [id, p] of newPhotos) await DB.putPhoto({ id, blob: p.blob, recordId: rec.id, createdAt: Date.now() });
       for (const id of removedPhotos) { await DB.deletePhoto(id); photoUrlCache.delete(id); }
       const now = Date.now();
-      if (!rec.no) rec.no = await nextNumber(rec.type);
+      if (!rec.no || rec.type !== originalType) rec.no = await nextNumber(rec.type);
+      rec.v = RECORD_VERSION;
       // 改成不是「任務解鎖」時，解鎖狀態就不再保留
       if (rec.visibility !== 'task') rec.unlocked = false;
       rec.createdAt = rec.createdAt || now;
       rec.updatedAt = now;
       await DB.putRecord(rec);
+      dirty = false;
       toast('已儲存');
       go(`#/view/${rec.id}`);
-    });
+    }));
   }
 
   render();
@@ -996,7 +1071,7 @@ async function viewSettings() {
     </div>
     ${isGuest() ? `<div class="card" style="background:var(--happy-bg);border-color:transparent">
       <div class="bold" style="color:var(--happy-dark)">註冊或登入</div>
-      <div class="small" style="color:var(--happy-dark)">現在的紀錄只存在這支手機。註冊或登入後會自動搬上雲端，換手機不會不見，也能產生分享碼給另一半。</div>
+      <div class="small" style="color:var(--happy-dark)">現在的紀錄只存在這支手機。在這支手機註冊或登入後會自動搬上雲端，換手機不會不見，也能產生分享碼給另一半。</div>
       <a class="btn small" href="#/login">註冊／登入</a>
     </div>` : ''}
     ${usingCloud() ? `<div class="card">
@@ -1048,7 +1123,7 @@ async function viewSettings() {
     </div>
     <div class="card">
       <div class="bold" style="color:#9B2C1F">清除所有資料</div>
-      <div class="muted">${usingCloud() ? '會刪掉雲端上你所有的紀錄和照片，沒辦法復原。' : '會刪掉這支手機上所有紀錄和照片，沒辦法復原。'}</div>
+      <div class="muted">${usingCloud() ? '會刪掉雲端上你所有的紀錄和照片，也會停止分享、移除另一半，沒辦法復原。' : '會刪掉這支手機上所有紀錄和照片，沒辦法復原。'}</div>
       <button class="btn small danger" id="wipe">全部清除</button>
     </div>
   `;
@@ -1142,6 +1217,7 @@ async function viewSettings() {
   document.getElementById('wipe').addEventListener('click', async () => {
     if (!confirm('真的要清除所有紀錄和照片嗎？')) return;
     if (!confirm('再確認一次：清除後無法復原。')) return;
+    if (usingCloud()) { try { await CloudDB.deleteShare(); } catch (e) { /* 沒有分享碼就略過 */ } }
     await DB.clearAll();
     photoUrlCache.clear();
     toast('已清除');
@@ -1401,6 +1477,8 @@ function bindShareCard() {
     const pass = $('s-pass').value;
     if (!name) { toast('請填你的名字'); return; }
     if (pass.length < 6) { toast('密碼至少 6 個字'); return; }
+    const visible = (await DB.allRecords()).filter((r) => !r.deletedAt && (r.visibility === 'shared' || (r.visibility === 'task' && r.unlocked))).length;
+    if (visible && !confirm(`對方加入後，會看到 ${visible} 則「給對方看」的紀錄（包含以前寫的）。不想給這個人看的，請先改成上鎖。要繼續產生分享碼嗎？`)) return;
     await saveWithNewCode(pass, name);
     toast('分享碼產生好了');
     viewSettings();
@@ -1480,6 +1558,28 @@ async function afterOwnerLogin() {
   }
 }
 
+// 從重設密碼信回來：設定新密碼
+function viewResetPassword() {
+  app.className = '';
+  app.innerHTML = `
+    <div class="topbar"><h1>設定新密碼</h1></div>
+    <form id="reset-form" style="display:flex;flex-direction:column;gap:14px">
+      <div class="field"><label for="new-pass">新密碼（至少 8 個字）</label>
+        <input id="new-pass" class="input" type="password" autocomplete="new-password" minlength="8" maxlength="72" required></div>
+      <button class="btn" type="submit" id="reset-btn">更新密碼</button>
+    </form>
+  `;
+  document.getElementById('reset-form').addEventListener('submit', (ev) => {
+    ev.preventDefault();
+    const btn = document.getElementById('reset-btn');
+    withBusy(btn, '更新中…', async () => {
+      await CloudDB.updatePassword(document.getElementById('new-pass').value);
+      toast('密碼已更新');
+      go('#/');
+    });
+  });
+}
+
 // ---------- 登入（雲端模式） ----------
 function viewLogin(mode = 'signin') {
   app.className = '';
@@ -1488,9 +1588,10 @@ function viewLogin(mode = 'signin') {
     <div style="display:flex;flex-direction:column;align-items:center;gap:10px;text-align:center;margin-top:40px">
       <div class="thumb" style="width:72px;height:72px;border-radius:99px">${ICON.heart}</div>
       <h1 class="title-xl">我們的紀錄</h1>
-      <div class="muted">${isUp ? '建立帳號，紀錄就會存在雲端' : '登入你的帳號'}</div>
+      <div class="muted">${isUp ? '建立帳號，紀錄就會存在雲端' : '記下你們的美好時刻、烏雲時刻和吵架議題'}</div>
     </div>
-    <button class="btn secondary" id="google-btn" style="gap:10px">
+    ${inAppNotice()}
+    <button class="btn secondary" id="google-btn" style="gap:10px"${IN_APP ? ' hidden' : ''}>
       <svg width="20" height="20" viewBox="0 0 48 48" aria-hidden="true"><path fill="#EA4335" d="M24 9.5c3.5 0 6.6 1.2 9.1 3.6l6.8-6.8C35.8 2.4 30.3 0 24 0 14.6 0 6.6 5.4 2.7 13.3l7.9 6.1C12.5 13.6 17.8 9.5 24 9.5z"/><path fill="#4285F4" d="M46.5 24.5c0-1.6-.1-3.1-.4-4.5H24v9h12.7c-.6 3-2.3 5.5-4.8 7.2l7.7 6c4.5-4.2 6.9-10.3 6.9-17.7z"/><path fill="#FBBC05" d="M10.6 28.6c-.5-1.4-.8-3-.8-4.6s.3-3.2.8-4.6l-7.9-6.1C1 16.6 0 20.2 0 24s1 7.4 2.7 10.7l7.9-6.1z"/><path fill="#34A853" d="M24 48c6.5 0 11.9-2.1 15.9-5.8l-7.7-6c-2.1 1.4-4.9 2.3-8.2 2.3-6.2 0-11.5-4.1-13.4-9.9l-7.9 6.1C6.6 42.6 14.6 48 24 48z"/></svg>
       用 Google 登入
     </button>
@@ -1498,17 +1599,28 @@ function viewLogin(mode = 'signin') {
     <form id="login-form" style="display:flex;flex-direction:column;gap:14px">
       <div class="field"><label for="email">Email</label>
         <input id="email" class="input" type="email" autocomplete="email" required></div>
-      <div class="field"><label for="password">密碼${isUp ? '（至少 6 個字）' : ''}</label>
-        <input id="password" class="input" type="password" autocomplete="${isUp ? 'new-password' : 'current-password'}" minlength="6" required></div>
+      <div class="field"><label for="password">密碼${isUp ? '（至少 8 個字）' : ''}</label>
+        <input id="password" class="input" type="password" autocomplete="${isUp ? 'new-password' : 'current-password'}" minlength="${isUp ? 8 : 6}" maxlength="72" required></div>
       <button class="btn" type="submit" id="login-btn">${isUp ? '建立帳號' : '登入'}</button>
     </form>
     <div id="login-msg" class="muted" style="text-align:center"></div>
+    ${isUp ? '' : '<button class="btn secondary small" id="forgot">忘記密碼？</button>'}
     <button class="btn secondary small" id="switch">${isUp ? '已經有帳號？登入' : '第一次使用？建立帳號'}</button>
     <a class="btn secondary small" href="#/join">我是另一半，用分享碼加入</a>
     <a class="btn secondary small" href="#/" id="try-first" hidden>先不登入，直接開始用</a>
   `;
   hasAccountHere().then((has) => { const b = document.getElementById('try-first'); if (b && !has) b.hidden = false; });
   document.getElementById('switch').addEventListener('click', () => viewLogin(isUp ? 'signin' : 'signup'));
+  const forgot = document.getElementById('forgot');
+  if (forgot) forgot.addEventListener('click', () => {
+    const email = document.getElementById('email').value.trim();
+    const msg = document.getElementById('login-msg');
+    if (!/^[^@\s]+@[^@\s]+$/.test(email)) { msg.textContent = '先在上面填你的 Email，再按「忘記密碼」。'; document.getElementById('email').focus(); return; }
+    withBusy(forgot, '寄送中…', async () => {
+      await CloudDB.resetPassword(email);
+      msg.textContent = `如果 ${email} 有註冊過，會收到一封重設密碼的信，點信裡的連結就能設定新密碼。`;
+    });
+  });
   document.getElementById('google-btn').addEventListener('click', async () => {
     try { await CloudDB.signInWithGoogle(); } catch (e) {
       document.getElementById('login-msg').textContent = /provider is not enabled|Unsupported provider/i.test(e.message)
@@ -1557,6 +1669,7 @@ async function route() {
   const parts = (location.hash.replace(/^#\/?/, '') || '').split('/');
   const [page, arg] = parts;
   app.className = '';
+  app.oninput = null;
   window.scrollTo(0, 0);
   try {
     if (isGuest()) {
@@ -1573,6 +1686,7 @@ async function route() {
     if (!isGuest() && (page === 'login' || page === 'join')) { go('#/'); return; }
     await loadNames();
     await ensureNumbers();
+    if (page === 'reset' && usingCloud() && !CloudDB.isAnonymous()) { renderTabbar(null); viewResetPassword(); return; }
     if (isPartner()) {
       if (!page) { renderTabbar('home'); await viewPartnerHome(); }
       else if (page === 'list' && TYPES[arg] && arg !== 'fight') { renderTabbar(arg); await viewList(arg); }

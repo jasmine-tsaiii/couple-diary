@@ -146,7 +146,10 @@ $$;
 drop policy if exists "records: partner read" on public.records;
 create policy "records: partner read" on public.records
   for select to authenticated
-  using (owner = public.my_owner() and (visibility = 'shared' or (visibility = 'task' and unlocked)));
+  using (
+    owner = public.my_owner() and (data ->> 'deletedAt') is null
+    and (visibility = 'shared' or (visibility = 'task' and unlocked))
+  );
 
 -- 建立或修改分享碼。p_password 留空代表不改密碼（只改分享碼或名字）。
 create or replace function public.set_share(p_code text, p_password text, p_owner_name text) returns void
@@ -203,6 +206,10 @@ begin
   end if;
 
   update public.shares set failed_attempts = 0, locked_until = null where owner = s.owner;
+  -- 一個分享碼只給一個人：已經有別人加入時，要主人先移除舊的
+  if exists (select 1 from public.partners where owner = s.owner and uid <> auth.uid()) then
+    return jsonb_build_object('ok', false, 'error', '這個分享已經有人加入了。請紀錄的主人先在設定頁移除舊的，再加入一次');
+  end if;
   insert into public.partners (uid, owner, name) values (auth.uid(), s.owner, v_name)
   on conflict (uid) do update set owner = excluded.owner, name = excluded.name, joined_at = now();
   return jsonb_build_object('ok', true);
@@ -231,7 +238,7 @@ language sql stable security definer set search_path = public as $$
     )
   ) order by r.created_at desc), '[]'::jsonb)
   from public.records r
-  where r.owner = public.my_owner() and r.visibility = 'task' and not r.unlocked
+  where r.owner = public.my_owner() and r.visibility = 'task' and not r.unlocked and (r.data ->> 'deletedAt') is null
 $$;
 
 -- 對方送出任務（照片要先上傳到自己的資料夾）
@@ -243,7 +250,8 @@ declare
 begin
   select * into p from public.partners where uid = auth.uid();
   if not found then raise exception '你還沒有用分享碼加入'; end if;
-  select * into r from public.records where id = p_record_id and owner = p.owner and visibility = 'task' and not unlocked;
+  select * into r from public.records
+  where id = p_record_id and owner = p.owner and visibility = 'task' and not unlocked and (data ->> 'deletedAt') is null;
   if not found then raise exception '找不到這個任務，可能已經解鎖了'; end if;
   if char_length(coalesce(p_note, '')) > 500 then raise exception '留言最多 500 個字'; end if;
   if p_photo_path is not null and p_photo_path !~ ('^' || auth.uid()::text || '/task-[A-Za-z0-9_-]+\.jpg$') then
@@ -257,7 +265,44 @@ begin
   values (p.owner, r.id, auth.uid(), p.name, coalesce(p_note, ''), p_photo_path);
 end $$;
 
+-- 你審核任務：更新任務狀態，通過時同時解鎖紀錄（一次做完，不會只做一半）
+create or replace function public.review_task(p_id uuid, p_approve boolean) returns void
+language plpgsql security definer set search_path = public as $$
+declare
+  t public.task_submissions;
+begin
+  if not public.is_real_user() then raise exception '請先登入'; end if;
+  select * into t from public.task_submissions where id = p_id and owner = auth.uid() and status = 'pending' for update;
+  if not found then raise exception '找不到這個任務，可能已經審核過了'; end if;
+  update public.task_submissions
+    set status = case when p_approve then 'approved' else 'rejected' end, reviewed_at = now()
+    where id = t.id;
+  if p_approve then
+    update public.records
+      set unlocked = true, data = jsonb_set(data, '{unlocked}', 'true'), updated_at = now()
+      where id = t.record_id and owner = auth.uid() and visibility = 'task';
+  end if;
+end $$;
+
+-- 可見度改變時：一律重新上鎖，並退回還在審核中的任務（避免改來改去就直接看得到）
+create or replace function public.records_visibility_changed() returns trigger
+language plpgsql security definer set search_path = public as $$
+begin
+  if new.visibility is distinct from old.visibility then
+    new.unlocked := false;
+    new.data := jsonb_set(new.data, '{unlocked}', 'false');
+    update public.task_submissions set status = 'rejected', reviewed_at = now()
+      where record_id = new.id and status = 'pending';
+  end if;
+  return new;
+end $$;
+drop trigger if exists records_visibility_changed on public.records;
+create trigger records_visibility_changed before update on public.records
+  for each row execute function public.records_visibility_changed();
+
 -- 函式只給登入的人用
+revoke all on function public.review_task(uuid, boolean) from public, anon;
+grant execute on function public.review_task(uuid, boolean) to authenticated;
 revoke all on function public.set_share(text, text, text) from public, anon;
 revoke all on function public.join_share(text, text, text) from public, anon;
 revoke all on function public.partner_info() from public, anon;
@@ -302,7 +347,7 @@ create policy "photos: owner update" on storage.objects
 drop policy if exists "photos: owner delete" on storage.objects;
 create policy "photos: owner delete" on storage.objects
   for delete to authenticated
-  using (bucket_id = 'photos' and (storage.foldername(name))[1] = auth.uid()::text);
+  using (bucket_id = 'photos' and (storage.foldername(name))[1] = auth.uid()::text and public.is_real_user());
 
 -- 對方可以看：你「給對方看」或已解鎖紀錄裡的照片
 drop policy if exists "photos: partner read" on storage.objects;
@@ -315,6 +360,7 @@ create policy "photos: partner read" on storage.objects
       select 1 from public.records r
       where r.owner = public.my_owner()
         and (r.visibility = 'shared' or (r.visibility = 'task' and r.unlocked))
+        and (r.data ->> 'deletedAt') is null
         and r.data -> 'photoIds' ? split_part(storage.filename(name), '.', 1)
     )
   );

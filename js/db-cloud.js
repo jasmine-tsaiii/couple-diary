@@ -49,11 +49,13 @@ const CloudDB = CLOUD_ENABLED ? (() => {
     // ---- 登入 ----
     async loadSession() {
       // 從 Google 登入回來時網址會帶 ?code=，先換成登入狀態再把網址清乾淨
-      const code = new URLSearchParams(location.search).get('code');
+      const params = new URLSearchParams(location.search);
+      const code = params.get('code');
       if (code) {
         try { await client.auth.exchangeCodeForSession(code); } catch (e) { /* 可能已經自動換過了 */ }
-        history.replaceState(null, '', location.pathname + (location.hash || '#/'));
       }
+      // 從重設密碼信回來時，直接到設定新密碼的畫面；其他情況只把 ?code= 清掉
+      if (code || params.get('reset')) history.replaceState(null, '', location.pathname + (params.get('reset') ? '#/reset' : (location.hash || '#/')));
       session = check(await client.auth.getSession()).session;
       await loadPartner();
       return session;
@@ -63,6 +65,12 @@ const CloudDB = CLOUD_ENABLED ? (() => {
         provider: 'google',
         options: { redirectTo: location.origin + location.pathname },
       }));
+    },
+    async resetPassword(email) {
+      check(await client.auth.resetPasswordForEmail(email, { redirectTo: location.origin + location.pathname + '?reset=1' }));
+    },
+    async updatePassword(password) {
+      check(await client.auth.updateUser({ password }));
     },
     currentEmail: () => (session ? session.user.email : null),
     isSignedIn: () => !!session,
@@ -134,7 +142,8 @@ const CloudDB = CLOUD_ENABLED ? (() => {
       return check(await q.order('created_at', { ascending: false }));
     },
     async reviewSubmission(id, approve) {
-      check(await client.from('task_submissions').update({ status: approve ? 'approved' : 'rejected', reviewed_at: new Date().toISOString() }).eq('id', id));
+      // 通過時資料庫會一起解鎖紀錄
+      check(await client.rpc('review_task', { p_id: id, p_approve: approve }));
     },
     async removeTaskPhoto(path) {
       check(await client.storage.from(BUCKET).remove([path]));
