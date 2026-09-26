@@ -36,7 +36,7 @@ const DEFAULT_CATEGORIES = ['溝通', '價值觀', '金錢', '家人朋友', '�
 const MAX_EMOJIS = 3;
 // 各欄位的上限：畫面上擋，雲端資料庫也有對應的檢查
 const LIMITS = {
-  name: 20, title: 60, description: 2000, fightText: 1000, resolution: 500, followUp: 300, followUpsPerFight: 100,
+  name: 20, title: 60, description: 2000, fightText: 1000, resolution: 500, followUp: 300, followUpsPerFight: 100, reflection: 500, reflectionsPerRecord: 50,
   tag: 12, tagsPerRecord: 10, photosPerRecord: 9, photoFileMB: 20, category: 12, categories: 30, task: 100, taskNote: 500,
 };
 const BACKUP_REMIND_DAYS = 14;
@@ -381,6 +381,7 @@ async function viewList(type, tagFilter) {
         <div class="bold" style="font-size:14px">${esc(r.title)}</div>
         <div class="muted small">${shortDate(r.date)} · ${esc((r.emojis || []).join(''))}</div>
         ${(r.tags || []).length ? `<div class="tile-tags">${esc(r.tags.map((t) => '#' + t).join(' '))}</div>` : ''}
+        ${(r.reflections || []).length ? `<div class="small muted">💭 ${r.reflections.length} 則反思</div>` : ''}
         ${lockNote ? `<div class="small row" style="color:var(--lock);gap:4px">${ICON.lockSmall}${lockNote}</div>` : ''}
       </div>`;
     grid.appendChild(a);
@@ -484,6 +485,26 @@ async function viewDetail(id) {
     }
   }
 
+  // 烏雲時刻的事後反思：氣頭上寫下的，冷靜之後可以補上新的想法
+  let reflectPart = '';
+  if (r.type === 'cloud') {
+    const rf = r.reflections || [];
+    reflectPart = `
+      <div class="field"><div class="label">事後反思</div>
+        <div class="timeline">
+          ${rf.length ? rf.map((f, i) => `<div class="tl-item">
+            <div class="tl-rail"><div class="tl-dot"></div>${i < rf.length - 1 ? '<div class="tl-line"></div>' : ''}</div>
+            <div class="tl-body"><div class="muted small">${shortDate(f.date)}</div><div class="prose">${esc(f.text)}</div>${partner ? '' : `<button class="tl-del" data-del-rf="${esc(f.id)}">刪除</button>`}</div>
+          </div>`).join('') : `<div class="muted">${partner ? '還沒有反思。' : '冷靜下來之後，想法有沒有不一樣？可以隨時回來補寫。'}</div>`}
+        </div>
+      </div>
+      ${partner ? '' : `<div class="field"><label for="rf-text">寫下現在的想法</label>
+        <input id="rf-date" class="input" type="date" min="1970-01-01" max="${today()}" value="${today()}" aria-label="反思日期">
+        <textarea id="rf-text" class="textarea" maxlength="${LIMITS.reflection}" style="min-height:70px" placeholder="例如：後來想想，他那天其實很累，我也可以先問問他"></textarea>
+        <button class="btn small" id="rf-add" style="align-self:flex-start">加入反思</button>
+      </div>`}`;
+  }
+
   let fightPart = '';
   if (r.type === 'fight') {
     const s = r.status || 'open';
@@ -536,6 +557,7 @@ async function viewDetail(id) {
     ${photos}
     ${r.description ? `<p class="prose">${esc(r.description)}</p>` : ''}
     ${task}
+    ${reflectPart}
     ${fightPart}
     ${partner ? '' : '<button class="btn danger" id="delete" style="margin-top:12px">刪除這則紀錄</button>'}
   `;
@@ -576,6 +598,26 @@ async function viewDetail(id) {
     await setUnlocked(false);
     viewDetail(r.id);
   });
+
+  if (r.type === 'cloud') {
+    const saveRf = async (reflections) => {
+      Object.assign(r, { reflections, updatedAt: Date.now() });
+      await DB.putRecord(r);
+      viewDetail(r.id);
+    };
+    document.getElementById('rf-add').addEventListener('click', () => {
+      const text = document.getElementById('rf-text').value.trim();
+      if (!text) { toast('先寫一點內容'); return; }
+      const date = document.getElementById('rf-date').value || today();
+      if (!dateOk(date)) { toast('日期要在今天以前'); return; }
+      if ((r.reflections || []).length >= LIMITS.reflectionsPerRecord) { toast(`每則最多 ${LIMITS.reflectionsPerRecord} 則反思`); return; }
+      saveRf((r.reflections || []).concat({ id: DB.uid(), date, text }).sort((a, b) => a.date.localeCompare(b.date)));
+    });
+    app.querySelectorAll('[data-del-rf]').forEach((b) => b.addEventListener('click', () => {
+      if (!confirm('刪除這則反思？')) return;
+      saveRf((r.reflections || []).filter((f) => f.id !== b.dataset.delRf));
+    }));
+  }
 
   if (r.type === 'fight') {
     const save = async (patch) => {
@@ -854,6 +896,7 @@ function checkBackup(data) {
     if (r.visibility && !VISIBILITY[r.visibility]) r.visibility = 'locked';
     if (r.status && !STATUS[r.status]) r.status = 'open';
     if (r.date && !DATE_RE.test(r.date)) throw new Error('備份檔內容不對，沒有匯入');
+    if (r.reflections && (!Array.isArray(r.reflections) || !r.reflections.every((f) => f && DATE_RE.test(f.date) && SAFE_ID.test(String(f.id))))) throw new Error('備份檔內容不對，沒有匯入');
     if (r.followUps && (!Array.isArray(r.followUps) || !r.followUps.every((f) => f && DATE_RE.test(f.date) && SAFE_ID.test(String(f.id))))) throw new Error('備份檔內容不對，沒有匯入');
   }
   for (const p of data.photos || []) if (!p || !SAFE_ID.test(p.id)) throw new Error('備份檔內容不對，沒有匯入');
@@ -894,6 +937,7 @@ async function buildReadableExport() {
       <h3>${esc(r.title)} <span class="emo">${esc((r.emojis || []).join(''))}</span></h3>
       ${(r.tags || []).length ? `<div class="tags">${esc(r.tags.map((t) => '#' + t).join(' '))}</div>` : ''}
       ${r.description ? `<p>${esc(r.description)}</p>` : ''}
+      ${(r.reflections || []).length ? `<h4>事後反思</h4><ul>${r.reflections.map((f) => `<li><b>${shortDate(f.date)}</b> ${esc(f.text)}</li>`).join('')}</ul>` : ''}
       ${fight}
       ${imgs.length ? `<div class="imgs">${imgs.map((u) => `<img src="${u}" alt="">`).join('')}</div>` : ''}
     </article>`;
