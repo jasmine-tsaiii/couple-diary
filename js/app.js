@@ -211,6 +211,11 @@ async function loadNames() {
   try { NAMES = { me: '', partner: '', ...(await DB.getSetting('names', {})) }; } catch (e) { NAMES = { me: '', partner: '' }; }
 }
 const myName = () => NAMES.me || '我';
+// 在一起的第幾天（在一起那天算第 1 天）
+function togetherDays() {
+  if (!NAMES.since || !dateOk(NAMES.since)) return 0;
+  return Math.floor((Date.parse(today()) - Date.parse(NAMES.since)) / 86400000) + 1;
+}
 const partnerName = () => NAMES.partner || '對方';
 // 可見度的說明用伴侶的名字，例如「給小明看」
 const visLabel = (k) => (k === 'shared' && NAMES.partner ? `給${NAMES.partner}看` : VISIBILITY[k]);
@@ -348,6 +353,7 @@ async function viewHome() {
       <div>
         <div class="hello">${NAMES.me ? `嗨，${esc(NAMES.me)}・` : ''}今天是 ${longDate(today())}</div>
         <h1 class="title-xl">${esc(diaryTitle())}</h1>
+        ${togetherDays() ? `<div class="small muted">在一起第 ${togetherDays()} 天</div>` : ''}
       </div>
       <a class="icon-btn" href="#/settings" aria-label="設定">${ICON.gear}</a>
     </div>
@@ -858,7 +864,7 @@ async function viewForm(mode, arg) {
             <button class="opt ${rec.task.mode !== 'photo' ? 'on' : ''}" data-taskmode="confirm">按「完成」就好</button>
             <button class="opt ${rec.task.mode === 'photo' ? 'on' : ''}" data-taskmode="photo">要上傳照片</button>
           </div>` : ''}
-        <div class="muted small">${usingCloud() ? '給對方看：對方用分享碼就看得到。上鎖：只有你看得到。任務解鎖：對方完成任務、你按通過後才看得到。' : (CLOUD_ENABLED ? '這個設定會先記下來；註冊登入並開啟分享碼後，對方就會依這個設定看到內容。' : '現在是單人版，這個設定會先記下來；換成雲端版並開啟分享碼後，對方就會依這個設定看到內容。')}</div>
+        <div class="muted small">${usingCloud() ? '給對方看：對方用分享碼就看得到。上鎖：只有你看得到。任務解鎖：對方完成任務、你按通過後才看得到。' : (CLOUD_ENABLED ? '這個設定會先記下來；註冊登入並開啟分享碼後，對方就會依這個設定看到內容。' : '現在是單人版，這個設定會先記下來；換成雲端版並開啟分享碼後，對方就會依這個設定看到內容。') + '目前「上鎖」只是標記，拿到這支手機的人還是看得到。'}</div>
       </div>
       <button class="btn" id="save">儲存紀錄</button>
     `;
@@ -908,6 +914,7 @@ async function viewForm(mode, arg) {
       if (!val) return;
       // 只取第一個字元群（一個表情，包含組合表情）
       const seg = typeof Intl !== 'undefined' && Intl.Segmenter ? [...new Intl.Segmenter('zh', { granularity: 'grapheme' }).segment(val)][0].segment : [...val][0];
+      if (!/\p{Extended_Pictographic}|\p{Regional_Indicator}/u.test(seg)) { toast('這裡只能加表情符號，文字可以寫在標籤或描述裡'); return; }
       collect();
       if (!customEmojis.includes(seg) && !TYPES[rec.type].emojis.includes(seg)) customEmojis.push(seg);
       if (!rec.emojis.includes(seg)) {
@@ -953,6 +960,7 @@ async function viewForm(mode, arg) {
       for (const f of files) {
         try {
           if (f.size > LIMITS.photoFileMB * 1024 * 1024) { toast(`照片超過 ${LIMITS.photoFileMB} MB，換一張試試`); continue; }
+          if (f.type && !f.type.startsWith('image/')) { toast('只能選照片'); continue; }
           const blob = await compressImage(f);
           const id = DB.uid();
           newPhotos.set(id, { blob, url: URL.createObjectURL(blob) });
@@ -1120,6 +1128,9 @@ async function viewSettings() {
   const everything = await DB.allRecords();
   const all = everything.filter((r) => !r.deletedAt);
   const trash = everything.filter((r) => r.deletedAt).sort((a, b) => b.deletedAt - a.deletedAt);
+  const tagCount = new Map();
+  everything.forEach((r) => (r.tags || []).forEach((t) => tagCount.set(t, (tagCount.get(t) || 0) + 1)));
+  const usedTags = [...tagCount].sort((a, b) => b[1] - a[1]);
   const lastBackup = await DB.getSetting('lastBackupAt', null);
   const persisted = await isPersisted();
   // 雲端模式下，看看這支手機裡有沒有還沒搬上去的舊紀錄
@@ -1155,7 +1166,8 @@ async function viewSettings() {
         <div class="field"><label for="set-me">你的名字</label><input id="set-me" class="input" maxlength="${LIMITS.name}" value="${esc(NAMES.me)}"></div>
         <div class="field"><label for="set-partner">伴侶的名字</label><input id="set-partner" class="input" maxlength="${LIMITS.name}" value="${esc(NAMES.partner)}"></div>
       </div>
-      <button class="btn small" id="save-names">儲存名字</button>
+      <div class="field"><label for="set-since">在一起的日期（可不填，首頁會顯示在一起第幾天）</label><input id="set-since" class="input" type="date" min="1970-01-01" max="${today()}" value="${esc(NAMES.since || '')}"></div>
+      <button class="btn small" id="save-names">儲存</button>
     </div>
     <div class="card">
       <div class="bold">備份</div>
@@ -1191,6 +1203,11 @@ async function viewSettings() {
       <div class="chips">${cats.map((c) => `<span class="chip" style="display:inline-flex;align-items:center;gap:6px">${esc(c)}<button data-rm-cat="${esc(c)}" aria-label="刪除 ${esc(c)}" style="border:none;background:none;padding:0;display:flex">${ICON.x}</button></span>`).join('')}</div>
       <div class="row"><input id="new-cat" class="input grow" maxlength="${LIMITS.category}" placeholder="新增分類"><button class="btn small" id="add-cat">加入</button></div>
     </div>
+    ${usedTags.length ? `<div class="card">
+      <div class="bold">管理標籤</div>
+      <div class="muted small">點一個標籤可以改名或刪除，所有用到它的紀錄會一起改。</div>
+      <div class="chips">${usedTags.map(([t, n]) => `<button class="chip" data-edit-tag="${esc(t)}">#${esc(t)} <span class="muted">${n}</span></button>`).join('')}</div>
+    </div>` : ''}
     <div class="card">
       <div class="bold">重新編號</div>
       <div class="muted">每則紀錄的 No. 在新增時就固定，刪除後會留下空號。想讓號碼重新連續的話，可以依日期從 1 重新排一次${usingCloud() ? '，另一半看到的號碼也會一起更新' : ''}。</div>
@@ -1200,6 +1217,7 @@ async function viewSettings() {
       <div class="bold" style="color:#9B2C1F">清除所有資料</div>
       <div class="muted">${usingCloud() ? '會刪掉雲端上你所有的紀錄和照片，也會停止分享、移除另一半，沒辦法復原。' : '會刪掉這支手機上所有紀錄和照片，沒辦法復原。'}</div>
       <button class="btn small danger" id="wipe">全部清除</button>
+      ${usingCloud() ? '<button class="btn small secondary" id="delete-account">刪除帳號</button>' : ''}
     </div>
   `;
 
@@ -1224,9 +1242,11 @@ async function viewSettings() {
     toast('已重新編號');
   });
   document.getElementById('save-names').addEventListener('click', async () => {
-    await DB.setSetting('names', { me: document.getElementById('set-me').value.trim(), partner: document.getElementById('set-partner').value.trim() });
+    const since = document.getElementById('set-since').value;
+    if (since && !dateOk(since)) { toast('日期要在 1970 年到今天之間'); return; }
+    await DB.setSetting('names', { me: document.getElementById('set-me').value.trim(), partner: document.getElementById('set-partner').value.trim(), since });
     await loadNames();
-    toast('已儲存名字');
+    toast('已儲存');
   });
   document.getElementById('export').addEventListener('click', async () => {
     toast('準備備份中…');
@@ -1278,6 +1298,24 @@ async function viewSettings() {
   };
   document.getElementById('add-cat').addEventListener('click', addCat);
   document.getElementById('new-cat').addEventListener('keydown', (ev) => { if (ev.key === 'Enter' && !ev.isComposing) addCat(); });
+  app.querySelectorAll('[data-edit-tag]').forEach((b) => b.addEventListener('click', async () => {
+    const old = b.dataset.editTag;
+    const input = prompt(`把「#${old}」改成什麼？（最多 ${LIMITS.tag} 個字；清空再按確定就是刪除這個標籤）`, old);
+    if (input === null) return;
+    const name = input.trim().replace(/[#\s]/g, '').slice(0, LIMITS.tag);
+    if (name === old) return;
+    if (!name && !confirm(`要從所有紀錄拿掉「#${old}」嗎？`)) return;
+    let n = 0;
+    for (const r of everything.filter((x) => (x.tags || []).includes(old))) {
+      await updateRecord(r.id, (x) => {
+        const tags = (x.tags || []).map((t) => (t === old ? name : t)).filter(Boolean);
+        x.tags = [...new Set(tags)];
+      });
+      n += 1;
+    }
+    toast(name ? `已把 ${n} 則紀錄的標籤改成 #${name}` : `已從 ${n} 則紀錄拿掉這個標籤`);
+    viewSettings();
+  }));
   app.querySelectorAll('[data-rm-cat]').forEach((b) => b.addEventListener('click', async () => {
     if (!confirm(`刪除分類「${b.dataset.rmCat}」？已經用這個分類的議題不會受影響。`)) return;
     await DB.setSetting('categories', cats.filter((c) => c !== b.dataset.rmCat));
@@ -1311,6 +1349,20 @@ async function viewSettings() {
     photoUrlCache.clear();
     toast('已清除');
     go('#/');
+  });
+  const delAcc = document.getElementById('delete-account');
+  if (delAcc) delAcc.addEventListener('click', () => {
+    const typed = prompt('刪除帳號會刪掉雲端上所有紀錄、照片、分享和這個帳號本身，沒辦法復原。建議先匯出備份。\n確定的話請輸入「刪除」兩個字：');
+    if ((typed || '').trim() !== '刪除') return;
+    withBusy(delAcc, '刪除中…', async () => {
+      try { await CloudDB.deleteShare(); } catch (e) { /* 沒有分享碼就略過 */ }
+      await CloudDB.clearAll();
+      await CloudDB.deleteAccount();
+      await LocalDB.setSetting('hasAccount', false);
+      photoUrlCache.clear(); thumbUrlCache.clear();
+      toast('帳號已刪除');
+      go('#/login');
+    });
   });
 }
 
@@ -1588,6 +1640,13 @@ function bindShareCard() {
     if (pass.length < 6) { toast('密碼至少 6 個字'); return; }
     await CloudDB.saveShare(document.querySelector('.share-code').textContent, pass, $('s-name').value.trim());
     $('s-pass').value = '';
+    const joined = document.querySelectorAll('[data-rm-partner]');
+    if (joined.length && confirm('密碼已更改。要不要順便移除目前已加入的人？\n（如果是擔心密碼外流就按「確定」；按「取消」對方會照常看得到）')) {
+      for (const b of joined) await CloudDB.removePartner(b.dataset.rmPartner);
+      toast('密碼已更改，也移除了已加入的人');
+      viewSettings();
+      return;
+    }
     toast('密碼已更改，已加入的人不受影響');
   });
   if ($('s-renew')) $('s-renew').addEventListener('click', async () => {

@@ -287,6 +287,15 @@ begin
   end if;
 end $$;
 
+-- 刪除帳號：只能刪自己的正式帳號；紀錄、設定、分享、任務會跟著帳號一起刪掉（on delete cascade）
+-- 照片請 App 先刪（App 的「刪除帳號」會先清空資料再呼叫這個）
+create or replace function public.delete_account() returns void
+language plpgsql security definer set search_path = public as $$
+begin
+  if not public.is_real_user() then raise exception '請先登入'; end if;
+  delete from auth.users where id = auth.uid();
+end $$;
+
 -- 可見度改變時：一律重新上鎖，並退回還在審核中的任務（避免改來改去就直接看得到）
 create or replace function public.records_visibility_changed() returns trigger
 language plpgsql security definer set search_path = public as $$
@@ -304,6 +313,8 @@ create trigger records_visibility_changed before update on public.records
   for each row execute function public.records_visibility_changed();
 
 -- 函式只給登入的人用
+revoke all on function public.delete_account() from public, anon;
+grant execute on function public.delete_account() to authenticated;
 revoke all on function public.review_task(uuid, boolean) from public, anon;
 grant execute on function public.review_task(uuid, boolean) to authenticated;
 revoke all on function public.set_share(text, text, text) from public, anon;

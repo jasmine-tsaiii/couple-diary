@@ -223,12 +223,24 @@ const CloudDB = CLOUD_ENABLED ? (() => {
 
     async clearAll() {
       const uid = userId();
+      // 對方送來的任務照片放在對方的資料夾，要先刪（紀錄刪掉後就找不到了）
+      try {
+        const paths = (await this.submissions()).map((t) => t.photo_path).filter(Boolean);
+        if (paths.length) check(await client.storage.from(BUCKET).remove(paths));
+      } catch (e) { /* 舊版資料表沒有任務，略過 */ }
       check(await client.from('records').delete().eq('owner', uid));
       check(await client.from('settings').delete().eq('owner', uid));
       const names = await listPhotoNames();
       for (let i = 0; i < names.length; i += 100) {
-        check(await client.storage.from(BUCKET).remove(names.slice(i, i + 100).map((n) => `${uid}/${n}`)));
+        const batch = names.slice(i, i + 100);
+        check(await client.storage.from(BUCKET).remove(batch.map((n) => `${uid}/${n}`).concat(batch.map((n) => `${uid}/t/${n}`))));
       }
+    },
+    // 刪除帳號：資料要先清掉（clearAll），再刪登入帳號本身
+    async deleteAccount() {
+      check(await client.rpc('delete_account'));
+      await client.auth.signOut();
+      session = null;
     },
   };
 })() : null;
