@@ -29,6 +29,11 @@
 3. 到 **Authentication → URL Configuration**，把 Site URL 設成 `https://jasmine-tsaiii.github.io/couple-diary/`，這樣確認信的連結才會回到 App
 4. 把 **Project Settings → API** 裡的 Project URL 和 anon public key 填進 `js/config.js`
 
+想用 Google 登入的話，還要：
+- 在 Google Cloud Console 建立 OAuth 用戶端（網頁應用程式），「已授權的重新導向 URI」填 `https://<專案>.supabase.co/auth/v1/callback`
+- 在 Supabase 的 **Authentication → Sign In / Providers → Google** 開啟，貼上 Client ID 和 Client secret
+- 在 **Authentication → URL Configuration → Redirect URLs** 加上 `https://jasmine-tsaiii.github.io/couple-diary/`
+
 `js/config.js` 裡的兩個值是公開的，放進程式沒關係。service_role（secret）key 千萬不要放進來。
 
 ## 在電腦上試用

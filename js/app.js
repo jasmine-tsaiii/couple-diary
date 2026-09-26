@@ -894,6 +894,11 @@ function viewLogin(mode = 'signin') {
       <h1 class="title-xl">我們的紀錄</h1>
       <div class="muted">${isUp ? '建立帳號，紀錄就會存在雲端' : '登入你的帳號'}</div>
     </div>
+    <button class="btn secondary" id="google-btn" style="gap:10px">
+      <svg width="20" height="20" viewBox="0 0 48 48" aria-hidden="true"><path fill="#EA4335" d="M24 9.5c3.5 0 6.6 1.2 9.1 3.6l6.8-6.8C35.8 2.4 30.3 0 24 0 14.6 0 6.6 5.4 2.7 13.3l7.9 6.1C12.5 13.6 17.8 9.5 24 9.5z"/><path fill="#4285F4" d="M46.5 24.5c0-1.6-.1-3.1-.4-4.5H24v9h12.7c-.6 3-2.3 5.5-4.8 7.2l7.7 6c4.5-4.2 6.9-10.3 6.9-17.7z"/><path fill="#FBBC05" d="M10.6 28.6c-.5-1.4-.8-3-.8-4.6s.3-3.2.8-4.6l-7.9-6.1C1 16.6 0 20.2 0 24s1 7.4 2.7 10.7l7.9-6.1z"/><path fill="#34A853" d="M24 48c6.5 0 11.9-2.1 15.9-5.8l-7.7-6c-2.1 1.4-4.9 2.3-8.2 2.3-6.2 0-11.5-4.1-13.4-9.9l-7.9 6.1C6.6 42.6 14.6 48 24 48z"/></svg>
+      用 Google 登入
+    </button>
+    <div class="muted" style="text-align:center">或用 Email</div>
     <form id="login-form" style="display:flex;flex-direction:column;gap:14px">
       <div class="field"><label for="email">Email</label>
         <input id="email" class="input" type="email" autocomplete="email" required></div>
@@ -905,6 +910,12 @@ function viewLogin(mode = 'signin') {
     <button class="btn secondary small" id="switch">${isUp ? '已經有帳號？登入' : '第一次使用？建立帳號'}</button>
   `;
   document.getElementById('switch').addEventListener('click', () => viewLogin(isUp ? 'signin' : 'signup'));
+  document.getElementById('google-btn').addEventListener('click', async () => {
+    try { await CloudDB.signInWithGoogle(); } catch (e) {
+      document.getElementById('login-msg').textContent = /provider is not enabled|Unsupported provider/i.test(e.message)
+        ? 'Google 登入還沒在 Supabase 開啟，先用 Email 登入吧。' : '沒辦法用 Google 登入：' + e.message;
+    }
+  });
   document.getElementById('login-form').addEventListener('submit', async (ev) => {
     ev.preventDefault();
     const email = document.getElementById('email').value.trim();

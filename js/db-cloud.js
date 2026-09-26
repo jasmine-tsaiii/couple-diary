@@ -4,7 +4,8 @@ const CLOUD_ENABLED = !!(window.APP_CONFIG && window.APP_CONFIG.SUPABASE_URL && 
 
 const CloudDB = CLOUD_ENABLED ? (() => {
   const client = window.supabase.createClient(window.APP_CONFIG.SUPABASE_URL, window.APP_CONFIG.SUPABASE_ANON_KEY, {
-    auth: { persistSession: true, autoRefreshToken: true },
+    // pkce：Google 登入回來時用 ?code=，不會和畫面用的 # 網址打架
+    auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true, flowType: 'pkce' },
   });
   const BUCKET = 'photos';
   let session = null;
@@ -34,8 +35,20 @@ const CloudDB = CLOUD_ENABLED ? (() => {
 
     // ---- 登入 ----
     async loadSession() {
+      // 從 Google 登入回來時網址會帶 ?code=，先換成登入狀態再把網址清乾淨
+      const code = new URLSearchParams(location.search).get('code');
+      if (code) {
+        try { await client.auth.exchangeCodeForSession(code); } catch (e) { /* 可能已經自動換過了 */ }
+        history.replaceState(null, '', location.pathname + (location.hash || '#/'));
+      }
       session = check(await client.auth.getSession()).session;
       return session;
+    },
+    async signInWithGoogle() {
+      check(await client.auth.signInWithOAuth({
+        provider: 'google',
+        options: { redirectTo: location.origin + location.pathname },
+      }));
     },
     currentEmail: () => (session ? session.user.email : null),
     async signIn(email, password) {
