@@ -114,7 +114,7 @@ async function withBusy(btn, label, fn) {
 async function updateRecord(id, mutate) {
   const latest = await DB.getRecord(id);
   if (!latest) throw new Error('找不到這則紀錄，可能已經被刪除');
-  mutate(latest);
+  await mutate(latest);
   latest.updatedAt = Date.now();
   await DB.putRecord(latest);
   return latest;
@@ -195,6 +195,36 @@ const visLabel = (k) => (k === 'shared' && NAMES.partner ? `給${NAMES.partner}�
 const dateOk = (d) => DATE_RE.test(d) && d >= '1970-01-01' && d <= today();
 const diaryTitle = () => (NAMES.me && NAMES.partner ? `${NAMES.me}和${NAMES.partner}的紀錄` : '我們的紀錄');
 
+// 刪除的紀錄先放「最近刪除」30 天，畫面上都只算還在的紀錄
+const TRASH_DAYS = 30;
+const liveRecords = async () => (await DB.allRecords()).filter((r) => !r.deletedAt);
+
+// 永久刪除：連照片和對方送來的任務照片一起刪
+async function purgeRecord(r) {
+  for (const pid of r.photoIds || []) { try { await DB.deletePhoto(pid); } catch (e) { /* 照片可能已經不在了 */ } photoUrlCache.delete(pid); }
+  if (usingCloud()) {
+    try { for (const sub of await CloudDB.submissions({ recordId: r.id })) if (sub.photo_path) await CloudDB.removeTaskPhoto(sub.photo_path); } catch (e) { /* 舊版資料表沒有任務，略過 */ }
+  }
+  await DB.deleteRecord(r.id);
+}
+// 超過 30 天的自動清掉（每次打開只檢查一次）
+let trashChecked = false;
+async function purgeOldTrash() {
+  if (trashChecked || isPartner()) return;
+  trashChecked = true;
+  try {
+    for (const r of await DB.allRecords()) if (r.deletedAt && Date.now() - r.deletedAt > TRASH_DAYS * 86400000) await purgeRecord(r);
+  } catch (e) { trashChecked = false; }
+}
+// 救回來：號碼被別則用走（重新編號過）的話拿新號碼
+async function restoreRecord(id) {
+  const live = await liveRecords();
+  await updateRecord(id, async (r) => {
+    delete r.deletedAt;
+    if (!r.no || live.some((x) => x.type === r.type && x.no === r.no)) r.no = await nextNumber(r.type);
+  });
+}
+
 async function nextNumber(type) {
   const all = await DB.allRecords();
   const used = await DB.getSetting('lastNo', {});
@@ -222,7 +252,7 @@ async function ensureNumbers() {
 }
 // 手動重新編號：每個類型依日期重新從 1 排到 N
 async function renumberAll() {
-  const all = await DB.allRecords();
+  const all = await liveRecords();
   const next = {};
   for (const type of Object.keys(TYPES)) {
     let n = 0;
@@ -263,7 +293,7 @@ function renderTabbar(route) {
 
 // ---------- 首頁 ----------
 async function viewHome() {
-  const all = await DB.allRecords();
+  const all = await liveRecords();
   const count = (t) => all.filter((r) => r.type === t).length;
   const fights = all.filter((r) => r.type === 'fight');
   const st = (s) => fights.filter((f) => (f.status || 'open') === s).length;
@@ -274,7 +304,7 @@ async function viewHome() {
   const needBackup = all.length > 0 && (!lastBackup || Date.now() - lastBackup > remindDays * 86400000);
   const askNames = !NAMES.me && !NAMES.partner && !(await DB.getSetting('namesSkipped', false));
   let pending = [];
-  if (usingCloud()) { try { pending = await CloudDB.submissions({ status: 'pending' }); } catch (e) { pending = []; } }
+  if (usingCloud()) { try { pending = (await CloudDB.submissions({ status: 'pending' })).filter((t) => all.some((r) => r.id === t.record_id)); } catch (e) { pending = []; } }
   const isIOS = /iphone|ipad|ipod/i.test(navigator.userAgent);
   const standalone = window.matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
 
@@ -377,7 +407,7 @@ async function listItem(r) {
 // ---------- 美好／烏雲列表 ----------
 async function viewList(type, tagFilter) {
   const conf = TYPES[type];
-  const all = await DB.allRecords();
+  const all = await liveRecords();
   const mine = all.filter((r) => r.type === type).sort(byDateDesc);
   const tags = [...new Set(mine.flatMap((r) => r.tags || []))];
   const shown = tagFilter ? mine.filter((r) => (r.tags || []).includes(tagFilter)) : mine;
@@ -429,7 +459,7 @@ async function viewList(type, tagFilter) {
 
 // ---------- 吵架議題列表 ----------
 async function viewFights(catFilter, statusFilter) {
-  const all = await DB.allRecords();
+  const all = await liveRecords();
   const fights = all.filter((r) => r.type === 'fight').sort(byDateDesc);
   const cats = await getCategories();
   const usedCats = [...new Set([...cats, ...fights.map((f) => f.category).filter(Boolean)])];
@@ -480,8 +510,8 @@ async function viewFights(catFilter, statusFilter) {
 // ---------- 詳情 ----------
 async function viewDetail(id) {
   const r = await DB.getRecord(id);
-  if (!r) { app.innerHTML = '<div class="empty">找不到這則紀錄<a class="btn small" href="#/">回首頁</a></div>'; return; }
-  const all = await DB.allRecords();
+  if (!r || r.deletedAt) { app.innerHTML = `<div class="empty">${r ? '這則在「最近刪除」裡，可以到設定頁救回來' : '找不到這則紀錄'}<a class="btn small" href="${r ? '#/settings' : '#/'}">${r ? '到設定頁' : '回首頁'}</a></div>`; return; }
+  const all = await liveRecords();
   const conf = TYPES[r.type];
   const partner = isPartner();
   const backHref = r.type === 'fight' ? '#/fights' : `#/list/${r.type}`;
@@ -603,14 +633,9 @@ async function viewDetail(id) {
   if (partner) return;
 
   document.getElementById('delete').addEventListener('click', async () => {
-    if (!confirm(`確定要刪除嗎？刪掉就救不回來了。${r.no && r.type !== 'fight' ? `No. ${r.no} 這個號碼會空著，不會給其他紀錄用。` : ''}`)) return;
-    for (const pid of r.photoIds || []) await DB.deletePhoto(pid);
-    // 對方送來的任務照片也一起刪掉（任務紀錄本身會跟著紀錄刪除）
-    if (usingCloud()) {
-      try { for (const sub of await CloudDB.submissions({ recordId: r.id })) if (sub.photo_path) await CloudDB.removeTaskPhoto(sub.photo_path); } catch (e) { /* 舊版資料表沒有任務，略過 */ }
-    }
-    await DB.deleteRecord(r.id);
-    toast('已刪除');
+    if (!confirm(`要刪除這則嗎？會先移到設定頁的「最近刪除」，${TRASH_DAYS} 天內都可以救回來${usingCloud() ? '，這段時間對方也看不到' : ''}。`)) return;
+    await updateRecord(r.id, (x) => { x.deletedAt = Date.now(); });
+    toast(`已移到最近刪除，${TRASH_DAYS} 天內可以救回來`);
     go(backHref);
   });
 
@@ -970,6 +995,7 @@ function checkBackup(data) {
     if (r.photoIds && (!Array.isArray(r.photoIds) || !r.photoIds.every((x) => SAFE_ID.test(x)))) throw new Error('備份檔內容不對，沒有匯入');
     if (r.visibility && !VISIBILITY[r.visibility]) r.visibility = 'locked';
     if (r.status && !STATUS[r.status]) r.status = 'open';
+    if (r.deletedAt != null && typeof r.deletedAt !== 'number') delete r.deletedAt;
     if (r.date && !DATE_RE.test(r.date)) throw new Error('備份檔內容不對，沒有匯入');
     if (r.reflections && (!Array.isArray(r.reflections) || !r.reflections.every((f) => f && DATE_RE.test(f.date) && SAFE_ID.test(String(f.id))))) throw new Error('備份檔內容不對，沒有匯入');
     if (r.followUps && (!Array.isArray(r.followUps) || !r.followUps.every((f) => f && DATE_RE.test(f.date) && SAFE_ID.test(String(f.id))))) throw new Error('備份檔內容不對，沒有匯入');
@@ -988,10 +1014,14 @@ function downloadFile(blob, name) {
 }
 
 // 閱讀版：一個自己就能打開的網頁檔，照片直接包在裡面
-async function buildReadableExport() {
-  const all = (await DB.allRecords()).sort((a, b) => (a.date || '').localeCompare(b.date || '') || (a.createdAt || 0) - (b.createdAt || 0));
+async function buildReadableExport(onlyShared = false) {
+  const all = (await liveRecords()).filter((r) => !onlyShared || r.visibility === 'shared' || (r.visibility === 'task' && r.unlocked)).sort((a, b) => (a.date || '').localeCompare(b.date || '') || (a.createdAt || 0) - (b.createdAt || 0));
   const photoData = {};
-  for (const p of await DB.allPhotos()) photoData[p.id] = await blobToDataUrl(p.blob);
+  // 只放要匯出的紀錄用到的照片
+  for (const pid of all.flatMap((r) => r.photoIds || [])) {
+    const ph = await DB.getPhoto(pid);
+    if (ph) photoData[pid] = await blobToDataUrl(ph.blob);
+  }
   const colors = { happy: '#A33A52', cloud: '#8A5A12', fight: '#3E4C8A' };
 
   const card = (r, i) => {
@@ -1055,7 +1085,9 @@ ${all.length ? '' : '<p>還沒有任何紀錄。</p>'}
 
 async function viewSettings() {
   const cats = await getCategories();
-  const all = await DB.allRecords();
+  const everything = await DB.allRecords();
+  const all = everything.filter((r) => !r.deletedAt);
+  const trash = everything.filter((r) => r.deletedAt).sort((a, b) => b.deletedAt - a.deletedAt);
   const lastBackup = await DB.getSetting('lastBackupAt', null);
   const persisted = await isPersisted();
   // 雲端模式下，看看這支手機裡有沒有還沒搬上去的舊紀錄
@@ -1109,8 +1141,19 @@ async function viewSettings() {
     <div class="card">
       <div class="bold">匯出閱讀版</div>
       <div class="muted">產生一個網頁檔，點開就能像相簿一樣瀏覽所有紀錄和照片，也可以列印或存成 PDF。閱讀版不能用來還原。</div>
+      <label class="row small" style="gap:8px"><input type="checkbox" id="read-shared-only"> 只匯出「給對方看」和已解鎖的紀錄（適合直接傳給對方）</label>
       <button class="btn small secondary" id="export-read">匯出閱讀版</button>
     </div>
+    ${trash.length ? `<div class="card">
+      <div class="bold">最近刪除（${trash.length}）</div>
+      <div class="muted">刪除的紀錄會在這裡放 ${TRASH_DAYS} 天，之後連照片一起自動清掉。</div>
+      ${trash.map((r) => `<div class="row between" style="gap:8px">
+        <div class="grow" style="min-width:0"><div class="bold" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(r.title || '（沒有標題）')}</div>
+          <div class="small muted">${esc(TYPES[r.type].label)}・還剩 ${Math.max(0, TRASH_DAYS - daysAgo(r.deletedAt))} 天</div></div>
+        <button class="btn small secondary" data-restore="${esc(r.id)}">救回來</button>
+        <button class="btn small danger" data-purge="${esc(r.id)}">永久刪除</button>
+      </div>`).join('')}
+    </div>` : ''}
     <div class="card">
       <div class="bold">吵架議題分類</div>
       <div class="chips">${cats.map((c) => `<span class="chip" style="display:inline-flex;align-items:center;gap:6px">${esc(c)}<button data-rm-cat="${esc(c)}" aria-label="刪除 ${esc(c)}" style="border:none;background:none;padding:0;display:flex">${ICON.x}</button></span>`).join('')}</div>
@@ -1129,6 +1172,20 @@ async function viewSettings() {
   `;
 
   if (usingCloud()) bindShareCard();
+  app.querySelectorAll('[data-restore]').forEach((b) => b.addEventListener('click', () => withBusy(b, '', async () => {
+    await restoreRecord(b.dataset.restore);
+    toast('已救回來');
+    viewSettings();
+  })));
+  app.querySelectorAll('[data-purge]').forEach((b) => b.addEventListener('click', () => {
+    if (!confirm('永久刪除後就救不回來了，照片也會一起刪掉。確定嗎？')) return;
+    withBusy(b, '', async () => {
+      const r = trash.find((x) => x.id === b.dataset.purge);
+      if (r) await purgeRecord(r);
+      toast('已永久刪除');
+      viewSettings();
+    });
+  }));
   document.getElementById('renumber').addEventListener('click', async () => {
     if (!confirm('每個類型都會依日期從 No. 1 重新排，原本的號碼會改變。確定嗎？')) return;
     await renumberAll();
@@ -1155,7 +1212,7 @@ async function viewSettings() {
 
   document.getElementById('export-read').addEventListener('click', async () => {
     toast('製作閱讀版中…');
-    const html = await buildReadableExport();
+    const html = await buildReadableExport(document.getElementById('read-shared-only').checked);
     downloadFile(new Blob([html], { type: 'text/html' }), `our-records-READ-${today()}.html`);
   });
 
@@ -1228,7 +1285,7 @@ async function viewSettings() {
 // ---------- 另一半模式 ----------
 async function viewPartnerHome() {
   const info = CloudDB.partnerInfo();
-  const all = await DB.allRecords();
+  const all = await liveRecords();
   const count = (t) => all.filter((r) => r.type === t).length;
   const fights = all.filter((r) => r.type === 'fight');
   const st = (s) => fights.filter((f) => (f.status || 'open') === s).length;
@@ -1686,6 +1743,7 @@ async function route() {
     if (!isGuest() && (page === 'login' || page === 'join')) { go('#/'); return; }
     await loadNames();
     await ensureNumbers();
+    await purgeOldTrash();
     if (page === 'reset' && usingCloud() && !CloudDB.isAnonymous()) { renderTabbar(null); viewResetPassword(); return; }
     if (isPartner()) {
       if (!page) { renderTabbar('home'); await viewPartnerHome(); }
