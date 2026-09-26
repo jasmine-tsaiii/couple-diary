@@ -657,6 +657,80 @@ function blobToDataUrl(blob) {
 }
 async function dataUrlToBlob(url) { return (await fetch(url)).blob(); }
 
+function downloadFile(blob, name) {
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = name;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 10000);
+}
+
+// 閱讀版：一個自己就能打開的網頁檔，照片直接包在裡面
+async function buildReadableExport() {
+  const all = (await DB.allRecords()).sort((a, b) => (a.date || '').localeCompare(b.date || '') || (a.createdAt || 0) - (b.createdAt || 0));
+  const photoData = {};
+  for (const p of await DB.allPhotos()) photoData[p.id] = await blobToDataUrl(p.blob);
+  const colors = { happy: '#A33A52', cloud: '#8A5A12', fight: '#3E4C8A' };
+
+  const card = (r, i) => {
+    const imgs = (r.photoIds || []).map((id) => photoData[id]).filter(Boolean);
+    const vis = r.visibility && r.visibility !== 'shared' ? `<span class="lock">${VISIBILITY[r.visibility]}</span>` : '';
+    let fight = '';
+    if (r.type === 'fight') {
+      const st = STATUS[r.status || 'open'].label;
+      fight = `<div class="meta">分類：${esc(r.category || '未分類')}・狀態：${st}</div>
+        ${r.reason ? `<h4>原因</h4><p>${esc(r.reason)}</p>` : ''}
+        ${r.myView ? `<h4>我的想法</h4><p>${esc(r.myView)}</p>` : ''}
+        ${r.theirView ? `<h4>對方的想法</h4><p>${esc(r.theirView)}</p>` : ''}
+        ${r.resolution ? `<h4>我們怎麼解決的</h4><p>${esc(r.resolution)}</p>` : ''}
+        ${(r.followUps || []).length ? `<h4>後續</h4><ul>${r.followUps.map((f) => `<li><b>${shortDate(f.date)}</b> ${esc(f.text)}</li>`).join('')}</ul>` : ''}`;
+    }
+    return `<article>
+      <div class="meta">${r.type === 'fight' ? '' : `No. ${i + 1}・`}${longDate(r.date)} ${vis}</div>
+      <h3>${esc(r.title)} <span class="emo">${esc((r.emojis || []).join(''))}</span></h3>
+      ${(r.tags || []).length ? `<div class="tags">${esc(r.tags.map((t) => '#' + t).join(' '))}</div>` : ''}
+      ${r.description ? `<p>${esc(r.description)}</p>` : ''}
+      ${fight}
+      ${imgs.length ? `<div class="imgs">${imgs.map((u) => `<img src="${u}" alt="">`).join('')}</div>` : ''}
+    </article>`;
+  };
+
+  const section = (type) => {
+    const list = all.filter((r) => r.type === type);
+    if (!list.length) return '';
+    const goal = TYPES[type].goal ? ` ${list.length} / ${TYPES[type].goal}` : ` 共 ${list.length} 則`;
+    return `<section style="--c:${colors[type]}"><h2>${TYPES[type].label}<small>${goal}</small></h2>${list.map(card).join('')}</section>`;
+  };
+
+  return `<!doctype html>
+<html lang="zh-Hant"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>我們的紀錄（閱讀版 ${today()}）</title>
+<style>
+body{margin:0;background:#FBF7F2;color:#2B2320;font-family:"Noto Sans TC",-apple-system,"PingFang TC","Microsoft JhengHei",sans-serif;line-height:1.7}
+main{max-width:720px;margin:0 auto;padding:32px 20px 64px}
+h1{font-family:"Noto Serif TC",serif;font-size:32px;margin:0 0 4px}
+.sub{color:#6B5E57;font-size:14px;margin-bottom:24px}
+h2{color:var(--c);font-family:"Noto Serif TC",serif;border-bottom:2px solid var(--c);padding-bottom:6px;margin:36px 0 16px}
+h2 small{font-family:sans-serif;font-size:14px;color:#6B5E57;margin-left:8px;font-weight:400}
+article{background:#fff;border:1px solid #EFE6DD;border-radius:16px;padding:16px 18px;margin-bottom:14px;break-inside:avoid}
+h3{margin:2px 0 4px;font-size:18px}.emo{font-weight:400}
+h4{margin:10px 0 0;font-size:13px;color:var(--c)}
+p{margin:6px 0;white-space:pre-wrap}ul{margin:4px 0;padding-left:20px}
+.meta{font-size:13px;color:#6B5E57}.tags{font-size:13px;color:var(--c)}
+.lock{display:inline-block;background:#EDE6F2;color:#4B3A66;border-radius:99px;padding:0 8px;font-size:12px;margin-left:4px}
+.imgs{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}
+.imgs img{width:calc(50% - 4px);border-radius:12px;object-fit:cover;max-height:320px}
+@media print{body{background:#fff}article{border-color:#ddd}}
+</style></head><body><main>
+<h1>我們的紀錄</h1>
+<div class="sub">匯出於 ${longDate(today())}・共 ${all.length} 則紀錄</div>
+${section('happy')}${section('cloud')}${section('fight')}
+${all.length ? '' : '<p>還沒有任何紀錄。</p>'}
+</main></body></html>`;
+}
+
 async function viewSettings() {
   const cats = await getCategories();
   const all = await DB.allRecords();
@@ -674,9 +748,15 @@ async function viewSettings() {
       <div class="small">${lastBackup ? `上次備份：${daysAgo(lastBackup) === 0 ? '今天' : daysAgo(lastBackup) + ' 天前'}` : '還沒有備份過'}</div>
       <div class="small" style="color:${persisted ? 'var(--resolved-ink)' : 'var(--muted)'}">${persisted ? '瀏覽器已同意不自動清除這裡的資料。' : '瀏覽器還沒同意「不自動清除」，請加到主畫面後從主畫面打開，並記得定期備份。'}</div>
       <div class="btn-row">
-        <button class="btn small" id="export">匯出備份</button>
+        <button class="btn small" id="export">匯出還原用備份</button>
         <label class="btn small secondary" style="cursor:pointer">匯入備份<input type="file" accept="application/json,.json" class="visually-hidden" id="import"></label>
       </div>
+      <div class="small muted">還原用備份是 .json 檔，打開會是看不懂的文字，這是正常的，只要用「匯入備份」就能還原。</div>
+    </div>
+    <div class="card">
+      <div class="bold">匯出閱讀版</div>
+      <div class="muted">產生一個網頁檔，點開就能像相簿一樣瀏覽所有紀錄和照片，也可以列印或存成 PDF。閱讀版不能用來還原。</div>
+      <button class="btn small secondary" id="export-read">匯出閱讀版</button>
     </div>
     <div class="card">
       <div class="bold">吵架議題分類</div>
@@ -699,15 +779,15 @@ async function viewSettings() {
       categories: await getCategories(),
       photos: await Promise.all(photos.map(async (p) => ({ id: p.id, recordId: p.recordId, data: await blobToDataUrl(p.blob) }))),
     };
-    const blob = new Blob([JSON.stringify(data)], { type: 'application/json' });
-    const a = document.createElement('a');
-    a.href = URL.createObjectURL(blob);
-    a.download = `我們的紀錄-備份-${today()}.json`;
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
+    downloadFile(new Blob([JSON.stringify(data)], { type: 'application/json' }), `our-records-RESTORE-backup-${today()}.json`);
     await DB.setSetting('lastBackupAt', Date.now());
     setTimeout(viewSettings, 500);
+  });
+
+  document.getElementById('export-read').addEventListener('click', async () => {
+    toast('製作閱讀版中…');
+    const html = await buildReadableExport();
+    downloadFile(new Blob([html], { type: 'text/html' }), `our-records-READ-${today()}.html`);
   });
 
   document.getElementById('import').addEventListener('change', async (ev) => {
