@@ -279,7 +279,10 @@ begin
     where id = t.id;
   if p_approve then
     update public.records
-      set unlocked = true, data = jsonb_set(data, '{unlocked}', 'true'), updated_at = now()
+      set unlocked = true, updated_at = now(),
+          data = data || jsonb_build_object('unlocked', true,
+            'unlockedAt', (extract(epoch from now()) * 1000)::bigint,
+            'updatedAt', (extract(epoch from now()) * 1000)::bigint)
       where id = t.record_id and owner = auth.uid() and visibility = 'task';
   end if;
 end $$;

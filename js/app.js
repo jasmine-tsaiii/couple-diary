@@ -119,6 +119,9 @@ async function updateRecord(id, mutate) {
   await DB.putRecord(latest);
   return latest;
 }
+// 另一半看得到的小提示：最近 7 天剛解鎖、內容被改過
+const JUST_DAYS = 7;
+const justUnlocked = (r) => r.visibility === 'task' && r.unlocked && r.unlockedAt && Date.now() - r.unlockedAt < JUST_DAYS * 86400000;
 const RECORD_VERSION = 1; // 紀錄的資料格式版本，之後改格式時用來判斷要不要轉換
 // LINE、IG、FB 等 App 內建的瀏覽器：資料和 Safari／Chrome 分開，Google 登入也會被擋
 const IN_APP = /Line\/|FBAN|FBAV|Instagram|MicroMessenger/i.test(navigator.userAgent);
@@ -163,6 +166,26 @@ async function photoUrl(id) {
   photoUrlCache.set(id, url);
   return url;
 }
+// 列表、首頁用小圖：雲端版先抓 t/ 裡的小圖，舊照片沒有小圖時用原圖，並順手補一張
+const thumbUrlCache = new Map();
+const THUMB_SIDE = 360;
+async function thumbUrl(id) {
+  if (!usingCloud()) return photoUrl(id);
+  if (thumbUrlCache.has(id)) return thumbUrlCache.get(id);
+  let t = await CloudDB.getThumb(id);
+  if (!t) {
+    const p = await DB.getPhoto(id);
+    if (!p) return null;
+    if (!photoUrlCache.has(id)) photoUrlCache.set(id, URL.createObjectURL(p.blob));
+    if (!isPartner()) {
+      try { await CloudDB.putThumb(id, await compressImage(p.blob, THUMB_SIDE, 0.75)); } catch (e) { /* 補小圖失敗沒關係，下次再補 */ }
+    }
+    return photoUrlCache.get(id);
+  }
+  const url = URL.createObjectURL(t.blob);
+  thumbUrlCache.set(id, url);
+  return url;
+}
 // 上傳前先壓縮：最長邊 1280px，轉成 JPEG
 function compressImage(file, maxSide = 1280, quality = 0.82) {
   return new Promise((resolve, reject) => {
@@ -201,7 +224,7 @@ const liveRecords = async () => (await DB.allRecords()).filter((r) => !r.deleted
 
 // 永久刪除：連照片和對方送來的任務照片一起刪
 async function purgeRecord(r) {
-  for (const pid of r.photoIds || []) { try { await DB.deletePhoto(pid); } catch (e) { /* 照片可能已經不在了 */ } photoUrlCache.delete(pid); }
+  for (const pid of r.photoIds || []) { try { await DB.deletePhoto(pid); } catch (e) { /* 照片可能已經不在了 */ } photoUrlCache.delete(pid); thumbUrlCache.delete(pid); }
   if (usingCloud()) {
     try { for (const sub of await CloudDB.submissions({ recordId: r.id })) if (sub.photo_path) await CloudDB.removeTaskPhoto(sub.photo_path); } catch (e) { /* 舊版資料表沒有任務，略過 */ }
   }
@@ -391,7 +414,7 @@ async function listItem(r) {
   a.href = `#/view/${r.id}`;
   let thumb = `<div class="thumb">${r.type === 'happy' ? ICON.heart : r.type === 'cloud' ? ICON.cloud : ICON.bolt}</div>`;
   if (r.photoIds && r.photoIds.length) {
-    const url = await photoUrl(r.photoIds[0]);
+    const url = await thumbUrl(r.photoIds[0]);
     if (url) thumb = `<img class="thumb" src="${url}" alt="">`;
   }
   const tags = (r.tags || []).map((t) => '#' + t).join(' ');
@@ -437,13 +460,13 @@ async function viewList(type, tagFilter) {
     a.href = `#/view/${r.id}`;
     let top;
     if (r.photoIds && r.photoIds.length) {
-      const url = await photoUrl(r.photoIds[0]);
+      const url = await thumbUrl(r.photoIds[0]);
       top = url ? `<img class="tile-img" src="${url}" alt="">` : '';
     }
     if (!top) {
       top = `<div class="tile-default">${type === 'happy' ? ICON.bigHeart : ICON.bigCloud}<div class="no">No. ${numberOf(r, all)}</div></div>`;
     }
-    const lockNote = isPartner() ? (r.visibility === 'task' ? '任務解鎖的' : '')
+    const lockNote = isPartner() ? (r.visibility === 'task' ? (justUnlocked(r) ? '剛解鎖！' : '任務解鎖的') : '')
       : r.visibility === 'locked' ? '上鎖・只有你看得到' : r.visibility === 'task' ? (r.unlocked ? '任務已解鎖' : '任務解鎖') : '';
     a.innerHTML = `${top}
       <div class="tile-body">
@@ -618,6 +641,7 @@ async function viewDetail(id) {
       <div class="row" style="gap:8px">
         <span class="badge" style="background:var(--accent-bg);color:var(--accent-dark)">${r.type === 'fight' ? esc(r.category || '未分類') : conf.label}</span>
         <span class="muted small">${longDate(r.date)}</span>
+        ${r.editedAt ? `<span class="muted small">・${shortDate(new Date(r.editedAt - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 10))} 編輯過</span>` : ''}
       </div>
       <h1 style="font-size:24px">${esc(r.title)}</h1>
       <div class="muted">${esc((r.emojis || []).join(' '))}${(r.tags || []).length ? ' · ' + esc(r.tags.map((t) => '#' + t).join(' ')) : ''}</div>
@@ -740,6 +764,8 @@ async function viewForm(mode, arg) {
   const cats = await getCategories();
   const originalType = rec.type;
   const loadedUpdatedAt = rec.updatedAt || 0;
+  const contentKey = (x) => JSON.stringify({ ...x, updatedAt: 0, editedAt: 0, v: 0 });
+  const loadedContent = contentKey(rec);
   let visTouched = mode === 'edit';
   let dirty = false;
   // 這次新加、還沒儲存的照片（按取消就丟掉）
@@ -768,7 +794,7 @@ async function viewForm(mode, arg) {
 
     const photoCells = [];
     for (const pid of rec.photoIds) {
-      const url = newPhotos.has(pid) ? newPhotos.get(pid).url : await photoUrl(pid);
+      const url = newPhotos.has(pid) ? newPhotos.get(pid).url : await thumbUrl(pid);
       if (url) photoCells.push(`<div class="photo"><img src="${url}" alt=""><button class="remove" data-rm-photo="${esc(pid)}" aria-label="移除照片">${ICON.x}</button></div>`);
     }
 
@@ -957,12 +983,18 @@ async function viewForm(mode, arg) {
           viewForm('edit', rec.id);
           return;
         }
+        // 解鎖狀態以最新的為準（對方可能剛剛才完成任務）
+        if (latest && latest.visibility === 'task' && rec.visibility === 'task') { rec.unlocked = latest.unlocked; rec.unlockedAt = latest.unlockedAt; }
       }
-      for (const [id, p] of newPhotos) await DB.putPhoto({ id, blob: p.blob, recordId: rec.id, createdAt: Date.now() });
-      for (const id of removedPhotos) { await DB.deletePhoto(id); photoUrlCache.delete(id); }
+      for (const [id, p] of newPhotos) {
+        await DB.putPhoto({ id, blob: p.blob, recordId: rec.id, createdAt: Date.now() });
+        if (usingCloud()) { try { await CloudDB.putThumb(id, await compressImage(p.blob, THUMB_SIDE, 0.75)); } catch (e) { /* 之後列表會自動補 */ } }
+      }
+      for (const id of removedPhotos) { await DB.deletePhoto(id); photoUrlCache.delete(id); thumbUrlCache.delete(id); }
       const now = Date.now();
       if (!rec.no || rec.type !== originalType) rec.no = await nextNumber(rec.type);
       rec.v = RECORD_VERSION;
+      if (mode === 'edit' && (contentKey(rec) !== loadedContent || newPhotos.size || removedPhotos.size)) rec.editedAt = Date.now();
       // 改成不是「任務解鎖」時，解鎖狀態就不再保留
       if (rec.visibility !== 'task') rec.unlocked = false;
       rec.createdAt = rec.createdAt || now;

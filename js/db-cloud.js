@@ -24,6 +24,8 @@ const CloudDB = CLOUD_ENABLED ? (() => {
     return partner ? partner.owner : userId();
   }
   const photoPath = (id) => `${dataOwner()}/${id}.jpg`;
+  // 列表用的小圖放在 t/ 資料夾，檔名和原圖一樣，另一半的讀取權限也就跟著原圖
+  const thumbPath = (id) => `${dataOwner()}/t/${id}.jpg`;
 
   async function loadPartner() {
     partner = null;
@@ -37,7 +39,7 @@ const CloudDB = CLOUD_ENABLED ? (() => {
     const names = [];
     for (let offset = 0; ; offset += 1000) {
       const page = check(await client.storage.from(BUCKET).list(userId(), { limit: 1000, offset }));
-      names.push(...page.map((f) => f.name).filter((n) => !n.startsWith('task-')));
+      names.push(...page.map((f) => f.name).filter((n) => n.endsWith('.jpg') && !n.startsWith('task-')));
       if (page.length < 1000) return names;
     }
   }
@@ -191,7 +193,14 @@ const CloudDB = CLOUD_ENABLED ? (() => {
       check(await client.storage.from(BUCKET).upload(photoPath(photo.id), photo.blob, { contentType: 'image/jpeg', upsert: true }));
     },
     async deletePhoto(id) {
-      check(await client.storage.from(BUCKET).remove([photoPath(id)]));
+      check(await client.storage.from(BUCKET).remove([photoPath(id), thumbPath(id)]));
+    },
+    async getThumb(id) {
+      const { data, error } = await client.storage.from(BUCKET).download(thumbPath(id));
+      return error ? undefined : { id, blob: data };
+    },
+    async putThumb(id, blob) {
+      check(await client.storage.from(BUCKET).upload(thumbPath(id), blob, { contentType: 'image/jpeg', upsert: true }));
     },
     async allPhotos() {
       const out = [];
