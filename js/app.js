@@ -1,5 +1,6 @@
-// 我們的紀錄：單人版（第 1 階段）
+// 我們的紀錄
 // 畫面用網址後面的 # 切換，例如 #/list/happy、#/new/fight、#/view/<id>。
+// 用分享碼加入的另一半會進入「另一半模式」：只能看、做任務，不能改紀錄。
 
 const TYPES = {
   happy: {
@@ -52,6 +53,8 @@ const ICON = {
   gear: '<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1Z"/></svg>',
 };
 
+const SHARE_CODE_CHARS = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // 去掉容易看錯的 0 O 1 I
+
 const app = document.getElementById('app');
 const tabbar = document.getElementById('tabbar');
 
@@ -85,6 +88,13 @@ function toast(msg) {
   toast.timer = setTimeout(() => t.classList.remove('show'), 1800);
 }
 function go(hash) { location.hash = hash; }
+// 另一半模式：用分享碼加入的人
+function isPartner() { return CLOUD_ENABLED && CloudDB.isPartner(); }
+function ownerName() { return (isPartner() && CloudDB.partnerInfo().owner_name) || '對方'; }
+function newShareCode() {
+  const bytes = crypto.getRandomValues(new Uint8Array(8));
+  return [...bytes].map((b) => SHARE_CODE_CHARS[b % SHARE_CODE_CHARS.length]).join('');
+}
 function byDateDesc(a, b) {
   return (b.date || '').localeCompare(a.date || '') || (b.createdAt || 0) - (a.createdAt || 0);
 }
@@ -144,7 +154,9 @@ function renderTabbar(route) {
   tabbar.innerHTML = [
     tab('#/', ICON.home, '首頁', route === 'home'),
     tab('#/list/happy', ICON.heart, '美好', route === 'happy'),
-    `<a class="tab-add" href="#/new/${route === 'cloud' || route === 'fight' ? route : 'happy'}" aria-label="新增紀錄">${ICON.plus}</a>`,
+    isPartner()
+      ? tab('#/tasks', ICON.lock, '任務', route === 'tasks')
+      : `<a class="tab-add" href="#/new/${route === 'cloud' || route === 'fight' ? route : 'happy'}" aria-label="新增紀錄">${ICON.plus}</a>`,
     tab('#/list/cloud', ICON.cloud, '烏雲', route === 'cloud'),
     tab('#/fights', ICON.bolt, '吵架', route === 'fight'),
   ].join('');
@@ -159,6 +171,8 @@ async function viewHome() {
   const recent = all.slice().sort(byDateDesc).slice(0, 5);
   const lastBackup = await DB.getSetting('lastBackupAt', null);
   const needBackup = !CLOUD_ENABLED && all.length > 0 && (!lastBackup || Date.now() - lastBackup > BACKUP_REMIND_DAYS * 86400000);
+  let pending = [];
+  if (CLOUD_ENABLED) { try { pending = await CloudDB.submissions({ status: 'pending' }); } catch (e) { pending = []; } }
   const isIOS = /iphone|ipad|ipod/i.test(navigator.userAgent);
   const standalone = window.matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
 
@@ -185,6 +199,10 @@ async function viewHome() {
     ${needBackup ? `<a class="card" href="#/settings" style="background:var(--progress-bg);border-color:transparent;gap:4px">
       <div class="bold" style="color:var(--progress-ink)">該備份囉</div>
       <div class="small" style="color:var(--progress-ink)">${lastBackup ? `上次備份是 ${daysAgo(lastBackup)} 天前` : '還沒有備份過'}，點這裡到設定頁匯出備份，再存到 iCloud 雲碟或 Google 雲端硬碟。</div>
+    </a>` : ''}
+    ${pending.length ? `<a class="card" href="#/view/${esc(pending[0].record_id)}" style="background:var(--lock-bg);border-color:transparent;gap:4px">
+      <div class="bold" style="color:var(--lock)">有 ${pending.length} 個任務等你確認</div>
+      <div class="small" style="color:var(--lock)">${esc(pending[0].partner_name)} 完成了任務，點這裡去看看，確認後那則紀錄就會解鎖給對方看。</div>
     </a>` : ''}
     ${isIOS && !standalone ? `<div class="card" style="background:var(--lock-bg);border-color:transparent;gap:4px">
       <div class="bold" style="color:var(--lock)">建議加到主畫面</div>
@@ -248,7 +266,7 @@ async function viewList(type, tagFilter) {
       ${tags.map((t) => `<button class="chip ${t === tagFilter ? 'on' : ''}" data-tag="${esc(t)}">#${esc(t)}</button>`).join('')}
     </div>` : ''}
     <div class="grid2" id="grid"></div>
-    ${mine.length ? '' : `<div class="empty">還沒有${conf.label}<a class="btn small" href="#/new/${type}">新增第一則</a></div>`}
+    ${mine.length ? '' : isPartner() ? `<div class="empty">${esc(ownerName())}還沒有分享${conf.label}</div>` : `<div class="empty">還沒有${conf.label}<a class="btn small" href="#/new/${type}">新增第一則</a></div>`}
   `;
   app.querySelectorAll('[data-tag]').forEach((b) => b.addEventListener('click', () => viewList(type, b.dataset.tag || null)));
 
@@ -265,7 +283,8 @@ async function viewList(type, tagFilter) {
     if (!top) {
       top = `<div class="tile-default">${type === 'happy' ? ICON.bigHeart : ICON.bigCloud}<div class="no">No. ${numberOf(r, all)}</div></div>`;
     }
-    const lockNote = r.visibility === 'locked' ? '上鎖・只有你看得到' : r.visibility === 'task' ? '任務解鎖' : '';
+    const lockNote = isPartner() ? (r.visibility === 'task' ? '任務解鎖的' : '')
+      : r.visibility === 'locked' ? '上鎖・只有你看得到' : r.visibility === 'task' ? (r.unlocked ? '任務已解鎖' : '任務解鎖') : '';
     a.innerHTML = `${top}
       <div class="tile-body">
         <div class="bold" style="font-size:14px">${esc(r.title)}</div>
@@ -314,14 +333,14 @@ async function viewFights(catFilter, statusFilter) {
         const s = STATUS[f.status || 'open'];
         const n = (f.followUps || []).length;
         const extra = f.status === 'resolved' && f.resolution ? `解法：${esc(f.resolution)}` : `${n} 則後續`;
-        return `<a class="card" href="#/view/${f.id}" style="gap:6px">
+        return `<a class="card" href="#/view/${esc(f.id)}" style="gap:6px">
           <div class="row between"><span class="small bold" style="color:var(--fight)">${esc(f.category || '未分類')}</span><span class="badge ${s.cls}">${s.label}</span></div>
           <div class="bold" style="font-size:16px">${esc(f.title)}</div>
           <div class="muted small">${shortDate(f.date)} · ${extra} ${esc((f.emojis || []).join(''))}</div>
         </a>`;
       }).join('')}
     </div>
-    ${fights.length ? (shown.length ? '' : '<div class="empty">這個條件下沒有議題</div>') : `<div class="empty">還沒有吵架議題，很棒！<a class="btn small" href="#/new/fight">新增一個議題</a></div>`}
+    ${fights.length ? (shown.length ? '' : '<div class="empty">這個條件下沒有議題</div>') : isPartner() ? '<div class="empty">沒有分享的吵架議題</div>' : `<div class="empty">還沒有吵架議題，很棒！<a class="btn small" href="#/new/fight">新增一個議題</a></div>`}
   `;
   app.querySelectorAll('[data-cat]').forEach((b) => b.addEventListener('click', () => viewFights(b.dataset.cat || null, statusFilter)));
   app.querySelectorAll('[data-st]').forEach((b) => b.addEventListener('click', () => viewFights(catFilter, b.dataset.st || null)));
@@ -333,6 +352,7 @@ async function viewDetail(id) {
   if (!r) { app.innerHTML = '<div class="empty">找不到這則紀錄<a class="btn small" href="#/">回首頁</a></div>'; return; }
   const all = await DB.allRecords();
   const conf = TYPES[r.type];
+  const partner = isPartner();
   const backHref = r.type === 'fight' ? '#/fights' : `#/list/${r.type}`;
   const urls = [];
   for (const pid of r.photoIds || []) { const u = await photoUrl(pid); if (u) urls.push(u); }
@@ -341,37 +361,69 @@ async function viewDetail(id) {
   if (urls.length) photos = `<div class="detail-photos">${urls.map((u) => `<img src="${u}" alt="">`).join('')}</div>`;
   else if (r.type !== 'fight') photos = `<div class="detail-default">${r.type === 'happy' ? ICON.bigHeart : ICON.bigCloud}<div class="no" style="font-family:'Noto Serif TC',serif">No. ${numberOf(r, all)}</div></div>`;
 
-  const visText = VISIBILITY[r.visibility || 'shared'];
-  const task = r.visibility === 'task' && r.task && r.task.text
-    ? `<div class="card" style="background:var(--lock-bg);border-color:transparent"><div class="small bold" style="color:var(--lock)">解鎖任務（${r.task.mode === 'photo' ? '要上傳照片' : '按完成就好'}）</div><div>${esc(r.task.text)}</div><div class="small" style="color:var(--lock)">任務解鎖會在分享碼版本開放給對方使用。</div></div>`
-    : '';
+  const visText = partner ? '' : VISIBILITY[r.visibility || 'shared'] + (r.visibility === 'task' && r.unlocked ? '・已解鎖' : '');
+  let task = '';
+  if (r.visibility === 'task' && r.task && r.task.text) {
+    const modeText = r.task.mode === 'photo' ? '要上傳照片' : '按完成就好';
+    if (partner) {
+      task = `<div class="card" style="background:var(--lock-bg);border-color:transparent"><div class="small bold" style="color:var(--lock)">你完成任務解鎖了這則</div><div>${esc(r.task.text)}</div></div>`;
+    } else {
+      let subs = [];
+      if (CLOUD_ENABLED) { try { subs = await CloudDB.submissions({ recordId: r.id }); } catch (e) { subs = []; } }
+      const subCards = [];
+      for (const sub of subs) {
+        let img = '';
+        if (sub.photo_path) {
+          const blob = await CloudDB.taskPhoto(sub.photo_path);
+          if (blob) img = `<img src="${URL.createObjectURL(blob)}" alt="任務照片" style="width:100%;border-radius:12px">`;
+        }
+        const stText = { pending: '等你確認', approved: '已通過', rejected: '已退回' }[sub.status];
+        subCards.push(`<div class="card" style="gap:6px">
+          <div class="row between"><span class="bold">${esc(sub.partner_name)} 送出的任務</span><span class="small muted">${shortDate(sub.created_at.slice(0, 10))}・${stText}</span></div>
+          ${sub.note ? `<div class="prose">${esc(sub.note)}</div>` : ''}
+          ${img}
+          ${sub.status === 'pending' ? `<div class="btn-row"><button class="btn small" data-approve="${esc(sub.id)}">通過並解鎖</button><button class="btn small secondary" data-reject="${esc(sub.id)}">退回</button></div>` : ''}
+        </div>`);
+      }
+      task = `<div class="card" style="background:var(--lock-bg);border-color:transparent">
+        <div class="small bold" style="color:var(--lock)">解鎖任務（${modeText}）</div><div>${esc(r.task.text)}</div>
+        <div class="small" style="color:var(--lock)">${r.unlocked ? '已經解鎖，對方看得到這則。' : CLOUD_ENABLED ? '對方完成任務、你按「通過」之後，對方就看得到這則。' : '雲端版開啟分享碼後，對方才能做任務。'}</div>
+        ${r.unlocked ? '<button class="btn small secondary" id="relock">重新上鎖</button>' : ''}
+      </div>${subCards.join('')}`;
+    }
+  }
 
   let fightPart = '';
   if (r.type === 'fight') {
     const s = r.status || 'open';
     const fu = r.followUps || [];
+    const myLabel = partner ? `${esc(ownerName())}的想法` : '我的想法';
+    const theirLabel = partner ? '你的想法（對方寫的）' : '對方的想法';
     fightPart = `
-      <div class="field"><div class="label">狀態</div>
+      ${partner
+        ? `<div class="field"><div class="label">狀態</div><span class="badge ${STATUS[s].cls}" style="align-self:flex-start">${STATUS[s].label}</span></div>
+           ${s === 'resolved' && r.resolution ? `<div class="card"><div class="small bold" style="color:var(--fight)">我們怎麼解決的</div><p class="prose">${esc(r.resolution)}</p></div>` : ''}`
+        : `<div class="field"><div class="label">狀態</div>
         <div class="opts cols-3">${Object.entries(STATUS).map(([k, v]) => `<button class="opt ${k === s ? 'on' : ''}" data-status="${k}">${v.label}</button>`).join('')}</div>
       </div>
-      ${s === 'resolved' ? `<div class="field"><label for="resolution">我們怎麼解決的</label><textarea id="resolution" class="textarea" style="min-height:70px" placeholder="例如：隔週輪流陪家人">${esc(r.resolution || '')}</textarea></div>` : ''}
+      ${s === 'resolved' ? `<div class="field"><label for="resolution">我們怎麼解決的</label><textarea id="resolution" class="textarea" style="min-height:70px" placeholder="例如：隔週輪流陪家人">${esc(r.resolution || '')}</textarea></div>` : ''}`}
       ${r.reason ? `<div class="card"><div class="small bold" style="color:var(--fight)">原因</div><p class="prose">${esc(r.reason)}</p></div>` : ''}
       ${r.myView || r.theirView ? `<div class="grid2">
-        <div class="card"><div class="small bold" style="color:var(--fight)">我的想法</div><p class="prose" style="font-size:14px">${esc(r.myView || '—')}</p></div>
-        <div class="card"><div class="small bold" style="color:var(--fight)">對方的想法</div><p class="prose" style="font-size:14px">${esc(r.theirView || '—')}</p></div>
+        <div class="card"><div class="small bold" style="color:var(--fight)">${myLabel}</div><p class="prose" style="font-size:14px">${esc(r.myView || '—')}</p></div>
+        <div class="card"><div class="small bold" style="color:var(--fight)">${theirLabel}</div><p class="prose" style="font-size:14px">${esc(r.theirView || '—')}</p></div>
       </div>` : ''}
       <div class="field"><div class="label">後續</div>
         <div class="timeline">
           ${fu.length ? fu.map((f, i) => `<div class="tl-item">
             <div class="tl-rail"><div class="tl-dot"></div>${i < fu.length - 1 ? '<div class="tl-line"></div>' : ''}</div>
-            <div class="tl-body"><div class="muted small">${shortDate(f.date)}</div><div>${esc(f.text)}</div><button class="tl-del" data-del-fu="${f.id}">刪除</button></div>
-          </div>`).join('') : '<div class="muted">還沒有後續，發生新進展時記下來吧。</div>'}
+            <div class="tl-body"><div class="muted small">${shortDate(f.date)}</div><div>${esc(f.text)}</div>${partner ? '' : `<button class="tl-del" data-del-fu="${esc(f.id)}">刪除</button>`}</div>
+          </div>`).join('') : `<div class="muted">${partner ? '還沒有後續。' : '還沒有後續，發生新進展時記下來吧。'}</div>`}
         </div>
       </div>
-      <div class="field"><label for="fu-text">新增後續</label>
+      ${partner ? '' : `<div class="field"><label for="fu-text">新增後續</label>
         <input id="fu-date" class="input" type="date" value="${today()}" aria-label="後續日期">
         <div class="row"><input id="fu-text" class="input grow" placeholder="發生了什麼新進展？"><button class="btn small" id="fu-add">加入</button></div>
-      </div>`;
+      </div>`}`;
   }
 
   app.className = conf.theme;
@@ -379,7 +431,7 @@ async function viewDetail(id) {
     <div class="topbar">
       <a class="icon-btn" href="${backHref}" aria-label="返回">${ICON.back}</a>
       <div class="grow"></div>
-      <a class="btn small secondary" href="#/edit/${r.id}">編輯</a>
+      ${partner ? '' : `<a class="btn small secondary" href="#/edit/${esc(r.id)}">編輯</a>`}
     </div>
     <div class="field" style="gap:6px">
       <div class="row" style="gap:8px">
@@ -388,14 +440,15 @@ async function viewDetail(id) {
       </div>
       <h1 style="font-size:24px">${esc(r.title)}</h1>
       <div class="muted">${esc((r.emojis || []).join(' '))}${(r.tags || []).length ? ' · ' + esc(r.tags.map((t) => '#' + t).join(' ')) : ''}</div>
-      <div class="small row" style="color:var(--lock);gap:4px">${r.visibility && r.visibility !== 'shared' ? ICON.lockSmall : ''}${visText}</div>
+      ${visText ? `<div class="small row" style="color:var(--lock);gap:4px">${r.visibility && r.visibility !== 'shared' ? ICON.lockSmall : ''}${visText}</div>` : ''}
     </div>
     ${photos}
     ${r.description ? `<p class="prose">${esc(r.description)}</p>` : ''}
     ${task}
     ${fightPart}
-    <button class="btn danger" id="delete" style="margin-top:12px">刪除這則紀錄</button>
+    ${partner ? '' : '<button class="btn danger" id="delete" style="margin-top:12px">刪除這則紀錄</button>'}
   `;
+  if (partner) return;
 
   document.getElementById('delete').addEventListener('click', async () => {
     if (!confirm('確定要刪除嗎？刪掉就救不回來了。')) return;
@@ -403,6 +456,30 @@ async function viewDetail(id) {
     await DB.deleteRecord(r.id);
     toast('已刪除');
     go(backHref);
+  });
+
+  const setUnlocked = async (on) => {
+    r.unlocked = on;
+    r.updatedAt = Date.now();
+    await DB.putRecord(r);
+  };
+  app.querySelectorAll('[data-approve]').forEach((b) => b.addEventListener('click', async () => {
+    b.disabled = true;
+    await CloudDB.reviewSubmission(b.dataset.approve, true);
+    await setUnlocked(true);
+    toast('已解鎖，對方看得到這則了');
+    viewDetail(r.id);
+  }));
+  app.querySelectorAll('[data-reject]').forEach((b) => b.addEventListener('click', async () => {
+    if (!confirm('退回這次的任務？對方可以再送一次。')) return;
+    await CloudDB.reviewSubmission(b.dataset.reject, false);
+    viewDetail(r.id);
+  }));
+  const relock = document.getElementById('relock');
+  if (relock) relock.addEventListener('click', async () => {
+    if (!confirm('重新上鎖後，對方就看不到這則，要再完成一次任務才能解鎖。')) return;
+    await setUnlocked(false);
+    viewDetail(r.id);
   });
 
   if (r.type === 'fight') {
@@ -473,12 +550,12 @@ async function viewForm(mode, arg) {
     const photoCells = [];
     for (const pid of rec.photoIds) {
       const url = newPhotos.has(pid) ? newPhotos.get(pid).url : await photoUrl(pid);
-      if (url) photoCells.push(`<div class="photo"><img src="${url}" alt=""><button class="remove" data-rm-photo="${pid}" aria-label="移除照片">${ICON.x}</button></div>`);
+      if (url) photoCells.push(`<div class="photo"><img src="${url}" alt=""><button class="remove" data-rm-photo="${esc(pid)}" aria-label="移除照片">${ICON.x}</button></div>`);
     }
 
     app.innerHTML = `
       <div class="topbar">
-        <a class="icon-btn" href="${mode === 'edit' ? '#/view/' + rec.id : '#/'}" aria-label="取消">${ICON.back}</a>
+        <a class="icon-btn" href="${mode === 'edit' ? '#/view/' + esc(rec.id) : '#/'}" aria-label="取消">${ICON.back}</a>
         <h1 style="font-size:20px;text-align:center">${mode === 'edit' ? '編輯紀錄' : '新增紀錄'}</h1>
         <div style="width:44px"></div>
       </div>
@@ -536,7 +613,7 @@ async function viewForm(mode, arg) {
             <button class="opt ${rec.task.mode !== 'photo' ? 'on' : ''}" data-taskmode="confirm">按「完成」就好</button>
             <button class="opt ${rec.task.mode === 'photo' ? 'on' : ''}" data-taskmode="photo">要上傳照片</button>
           </div>` : ''}
-        <div class="muted small">現在是單人版，這個設定會先記下來；等做了分享碼版本，對方就會依這個設定看到內容。</div>
+        <div class="muted small">${CLOUD_ENABLED ? '給對方看：對方用分享碼就看得到。上鎖：只有你看得到。任務解鎖：對方完成任務、你按通過後才看得到。' : '現在是單人版，這個設定會先記下來；換成雲端版並開啟分享碼後，對方就會依這個設定看到內容。'}</div>
       </div>
       <button class="btn" id="save">儲存紀錄</button>
     `;
@@ -655,7 +732,23 @@ async function viewForm(mode, arg) {
 function blobToDataUrl(blob) {
   return new Promise((resolve) => { const fr = new FileReader(); fr.onload = () => resolve(fr.result); fr.readAsDataURL(blob); });
 }
-async function dataUrlToBlob(url) { return (await fetch(url)).blob(); }
+// 只接受備份檔裡的圖片資料（data:image/...），不去抓外部網址
+async function dataUrlToBlob(url) {
+  if (typeof url !== 'string' || !/^data:image\/[a-z+]+;base64,/i.test(url)) throw new Error('備份檔裡的照片格式不對');
+  return (await fetch(url)).blob();
+}
+// 備份檔裡的 id 只能是英數字，避免被拿來組出奇怪的網址或雲端路徑
+const SAFE_ID = /^[A-Za-z0-9_-]{1,64}$/;
+function checkBackup(data) {
+  if (!data || data.app !== 'couple-diary' || !Array.isArray(data.records)) throw new Error('這不是我們的紀錄的備份檔');
+  for (const r of data.records) {
+    if (!r || !SAFE_ID.test(r.id) || !TYPES[r.type]) throw new Error('備份檔內容不對，沒有匯入');
+    if (r.photoIds && (!Array.isArray(r.photoIds) || !r.photoIds.every((x) => SAFE_ID.test(x)))) throw new Error('備份檔內容不對，沒有匯入');
+    if (r.visibility && !VISIBILITY[r.visibility]) r.visibility = 'locked';
+    if (r.status && !STATUS[r.status]) r.status = 'open';
+  }
+  for (const p of data.photos || []) if (!p || !SAFE_ID.test(p.id)) throw new Error('備份檔內容不對，沒有匯入');
+}
 
 function downloadFile(blob, name) {
   const a = document.createElement('a');
@@ -706,6 +799,7 @@ async function buildReadableExport() {
 
   return `<!doctype html>
 <html lang="zh-Hant"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src data:; style-src 'unsafe-inline'">
 <title>我們的紀錄（閱讀版 ${today()}）</title>
 <style>
 body{margin:0;background:#FBF7F2;color:#2B2320;font-family:"Noto Sans TC",-apple-system,"PingFang TC","Microsoft JhengHei",sans-serif;line-height:1.7}
@@ -740,6 +834,7 @@ async function viewSettings() {
   let localCount = 0;
   if (CLOUD_ENABLED) { try { localCount = (await LocalDB.allRecords()).length; } catch (e) { localCount = 0; } }
   const migratedAt = CLOUD_ENABLED ? await LocalDB.getSetting('migratedAt', null) : null;
+  const shareCard = CLOUD_ENABLED ? await shareCardHtml() : '';
   app.className = '';
   app.innerHTML = `
     <div class="topbar">
@@ -756,6 +851,7 @@ async function viewSettings() {
       <div class="small" style="color:var(--progress-ink)">這支手機裡還有 ${localCount} 則以前存的紀錄。${migratedAt ? `上次搬的時間是 ${daysAgo(migratedAt) === 0 ? '今天' : daysAgo(migratedAt) + ' 天前'}，再搬一次也不會重複。` : '搬上去之後，手機裡的也會留著當備份。'}</div>
       <button class="btn small" id="migrate">搬上雲端</button>
     </div>` : ''}` : ''}
+    ${shareCard}
     <div class="card">
       <div class="bold">備份</div>
       ${CLOUD_ENABLED
@@ -786,6 +882,7 @@ async function viewSettings() {
     </div>
   `;
 
+  if (CLOUD_ENABLED) bindShareCard();
   document.getElementById('export').addEventListener('click', async () => {
     toast('準備備份中…');
     const photos = await DB.allPhotos();
@@ -811,7 +908,7 @@ async function viewSettings() {
     if (!file) return;
     try {
       const data = JSON.parse(await file.text());
-      if (data.app !== 'couple-diary' || !Array.isArray(data.records)) throw new Error('這不是我們的紀錄的備份檔');
+      checkBackup(data);
       if (!confirm(`要匯入 ${data.records.length} 則紀錄嗎？同一則紀錄會被備份裡的版本取代。`)) return;
       for (const p of data.photos || []) await DB.putPhoto({ id: p.id, recordId: p.recordId, blob: await dataUrlToBlob(p.data), createdAt: Date.now() });
       for (const r of data.records) await DB.putRecord(r);
@@ -884,6 +981,297 @@ async function viewSettings() {
   });
 }
 
+// ---------- 另一半模式 ----------
+async function viewPartnerHome() {
+  const info = CloudDB.partnerInfo();
+  const all = await DB.allRecords();
+  const count = (t) => all.filter((r) => r.type === t).length;
+  const fights = all.filter((r) => r.type === 'fight');
+  const st = (s) => fights.filter((f) => (f.status || 'open') === s).length;
+  const recent = all.slice().sort(byDateDesc).slice(0, 5);
+  const tasks = await CloudDB.partnerTasks();
+  const todo = tasks.filter((t) => !t.submission || t.submission.status !== 'pending').length;
+
+  const typeCard = (type) => `<a class="card ${TYPES[type].theme}" href="#/list/${type}">
+      <div class="row between"><div class="bold" style="color:var(--accent)">${TYPES[type].label}</div>
+      <div class="count"><b>${count(type)}</b> 則</div></div>
+    </a>`;
+
+  app.innerHTML = `
+    <div class="row between">
+      <div>
+        <div class="hello">嗨，${esc(info.name)}</div>
+        <h1 class="title-xl">${esc(ownerName())}的紀錄</h1>
+      </div>
+      <a class="icon-btn" href="#/settings" aria-label="設定">${ICON.gear}</a>
+    </div>
+    ${tasks.length ? `<a class="card" href="#/tasks" style="background:var(--lock-bg);border-color:transparent;gap:4px">
+      <div class="bold" style="color:var(--lock)">${todo ? `有 ${todo} 個任務可以解鎖` : '任務都送出了'}</div>
+      <div class="small" style="color:var(--lock)">${todo ? `完成任務、${esc(ownerName())}確認之後，就能看到上鎖的紀錄。` : `等${esc(ownerName())}確認中。`}</div>
+    </a>` : ''}
+    ${typeCard('happy')}
+    ${typeCard('cloud')}
+    <a class="card theme-fight" href="#/fights">
+      <div class="bold" style="color:var(--fight)">吵架議題</div>
+      <div class="status-grid">
+        <div class="status-tile st-open"><b>${st('open')}</b><span class="small">未解決</span></div>
+        <div class="status-tile st-progress"><b>${st('progress')}</b><span class="small">處理中</span></div>
+        <div class="status-tile st-resolved"><b>${st('resolved')}</b><span class="small">已解決</span></div>
+      </div>
+    </a>
+    <div class="section-title">最近分享的紀錄</div>
+    <div class="list" id="recent">${recent.length ? '' : `<div class="empty">${esc(ownerName())}還沒有分享紀錄給你</div>`}</div>
+  `;
+  const box = document.getElementById('recent');
+  for (const r of recent) box.appendChild(await listItem(r));
+}
+
+async function viewPartnerTasks() {
+  const tasks = await CloudDB.partnerTasks();
+  app.className = '';
+  app.innerHTML = `
+    <div class="topbar">
+      <a class="icon-btn" href="#/" aria-label="返回">${ICON.back}</a>
+      <h1>解鎖任務</h1>
+    </div>
+    <div class="muted">完成任務、${esc(ownerName())}按「通過」之後，那則紀錄就會出現在你的列表裡。</div>
+    <div class="list">
+      ${tasks.map((t) => {
+        const s = t.submission && t.submission.status;
+        const state = s === 'pending' ? `<span class="badge st-progress">等${esc(ownerName())}確認</span>`
+          : s === 'rejected' ? '<span class="badge st-open">被退回了，可以再試一次</span>' : '';
+        return `<div class="card ${TYPES[t.type].theme}" style="gap:8px">
+          <div class="row between"><span class="small bold" style="color:var(--accent)">${ICON.lockSmall} 一則${TYPES[t.type].label}</span>
+          <span class="small muted">${t.task.mode === 'photo' ? '要上傳照片' : '按完成就好'}</span></div>
+          <div class="bold" style="font-size:16px">${esc(t.task.text)}</div>
+          ${state}
+          ${s === 'pending' ? '' : `<a class="btn small" href="#/task/${esc(t.id)}">去完成</a>`}
+        </div>`;
+      }).join('')}
+    </div>
+    ${tasks.length ? '' : `<div class="empty">目前沒有任務</div>`}
+  `;
+}
+
+async function viewPartnerTaskForm(id) {
+  const t = (await CloudDB.partnerTasks()).find((x) => x.id === id);
+  if (!t) { go('#/tasks'); return; }
+  const needPhoto = t.task.mode === 'photo';
+  let photo = null;
+  app.className = TYPES[t.type].theme;
+  app.innerHTML = `
+    <div class="topbar">
+      <a class="icon-btn" href="#/tasks" aria-label="返回">${ICON.back}</a>
+      <h1>完成任務</h1>
+    </div>
+    <div class="card" style="background:var(--lock-bg);border-color:transparent">
+      <div class="small bold" style="color:var(--lock)">任務</div>
+      <div class="bold" style="font-size:17px">${esc(t.task.text)}</div>
+    </div>
+    ${needPhoto ? `<div class="field"><div class="label">任務照片（必填）</div>
+      <div class="photos" id="task-photo-box">
+        <label class="photo-add">${ICON.camera}上傳<input type="file" accept="image/*" class="visually-hidden" id="task-photo"></label>
+      </div></div>` : ''}
+    <div class="field"><label for="task-note">想說的話（可不填）</label>
+      <textarea id="task-note" class="textarea" maxlength="500" placeholder="例如：早午餐超好吃！"></textarea></div>
+    <button class="btn" id="task-send">${needPhoto ? '送出給' : '完成了，通知'}${esc(ownerName())}</button>
+  `;
+  if (needPhoto) {
+    document.getElementById('task-photo').addEventListener('change', async (ev) => {
+      const f = ev.target.files[0];
+      if (!f) return;
+      try {
+        photo = await compressImage(f);
+        const box = document.getElementById('task-photo-box');
+        box.querySelector('.photo')?.remove();
+        box.insertAdjacentHTML('afterbegin', `<div class="photo"><img src="${URL.createObjectURL(photo)}" alt=""></div>`);
+      } catch (e) { toast(e.message); }
+    });
+  }
+  document.getElementById('task-send').addEventListener('click', async (ev) => {
+    if (needPhoto && !photo) { toast('這個任務要上傳照片'); return; }
+    ev.target.disabled = true;
+    try {
+      await CloudDB.submitTask(t.id, document.getElementById('task-note').value.trim(), photo);
+      toast(`已送出，等${ownerName()}確認`);
+      go('#/tasks');
+    } catch (e) {
+      ev.target.disabled = false;
+      toast(e.message);
+    }
+  });
+}
+
+function viewPartnerSettings() {
+  const info = CloudDB.partnerInfo();
+  app.className = '';
+  app.innerHTML = `
+    <div class="topbar">
+      <a class="icon-btn" href="#/" aria-label="返回">${ICON.back}</a>
+      <h1>設定</h1>
+    </div>
+    <div class="card">
+      <div class="bold">你的身分</div>
+      <div class="muted">你用「${esc(info.name)}」這個名字加入，可以看${esc(ownerName())}分享給你的紀錄和做任務，但不能修改紀錄。</div>
+    </div>
+    <div class="card">
+      <div class="bold">離開</div>
+      <div class="muted">離開後這支手機就看不到了，之後要再輸入分享碼和密碼才能回來。</div>
+      <button class="btn small danger" id="leave">離開</button>
+    </div>
+  `;
+  document.getElementById('leave').addEventListener('click', async () => {
+    if (!confirm('確定要離開嗎？')) return;
+    await CloudDB.leaveShare();
+    photoUrlCache.clear();
+    go('#/join');
+  });
+}
+
+function viewJoin(notice) {
+  app.className = '';
+  app.innerHTML = `
+    <div style="display:flex;flex-direction:column;align-items:center;gap:10px;text-align:center;margin-top:40px">
+      <div class="thumb" style="width:72px;height:72px;border-radius:99px">${ICON.lock}</div>
+      <h1 class="title-xl">用分享碼加入</h1>
+      <div class="muted">輸入對方給你的分享碼和密碼，就能看對方分享的紀錄</div>
+    </div>
+    ${notice ? `<div class="card" style="background:var(--progress-bg);border-color:transparent;color:var(--progress-ink)">${esc(notice)}</div>` : ''}
+    <form id="join-form" style="display:flex;flex-direction:column;gap:14px">
+      <div class="field"><label for="j-code">分享碼</label>
+        <input id="j-code" class="input" autocapitalize="characters" autocomplete="off" required style="letter-spacing:4px;text-transform:uppercase"></div>
+      <div class="field"><label for="j-pass">密碼</label>
+        <input id="j-pass" class="input" type="password" autocomplete="off" required></div>
+      <div class="field"><label for="j-name">你的名字</label>
+        <input id="j-name" class="input" maxlength="20" required placeholder="對方會看到這個名字"></div>
+      <button class="btn" type="submit" id="join-btn">加入</button>
+    </form>
+    <div id="join-msg" class="muted" style="text-align:center"></div>
+    <a class="btn secondary small" href="#/login" id="to-login">我是紀錄的主人，去登入</a>
+  `;
+  document.getElementById('to-login').addEventListener('click', async (ev) => {
+    // 臨時帳號登出，才會回到登入畫面
+    if (CloudDB.isSignedIn() && CloudDB.isAnonymous()) { ev.preventDefault(); await CloudDB.signOut(); go('#/login'); route(); }
+  });
+  document.getElementById('join-form').addEventListener('submit', async (ev) => {
+    ev.preventDefault();
+    const btn = document.getElementById('join-btn');
+    const msg = document.getElementById('join-msg');
+    btn.disabled = true;
+    msg.textContent = '';
+    try {
+      await CloudDB.joinWithCode(
+        document.getElementById('j-code').value.trim().toUpperCase(),
+        document.getElementById('j-pass').value,
+        document.getElementById('j-name').value.trim(),
+      );
+      go('#/');
+      route();
+    } catch (e) {
+      btn.disabled = false;
+      msg.textContent = /anonymous sign-ins are disabled|signups not allowed/i.test(e.message)
+        ? '對方的 App 還沒開放分享碼加入，請對方到 Supabase 開啟「Allow anonymous sign-ins」。'
+        : e.message;
+    }
+  });
+}
+
+// ---------- 設定：分享給另一半（紀錄主人） ----------
+async function shareCardHtml() {
+  let share = null;
+  let partners = [];
+  try {
+    share = await CloudDB.getShare();
+    if (share) partners = await CloudDB.listPartners();
+  } catch (e) {
+    return `<div class="card"><div class="bold">分享給另一半</div>
+      <div class="muted">要先到 Supabase 的 SQL Editor 重新貼上最新的 supabase/schema.sql 並按 Run，才能使用分享碼。</div></div>`;
+  }
+  if (!share) {
+    return `<div class="card" id="share-card">
+      <div class="bold">分享給另一半</div>
+      <div class="muted">產生分享碼和密碼給對方，對方就能看你「給對方看」和任務解鎖後的紀錄，也能做任務，但不能修改任何東西。</div>
+      <div class="field"><label for="s-name">你的名字（對方會看到）</label><input id="s-name" class="input" maxlength="20"></div>
+      <div class="field"><label for="s-pass">分享密碼（至少 6 個字，不要用你的登入密碼）</label><input id="s-pass" class="input" type="password" autocomplete="new-password" minlength="6"></div>
+      <button class="btn small" id="s-create">產生分享碼</button>
+    </div>`;
+  }
+  return `<div class="card" id="share-card">
+    <div class="bold">分享給另一半</div>
+    <div class="muted">把網址、分享碼和密碼告訴對方。對方打開網址後按「用分享碼加入」。</div>
+    <div class="share-code">${esc(share.code)}</div>
+    <button class="btn small secondary" id="s-copy">複製邀請文字（不含密碼）</button>
+    <div class="field"><label for="s-name">你的名字（對方會看到）</label>
+      <div class="row"><input id="s-name" class="input grow" maxlength="20" value="${esc(share.owner_name)}"><button class="btn small" id="s-save-name">儲存</button></div></div>
+    <div class="field"><label for="s-pass">改分享密碼</label>
+      <div class="row"><input id="s-pass" class="input grow" type="password" autocomplete="new-password" minlength="6" placeholder="新密碼"><button class="btn small" id="s-save-pass">更改</button></div></div>
+    <div class="field"><div class="label">已加入的人</div>
+      ${partners.length ? partners.map((p) => `<div class="row between"><span>${esc(p.name)}<span class="muted small">・${shortDate(p.joined_at.slice(0, 10))} 加入</span></span>
+        <button class="btn small secondary" data-rm-partner="${esc(p.uid)}" data-name="${esc(p.name)}">移除</button></div>`).join('') : '<div class="muted">還沒有人加入</div>'}
+    </div>
+    <div class="btn-row">
+      <button class="btn small secondary" id="s-renew">換新分享碼</button>
+      <button class="btn small danger" id="s-stop">停止分享</button>
+    </div>
+  </div>`;
+}
+
+function bindShareCard() {
+  const $ = (id) => document.getElementById(id);
+  const saveWithNewCode = async (password, name) => {
+    // 分享碼剛好重複時換一組再試
+    for (let i = 0; i < 3; i++) {
+      try { await CloudDB.saveShare(newShareCode(), password, name); return; } catch (e) {
+        if (!/duplicate|unique/i.test(e.message)) throw e;
+      }
+    }
+    throw new Error('產生分享碼失敗，請再試一次');
+  };
+  if ($('s-create')) $('s-create').addEventListener('click', async () => {
+    const name = $('s-name').value.trim();
+    const pass = $('s-pass').value;
+    if (!name) { toast('請填你的名字'); return; }
+    if (pass.length < 6) { toast('密碼至少 6 個字'); return; }
+    await saveWithNewCode(pass, name);
+    toast('分享碼產生好了');
+    viewSettings();
+  });
+  if ($('s-copy')) $('s-copy').addEventListener('click', async () => {
+    const code = document.querySelector('.share-code').textContent;
+    const text = `打開 ${location.origin + location.pathname}，按「用分享碼加入」，分享碼是 ${code}，密碼我另外告訴你。`;
+    try { await navigator.clipboard.writeText(text); toast('已複製'); } catch (e) { prompt('複製下面這段文字', text); }
+  });
+  if ($('s-save-name')) $('s-save-name').addEventListener('click', async () => {
+    const name = $('s-name').value.trim();
+    if (!name) { toast('請填你的名字'); return; }
+    await CloudDB.saveShare(document.querySelector('.share-code').textContent, null, name);
+    toast('已儲存');
+  });
+  if ($('s-save-pass')) $('s-save-pass').addEventListener('click', async () => {
+    const pass = $('s-pass').value;
+    if (pass.length < 6) { toast('密碼至少 6 個字'); return; }
+    await CloudDB.saveShare(document.querySelector('.share-code').textContent, pass, $('s-name').value.trim());
+    $('s-pass').value = '';
+    toast('密碼已更改，已加入的人不受影響');
+  });
+  if ($('s-renew')) $('s-renew').addEventListener('click', async () => {
+    if (!confirm('換一組新的分享碼？舊的分享碼就不能再用來加入，已加入的人不受影響。')) return;
+    await saveWithNewCode(null, $('s-name').value.trim());
+    viewSettings();
+  });
+  if ($('s-stop')) $('s-stop').addEventListener('click', async () => {
+    if (!confirm('停止分享後，所有已加入的人都會馬上看不到你的紀錄。確定嗎？')) return;
+    await CloudDB.deleteShare();
+    toast('已停止分享');
+    viewSettings();
+  });
+  document.querySelectorAll('[data-rm-partner]').forEach((b) => b.addEventListener('click', async () => {
+    if (!confirm(`移除「${b.dataset.name}」？對方會馬上看不到你的紀錄。`)) return;
+    await CloudDB.removePartner(b.dataset.rmPartner);
+    viewSettings();
+  }));
+}
+
 // ---------- 登入（雲端模式） ----------
 function viewLogin(mode = 'signin') {
   app.className = '';
@@ -908,6 +1296,7 @@ function viewLogin(mode = 'signin') {
     </form>
     <div id="login-msg" class="muted" style="text-align:center"></div>
     <button class="btn secondary small" id="switch">${isUp ? '已經有帳號？登入' : '第一次使用？建立帳號'}</button>
+    <a class="btn secondary small" href="#/join">我是另一半，用分享碼加入</a>
   `;
   document.getElementById('switch').addEventListener('click', () => viewLogin(isUp ? 'signin' : 'signup'));
   document.getElementById('google-btn').addEventListener('click', async () => {
@@ -959,8 +1348,25 @@ async function route() {
   app.className = '';
   window.scrollTo(0, 0);
   try {
-    if (CLOUD_ENABLED && !CloudDB.currentEmail()) { renderTabbar(null); viewLogin(); return; }
-    if (page === 'login') { go('#/'); return; }
+    if (CLOUD_ENABLED && !CloudDB.isSignedIn()) { renderTabbar(null); if (page === 'join') viewJoin(); else viewLogin(); return; }
+    // 臨時帳號但不是（或已經不是）另一半：分享被停止、被移除，或加入沒成功
+    if (CLOUD_ENABLED && CloudDB.isAnonymous() && !isPartner()) {
+      renderTabbar(null);
+      viewJoin(page === 'join' ? '' : '目前沒有閱讀權限，可能是分享已經停止或被移除了。請再輸入一次分享碼和密碼。');
+      return;
+    }
+    if (page === 'login' || page === 'join') { go('#/'); return; }
+    if (isPartner()) {
+      if (!page) { renderTabbar('home'); await viewPartnerHome(); }
+      else if (page === 'list' && TYPES[arg] && arg !== 'fight') { renderTabbar(arg); await viewList(arg); }
+      else if (page === 'fights') { renderTabbar('fight'); await viewFights(); }
+      else if (page === 'view') { renderTabbar(null); await viewDetail(arg); }
+      else if (page === 'tasks') { renderTabbar('tasks'); await viewPartnerTasks(); }
+      else if (page === 'task') { renderTabbar(null); await viewPartnerTaskForm(arg); }
+      else if (page === 'settings') { renderTabbar(null); viewPartnerSettings(); }
+      else go('#/');
+      return;
+    }
     if (!page) { renderTabbar('home'); await viewHome(); }
     else if (page === 'list' && TYPES[arg] && arg !== 'fight') { renderTabbar(arg); await viewList(arg); }
     else if (page === 'fights') { renderTabbar('fight'); await viewFights(); }

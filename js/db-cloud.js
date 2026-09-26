@@ -9,6 +9,7 @@ const CloudDB = CLOUD_ENABLED ? (() => {
   });
   const BUCKET = 'photos';
   let session = null;
+  let partner = null; // 用分享碼加入的另一半：{ owner, name, owner_name }
 
   function check({ data, error }) {
     if (error) throw new Error(error.message || '雲端連線失敗');
@@ -18,13 +19,25 @@ const CloudDB = CLOUD_ENABLED ? (() => {
     if (!session) throw new Error('請先登入');
     return session.user.id;
   }
-  const photoPath = (id) => `${userId()}/${id}.jpg`;
+  // 紀錄和照片的主人：自己，或是（另一半模式時）分享給你的人
+  function dataOwner() {
+    return partner ? partner.owner : userId();
+  }
+  const photoPath = (id) => `${dataOwner()}/${id}.jpg`;
+
+  async function loadPartner() {
+    partner = null;
+    if (!session) return;
+    // 還沒更新資料表（沒有 partner_info）時就當作自己，App 照常能用
+    const { data, error } = await client.rpc('partner_info');
+    partner = !error && data && data.owner ? data : null;
+  }
 
   async function listPhotoNames() {
     const names = [];
     for (let offset = 0; ; offset += 1000) {
       const page = check(await client.storage.from(BUCKET).list(userId(), { limit: 1000, offset }));
-      names.push(...page.map((f) => f.name));
+      names.push(...page.map((f) => f.name).filter((n) => !n.startsWith('task-')));
       if (page.length < 1000) return names;
     }
   }
@@ -42,6 +55,7 @@ const CloudDB = CLOUD_ENABLED ? (() => {
         history.replaceState(null, '', location.pathname + (location.hash || '#/'));
       }
       session = check(await client.auth.getSession()).session;
+      await loadPartner();
       return session;
     },
     async signInWithGoogle() {
@@ -51,8 +65,13 @@ const CloudDB = CLOUD_ENABLED ? (() => {
       }));
     },
     currentEmail: () => (session ? session.user.email : null),
+    isSignedIn: () => !!session,
+    isAnonymous: () => !!(session && session.user.is_anonymous),
+    isPartner: () => !!partner,
+    partnerInfo: () => partner,
     async signIn(email, password) {
       session = check(await client.auth.signInWithPassword({ email, password })).session;
+      await loadPartner();
       return session;
     },
     async signUp(email, password) {
@@ -63,20 +82,77 @@ const CloudDB = CLOUD_ENABLED ? (() => {
     async signOut() {
       await client.auth.signOut();
       session = null;
+      partner = null;
+    },
+
+    // ---- 分享碼（另一半這一端） ----
+    async joinWithCode(code, password, name) {
+      if (!session) {
+        const data = check(await client.auth.signInAnonymously());
+        session = data.session;
+      }
+      const res = check(await client.rpc('join_share', { p_code: code, p_password: password, p_name: name }));
+      if (!res || !res.ok) throw new Error((res && res.error) || '沒辦法加入');
+      await loadPartner();
+    },
+    async leaveShare() {
+      check(await client.from('partners').delete().eq('uid', userId()));
+      await this.signOut();
+    },
+    async partnerTasks() {
+      return check(await client.rpc('partner_tasks')) || [];
+    },
+    async submitTask(recordId, note, blob) {
+      let path = null;
+      if (blob) {
+        path = `${userId()}/task-${LocalDB.uid()}.jpg`;
+        check(await client.storage.from(BUCKET).upload(path, blob, { contentType: 'image/jpeg' }));
+      }
+      check(await client.rpc('submit_task', { p_record_id: recordId, p_note: note, p_photo_path: path }));
+    },
+
+    // ---- 分享碼（你這一端） ----
+    async getShare() {
+      return check(await client.from('shares').select('code, owner_name, created_at').eq('owner', userId()).maybeSingle());
+    },
+    async saveShare(code, password, ownerName) {
+      check(await client.rpc('set_share', { p_code: code, p_password: password, p_owner_name: ownerName }));
+    },
+    async deleteShare() {
+      check(await client.from('shares').delete().eq('owner', userId()));
+    },
+    async listPartners() {
+      return check(await client.from('partners').select('uid, name, joined_at').eq('owner', userId()).order('joined_at'));
+    },
+    async removePartner(uid) {
+      check(await client.from('partners').delete().eq('uid', uid).eq('owner', userId()));
+    },
+    async submissions(filter = {}) {
+      let q = client.from('task_submissions').select('*').eq('owner', userId());
+      if (filter.recordId) q = q.eq('record_id', filter.recordId);
+      if (filter.status) q = q.eq('status', filter.status);
+      return check(await q.order('created_at', { ascending: false }));
+    },
+    async reviewSubmission(id, approve) {
+      check(await client.from('task_submissions').update({ status: approve ? 'approved' : 'rejected', reviewed_at: new Date().toISOString() }).eq('id', id));
+    },
+    async taskPhoto(path) {
+      const { data, error } = await client.storage.from(BUCKET).download(path);
+      return error ? null : data;
     },
 
     // ---- 紀錄 ----
     async allRecords() {
       const rows = [];
       for (let from = 0; ; from += 1000) {
-        const page = check(await client.from('records').select('data').order('created_at').range(from, from + 999));
+        const page = check(await client.from('records').select('data').eq('owner', dataOwner()).order('created_at').range(from, from + 999));
         rows.push(...page);
         if (page.length < 1000) break;
       }
       return rows.map((r) => r.data);
     },
     async getRecord(id) {
-      const row = check(await client.from('records').select('data').eq('id', id).maybeSingle());
+      const row = check(await client.from('records').select('data').eq('owner', dataOwner()).eq('id', id).maybeSingle());
       return row ? row.data : undefined;
     },
     async putRecord(rec) {
@@ -84,6 +160,7 @@ const CloudDB = CLOUD_ENABLED ? (() => {
         id: rec.id,
         type: rec.type,
         visibility: rec.visibility || 'shared',
+        unlocked: !!rec.unlocked,
         data: rec,
         updated_at: new Date().toISOString(),
       }));

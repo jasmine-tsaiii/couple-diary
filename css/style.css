@@ -221,3 +221,9 @@ a.card:active { transform: scale(0.99); }
   opacity: 0; pointer-events: none; transition: opacity .2s; z-index: 20; white-space: nowrap;
 }
 .toast.show { opacity: 1; }
+
+/* 分享碼 */
+.share-code {
+  font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 28px; font-weight: 700; letter-spacing: 6px;
+  text-align: center; padding: 12px; border-radius: 12px; background: var(--lock-bg); color: var(--lock);
+}
