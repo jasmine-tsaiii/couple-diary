@@ -105,7 +105,7 @@ async function withBusy(btn, label, fn) {
   try {
     await fn();
   } catch (e) {
-    toast('沒有成功，請再試一次：' + (e.message || '連線問題'));
+    toast('沒有成功，請再試一次：' + cloudErrorText(e));
   } finally {
     if (document.body.contains(btn)) { btn.disabled = false; btn.textContent = old; }
   }
@@ -333,6 +333,8 @@ async function viewHome() {
   const askNames = !NAMES.me && !NAMES.partner && !(await DB.getSetting('namesSkipped', false));
   let pending = [];
   if (usingCloud()) { try { pending = (await CloudDB.submissions({ status: 'pending' })).filter((t) => all.some((r) => r.id === t.record_id)); } catch (e) { pending = []; } }
+  // 「一年前的今天」只挑美好時刻，免得一打開就看到舊的烏雲
+  const memory = all.filter((r) => r.type === 'happy' && DATE_RE.test(r.date || '') && r.date.slice(5) === today().slice(5) && r.date < today()).sort(byDateDesc)[0];
   const isIOS = /iphone|ipad|ipod/i.test(navigator.userAgent);
   const standalone = window.matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
 
@@ -383,6 +385,10 @@ async function viewHome() {
       <div class="bold" style="color:var(--lock)">建議加到主畫面</div>
       <div class="small" style="color:var(--lock)">在 Safari 按「分享 → 加入主畫面」，之後都從主畫面打開，資料才不會因為太久沒開而被自動清掉。</div>
     </div>` : ''}
+    ${memory ? `<a class="card theme-happy" href="#/view/${esc(memory.id)}" style="background:var(--happy-bg);border-color:transparent;gap:4px">
+      <div class="small bold" style="color:var(--happy-dark)">${Number(today().slice(0, 4)) - Number(memory.date.slice(0, 4))} 年前的今天</div>
+      <div class="bold">${esc(memory.title)}</div>
+    </a>` : ''}
     ${progressCard('happy')}
     ${progressCard('cloud')}
     <a class="card theme-fight" href="#/fights">
@@ -572,7 +578,7 @@ async function viewDetail(id) {
           <div class="row between"><span class="bold">${esc(sub.partner_name)} 送出的任務</span><span class="small muted">${shortDate(sub.created_at.slice(0, 10))}・${stText}</span></div>
           ${sub.note ? `<div class="prose">${esc(sub.note)}</div>` : ''}
           ${img}
-          ${sub.status === 'pending' ? `<div class="btn-row"><button class="btn small" data-approve="${esc(sub.id)}">通過並解鎖</button><button class="btn small secondary" data-reject="${esc(sub.id)}">退回</button></div>` : ''}
+          ${sub.status === 'pending' ? `<div class="btn-row"><button class="btn small" data-approve="${esc(sub.id)}">通過並解鎖</button><button class="btn small secondary" data-reject="${esc(sub.id)}" data-photo="${esc(sub.photo_path || '')}">退回</button></div>` : ''}
         </div>`);
       }
       task = `<div class="card" style="background:var(--lock-bg);border-color:transparent">
@@ -678,6 +684,8 @@ async function viewDetail(id) {
     if (!confirm('退回這次的任務？對方可以再送一次。')) return;
     withBusy(b, '', async () => {
       await CloudDB.reviewSubmission(b.dataset.reject, false);
+      // 退回的任務照片用不到了，順便刪掉
+      if (b.dataset.photo) { try { await CloudDB.removeTaskPhoto(b.dataset.photo); } catch (e) { /* 刪不掉沒關係 */ } }
       viewDetail(r.id);
     });
   }));
@@ -752,6 +760,16 @@ async function viewDetail(id) {
 }
 
 // ---------- 新增／編輯 ----------
+// 新增到一半的草稿只存在這支手機（照片不存），存好或放棄時清掉
+const DRAFT_KEY = 'couple-diary-draft';
+let draftTimer = null;
+function loadDraft() { try { return JSON.parse(localStorage.getItem(DRAFT_KEY) || 'null'); } catch (e) { return null; } }
+function saveDraft(rec) {
+  const hasText = rec.title || rec.description || rec.reason || rec.myView || rec.theirView;
+  try { if (hasText) localStorage.setItem(DRAFT_KEY, JSON.stringify({ savedAt: Date.now(), rec: { ...rec, photoIds: [] } })); } catch (e) { /* 空間不足就算了 */ }
+}
+function clearDraft() { try { localStorage.removeItem(DRAFT_KEY); } catch (e) { /* 略過 */ } }
+
 async function viewForm(mode, arg) {
   let rec;
   if (mode === 'edit') {
@@ -765,6 +783,14 @@ async function viewForm(mode, arg) {
       photoIds: [], emojis: [], tags: [], visibility: defaultVisibility(type), task: { text: '', mode: 'confirm' },
       category: '', reason: '', myView: '', theirView: '', status: 'open', resolution: '', followUps: [],
     };
+    // 上次寫到一半沒存（例如 App 被關掉）：問要不要接著寫
+    const draft = loadDraft();
+    if (draft && draft.rec && TYPES[draft.rec.type]) {
+      const label = draft.rec.title ? `「${draft.rec.title.slice(0, 20)}」` : '';
+      if (confirm(`有一則${TYPES[draft.rec.type].label}${label}還沒儲存（${daysAgo(draft.savedAt) === 0 ? '今天' : daysAgo(draft.savedAt) + ' 天前'}寫的，照片要重新選）。要接著寫嗎？`)) {
+        rec = { ...rec, ...draft.rec, id: rec.id, photoIds: [] };
+      } else clearDraft();
+    }
   }
   const all = await DB.allRecords();
   const cats = await getCategories();
@@ -866,7 +892,7 @@ async function viewForm(mode, arg) {
           </div>` : ''}
         <div class="muted small">${usingCloud() ? '給對方看：對方用分享碼就看得到。上鎖：只有你看得到。任務解鎖：對方完成任務、你按通過後才看得到。' : (CLOUD_ENABLED ? '這個設定會先記下來；註冊登入並開啟分享碼後，對方就會依這個設定看到內容。' : '現在是單人版，這個設定會先記下來；換成雲端版並開啟分享碼後，對方就會依這個設定看到內容。') + '目前「上鎖」只是標記，拿到這支手機的人還是看得到。'}</div>
       </div>
-      <button class="btn" id="save">儲存紀錄</button>
+      <button class="btn" id="save">${usingCloud() && rec.visibility === 'shared' && rec.type !== 'happy' ? `儲存並給${esc(partnerName())}看` : '儲存紀錄'}</button>
     `;
     bind();
   }
@@ -944,9 +970,11 @@ async function viewForm(mode, arg) {
     });
     app.querySelectorAll('[data-vis]').forEach((b) => b.addEventListener('click', () => { collect(); rec.visibility = b.dataset.vis; visTouched = true; dirty = true; render(); }));
     // 有改過內容時，按返回要先確認，免得寫一半的長文不見
-    app.oninput = () => { dirty = true; };
+    app.oninput = () => { dirty = true; if (mode === 'new') { clearTimeout(draftTimer); draftTimer = setTimeout(() => { collect(); saveDraft(rec); }, 800); } };
     app.querySelector('.topbar .icon-btn').addEventListener('click', (ev) => {
-      if ((dirty || newPhotos.size) && !confirm('還沒儲存，確定要離開嗎？寫的內容會不見。')) ev.preventDefault();
+      if ((dirty || newPhotos.size) && !confirm('還沒儲存，確定要離開嗎？寫的內容會不見。')) { ev.preventDefault(); return; }
+      clearTimeout(draftTimer);
+      if (mode === 'new') clearDraft();
     });
     app.querySelectorAll('[data-taskmode]').forEach((b) => b.addEventListener('click', () => { collect(); rec.task.mode = b.dataset.taskmode; render(); }));
     document.getElementById('f-photos').addEventListener('change', async (ev) => {
@@ -994,7 +1022,9 @@ async function viewForm(mode, arg) {
         // 解鎖狀態以最新的為準（對方可能剛剛才完成任務）
         if (latest && latest.visibility === 'task' && rec.visibility === 'task') { rec.unlocked = latest.unlocked; rec.unlockedAt = latest.unlockedAt; }
       }
+      let up = 0;
       for (const [id, p] of newPhotos) {
+        saveBtn.textContent = `上傳照片 ${++up} / ${newPhotos.size}…`;
         await DB.putPhoto({ id, blob: p.blob, recordId: rec.id, createdAt: Date.now() });
         if (usingCloud()) { try { await CloudDB.putThumb(id, await compressImage(p.blob, THUMB_SIDE, 0.75)); } catch (e) { /* 之後列表會自動補 */ } }
       }
@@ -1009,6 +1039,8 @@ async function viewForm(mode, arg) {
       rec.updatedAt = now;
       await DB.putRecord(rec);
       dirty = false;
+      clearTimeout(draftTimer);
+      if (mode === 'new') clearDraft();
       toast('已儲存');
       go(`#/view/${rec.id}`);
     }));
@@ -1257,8 +1289,10 @@ async function viewSettings() {
       categories: await getCategories(),
       photos: await Promise.all(photos.map(async (p) => ({ id: p.id, recordId: p.recordId, data: await blobToDataUrl(p.blob) }))),
     };
-    downloadFile(new Blob([JSON.stringify(data)], { type: 'application/json' }), `our-records-RESTORE-backup-${today()}.json`);
+    const file = new Blob([JSON.stringify(data)], { type: 'application/json' });
+    downloadFile(file, `our-records-RESTORE-backup-${today()}.json`);
     await DB.setSetting('lastBackupAt', Date.now());
+    toast(`備份好了：${data.records.length} 則紀錄、${data.photos.length} 張照片，檔案約 ${Math.max(1, Math.round(file.size / 1048576))} MB`);
     setTimeout(viewSettings, 500);
   });
 
@@ -1324,6 +1358,7 @@ async function viewSettings() {
   const logout = document.getElementById('logout');
   if (logout) logout.addEventListener('click', async () => {
     if (!confirm('要登出嗎？雲端的資料不會不見，之後登入就能看到。')) return;
+    clearDraft();
     await CloudDB.signOut();
     photoUrlCache.clear();
     go('#/login');
@@ -1345,6 +1380,7 @@ async function viewSettings() {
     if (!confirm('真的要清除所有紀錄和照片嗎？')) return;
     if (!confirm('再確認一次：清除後無法復原。')) return;
     if (usingCloud()) { try { await CloudDB.deleteShare(); } catch (e) { /* 沒有分享碼就略過 */ } }
+    clearDraft();
     await DB.clearAll();
     photoUrlCache.clear();
     toast('已清除');
@@ -1356,6 +1392,7 @@ async function viewSettings() {
     if ((typed || '').trim() !== '刪除') return;
     withBusy(delAcc, '刪除中…', async () => {
       try { await CloudDB.deleteShare(); } catch (e) { /* 沒有分享碼就略過 */ }
+      clearDraft();
       await CloudDB.clearAll();
       await CloudDB.deleteAccount();
       await LocalDB.setSetting('hasAccount', false);
@@ -1857,7 +1894,8 @@ async function route() {
     else go('#/');
   } catch (e) {
     console.error(e);
-    app.innerHTML = `<div class="empty">出了一點問題：${esc(e.message)}<a class="btn small" href="#/">回首頁</a></div>`;
+    app.innerHTML = `<div class="empty">${esc(cloudErrorText(e))}<button class="btn small" id="reload">重新整理</button></div>`;
+    document.getElementById('reload').addEventListener('click', () => location.reload());
   }
 }
 
@@ -1871,16 +1909,22 @@ async function requestPersist() {
   } catch (e) { /* 不支援的瀏覽器就略過 */ }
 }
 
+// 連不上雲端時說清楚：資料沒有不見，可能是網路或雲端暫停（免費方案一週沒人用會暫停）
+function cloudErrorText(e) {
+  const m = (e && e.message) || '';
+  if (/fetch|network|load failed|timeout/i.test(m)) return navigator.onLine === false ? '現在沒有網路，連上網路後再試一次。' : '連不上雲端。資料沒有不見，可能是網路不穩，或雲端太久沒人用被暫停了（到 Supabase 後台按 Restore 就會恢復）。';
+  return m || '出了一點問題，請再試一次';
+}
 // 沒接住的錯誤（例如雲端連不上）用提示告訴使用者
 window.addEventListener('unhandledrejection', (ev) => {
-  toast((ev.reason && ev.reason.message) || '出了一點問題，請再試一次');
+  toast(cloudErrorText(ev.reason));
 });
 
 window.addEventListener('hashchange', route);
 requestPersist();
 (async () => {
   if (CLOUD_ENABLED) {
-    try { await CloudDB.loadSession(); await afterOwnerLogin(); } catch (e) { toast('連不上雲端：' + e.message); }
+    try { await CloudDB.loadSession(); await afterOwnerLogin(); } catch (e) { toast(cloudErrorText(e)); }
   }
   route();
 })();
