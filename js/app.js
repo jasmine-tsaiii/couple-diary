@@ -36,8 +36,8 @@ const DEFAULT_CATEGORIES = ['溝通', '價值觀', '金錢', '家人朋友', '�
 const MAX_EMOJIS = 3;
 // 各欄位的上限：畫面上擋，雲端資料庫也有對應的檢查
 const LIMITS = {
-  name: 20, title: 60, description: 2000, fightText: 1000, resolution: 500, followUp: 500,
-  tag: 12, tagsPerRecord: 10, photosPerRecord: 9, category: 12, categories: 30, task: 100, taskNote: 500,
+  name: 20, title: 60, description: 2000, fightText: 1000, resolution: 500, followUp: 300, followUpsPerFight: 100,
+  tag: 12, tagsPerRecord: 10, photosPerRecord: 9, photoFileMB: 20, category: 12, categories: 30, task: 100, taskNote: 500,
 };
 const BACKUP_REMIND_DAYS = 14;
 
@@ -109,7 +109,10 @@ function byDateDesc(a, b) {
   return (b.date || '').localeCompare(a.date || '') || (b.createdAt || 0) - (a.createdAt || 0);
 }
 // 每種類型依時間先後編號：第 1 則、第 2 則……（預設圖上的 No.）
+// 編號規則：新增時給固定號碼（這個類型用過的最大號 +1，刪掉的號碼不會再用），
+// 之後改日期、改內容都不會變；舊紀錄沒有號碼時才依日期暫時計算。
 function numberOf(rec, all) {
+  if (rec.no) return rec.no;
   const same = all.filter((r) => r.type === rec.type).sort((a, b) => (a.date || '').localeCompare(b.date || '') || (a.createdAt || 0) - (b.createdAt || 0));
   return same.findIndex((r) => r.id === rec.id) + 1;
 }
@@ -150,7 +153,48 @@ async function loadNames() {
 }
 const myName = () => NAMES.me || '我';
 const partnerName = () => NAMES.partner || '對方';
+// 可見度的說明用伴侶的名字，例如「給小明看」
+const visLabel = (k) => (k === 'shared' && NAMES.partner ? `給${NAMES.partner}看` : VISIBILITY[k]);
+// 日期要在 1970 年到今天之間
+const dateOk = (d) => DATE_RE.test(d) && d >= '1970-01-01' && d <= today();
 const diaryTitle = () => (NAMES.me && NAMES.partner ? `${NAMES.me}和${NAMES.partner}的紀錄` : '我們的紀錄');
+
+async function nextNumber(type) {
+  const all = await DB.allRecords();
+  const used = await DB.getSetting('lastNo', {});
+  const max = Math.max(used[type] || 0, ...all.filter((r) => r.type === type).map((r) => r.no || 0));
+  await DB.setSetting('lastNo', { ...used, [type]: max + 1 });
+  return max + 1;
+}
+const byDateAsc = (a, b) => (a.date || '').localeCompare(b.date || '') || (a.createdAt || 0) - (b.createdAt || 0);
+// 沒有號碼的舊紀錄：依日期補上號碼（接在現有最大號後面），每次開啟只檢查一次
+let numbersChecked = false;
+async function ensureNumbers() {
+  if (numbersChecked || isPartner()) return;
+  numbersChecked = true;
+  const all = await DB.allRecords();
+  const missing = all.filter((r) => !r.no);
+  if (!missing.length) return;
+  const used = await DB.getSetting('lastNo', {});
+  const next = { ...used };
+  for (const type of Object.keys(TYPES)) {
+    let n = Math.max(used[type] || 0, ...all.filter((r) => r.type === type).map((r) => r.no || 0));
+    for (const r of missing.filter((x) => x.type === type).sort(byDateAsc)) { r.no = ++n; await DB.putRecord(r); }
+    next[type] = n;
+  }
+  await DB.setSetting('lastNo', next);
+}
+// 手動重新編號：每個類型依日期重新從 1 排到 N
+async function renumberAll() {
+  const all = await DB.allRecords();
+  const next = {};
+  for (const type of Object.keys(TYPES)) {
+    let n = 0;
+    for (const r of all.filter((x) => x.type === type).sort(byDateAsc)) { n += 1; if (r.no !== n) { r.no = n; await DB.putRecord(r); } }
+    next[type] = n;
+  }
+  await DB.setSetting('lastNo', next);
+}
 
 async function getCategories() {
   return DB.getSetting('categories', DEFAULT_CATEGORIES.slice());
@@ -211,7 +255,7 @@ async function viewHome() {
   app.innerHTML = `
     <div class="row between">
       <div>
-        <div class="hello">今天是 ${longDate(today())}</div>
+        <div class="hello">${NAMES.me ? `嗨，${esc(NAMES.me)}・` : ''}今天是 ${longDate(today())}</div>
         <h1 class="title-xl">${esc(diaryTitle())}</h1>
       </div>
       <a class="icon-btn" href="#/settings" aria-label="設定">${ICON.gear}</a>
@@ -408,7 +452,7 @@ async function viewDetail(id) {
   if (urls.length) photos = `<div class="detail-photos">${urls.map((u) => `<img src="${u}" alt="">`).join('')}</div>`;
   else if (r.type !== 'fight') photos = `<div class="detail-default">${r.type === 'happy' ? ICON.bigHeart : ICON.bigCloud}<div class="no" style="font-family:'Noto Serif TC',serif">No. ${numberOf(r, all)}</div></div>`;
 
-  const visText = partner ? '' : VISIBILITY[r.visibility || 'shared'] + (r.visibility === 'task' && r.unlocked ? '・已解鎖' : '');
+  const visText = partner ? '' : visLabel(r.visibility || 'shared') + (r.visibility === 'task' && r.unlocked ? '・已解鎖' : '');
   let task = '';
   if (r.visibility === 'task' && r.task && r.task.text) {
     const modeText = r.task.mode === 'photo' ? '要上傳照片' : '按完成就好';
@@ -468,7 +512,7 @@ async function viewDetail(id) {
         </div>
       </div>
       ${partner ? '' : `<div class="field"><label for="fu-text">新增後續</label>
-        <input id="fu-date" class="input" type="date" value="${today()}" aria-label="後續日期">
+        <input id="fu-date" class="input" type="date" min="1970-01-01" max="${today()}" value="${today()}" aria-label="後續日期">
         <div class="row"><input id="fu-text" class="input grow" maxlength="${LIMITS.followUp}" placeholder="發生了什麼新進展？"><button class="btn small" id="fu-add">加入</button></div>
       </div>`}`;
   }
@@ -498,8 +542,12 @@ async function viewDetail(id) {
   if (partner) return;
 
   document.getElementById('delete').addEventListener('click', async () => {
-    if (!confirm('確定要刪除嗎？刪掉就救不回來了。')) return;
+    if (!confirm(`確定要刪除嗎？刪掉就救不回來了。${r.no && r.type !== 'fight' ? `No. ${r.no} 這個號碼會空著，不會給其他紀錄用。` : ''}`)) return;
     for (const pid of r.photoIds || []) await DB.deletePhoto(pid);
+    // 對方送來的任務照片也一起刪掉（任務紀錄本身會跟著紀錄刪除）
+    if (usingCloud()) {
+      try { for (const sub of await CloudDB.submissions({ recordId: r.id })) if (sub.photo_path) await CloudDB.removeTaskPhoto(sub.photo_path); } catch (e) { /* 舊版資料表沒有任務，略過 */ }
+    }
     await DB.deleteRecord(r.id);
     toast('已刪除');
     go(backHref);
@@ -542,6 +590,8 @@ async function viewDetail(id) {
       const text = document.getElementById('fu-text').value.trim();
       if (!text) { toast('先寫一點內容'); return; }
       const date = document.getElementById('fu-date').value || today();
+      if (!dateOk(date)) { toast('日期要在今天以前'); return; }
+      if ((r.followUps || []).length >= LIMITS.followUpsPerFight) { toast(`每個議題最多 ${LIMITS.followUpsPerFight} 則後續`); return; }
       const fu = (r.followUps || []).concat({ id: DB.uid(), date, text }).sort((a, b) => a.date.localeCompare(b.date));
       // 第一次加後續時，自動從「未解決」變成「處理中」
       save({ followUps: fu, status: (r.status || 'open') === 'open' ? 'progress' : r.status });
@@ -612,7 +662,7 @@ async function viewForm(mode, arg) {
       <div class="field"><label for="f-title">${rec.type === 'fight' ? '議題' : '標題'}</label>
         <input id="f-title" class="input" value="${esc(rec.title)}" placeholder="${rec.type === 'happy' ? '例如：一起去看海' : rec.type === 'cloud' ? '例如：約好的時間又遲到了' : '例如：回訊息太慢'}" maxlength="${LIMITS.title}"></div>
       <div class="field"><label for="f-date">日期</label>
-        <input id="f-date" class="input" type="date" value="${esc(rec.date)}"></div>
+        <input id="f-date" class="input" type="date" min="1970-01-01" max="${today()}" value="${esc(rec.date)}"></div>
       ${rec.type === 'fight' ? `
         <div class="field"><div class="label">分類</div>
           <div class="chips">
@@ -651,7 +701,7 @@ async function viewForm(mode, arg) {
         </div>
         <input id="f-tag" class="input" maxlength="${LIMITS.tag}" placeholder="輸入新標籤，按 Enter 加入" enterkeyhint="done"></div>
       <div class="field"><div class="label">誰可以看</div>
-        <div class="opts cols-3">${Object.entries(VISIBILITY).map(([k, v]) => `<button class="opt ${k === rec.visibility ? 'on' : ''}" data-vis="${k}">${v}</button>`).join('')}</div>
+        <div class="opts cols-3">${Object.entries(VISIBILITY).map(([k, v]) => `<button class="opt ${k === rec.visibility ? 'on' : ''}" data-vis="${k}">${esc(visLabel(k))}</button>`).join('')}</div>
         ${rec.visibility === 'task' ? `
           <label for="f-task" class="muted">對方要完成的任務</label>
           <input id="f-task" class="input" maxlength="${LIMITS.task}" value="${esc(rec.task.text)}" placeholder="例如：帶我去吃早午餐，拍一張合照給我">
@@ -725,7 +775,7 @@ async function viewForm(mode, arg) {
     document.getElementById('f-tag').addEventListener('keydown', (ev) => {
       if (ev.key !== 'Enter' || ev.isComposing) return;
       ev.preventDefault();
-      const t = ev.target.value.trim().replace(/^#+/, '').slice(0, LIMITS.tag);
+      const t = ev.target.value.trim().replace(/[#\s]/g, '').slice(0, LIMITS.tag);
       if (!t) return;
       if (!rec.tags.includes(t) && rec.tags.length >= LIMITS.tagsPerRecord) { toast(`標籤最多 ${LIMITS.tagsPerRecord} 個`); return; }
       collect();
@@ -745,6 +795,7 @@ async function viewForm(mode, arg) {
       toast('照片處理中…');
       for (const f of files) {
         try {
+          if (f.size > LIMITS.photoFileMB * 1024 * 1024) { toast(`照片超過 ${LIMITS.photoFileMB} MB，換一張試試`); continue; }
           const blob = await compressImage(f);
           const id = DB.uid();
           newPhotos.set(id, { blob, url: URL.createObjectURL(blob) });
@@ -765,10 +816,14 @@ async function viewForm(mode, arg) {
       rec.title = rec.title.trim();
       if (!rec.title) { toast(rec.type === 'fight' ? '請填寫議題' : '請填寫標題'); document.getElementById('f-title').focus(); return; }
       if (!rec.date) rec.date = today();
+      if (!dateOk(rec.date)) { toast('日期要在 1970 年到今天之間'); return; }
       if (rec.visibility === 'task' && !rec.task.text.trim()) { toast('請填寫解鎖任務'); return; }
       for (const [id, p] of newPhotos) await DB.putPhoto({ id, blob: p.blob, recordId: rec.id, createdAt: Date.now() });
       for (const id of removedPhotos) { await DB.deletePhoto(id); photoUrlCache.delete(id); }
       const now = Date.now();
+      if (!rec.no) rec.no = await nextNumber(rec.type);
+      // 改成不是「任務解鎖」時，解鎖狀態就不再保留
+      if (rec.visibility !== 'task') rec.unlocked = false;
       rec.createdAt = rec.createdAt || now;
       rec.updatedAt = now;
       await DB.putRecord(rec);
@@ -835,7 +890,7 @@ async function buildReadableExport() {
         ${(r.followUps || []).length ? `<h4>後續</h4><ul>${r.followUps.map((f) => `<li><b>${shortDate(f.date)}</b> ${esc(f.text)}</li>`).join('')}</ul>` : ''}`;
     }
     return `<article>
-      <div class="meta">${r.type === 'fight' ? '' : `No. ${i + 1}・`}${longDate(r.date)} ${vis}</div>
+      <div class="meta">${r.type === 'fight' ? '' : `No. ${numberOf(r, all)}・`}${longDate(r.date)} ${vis}</div>
       <h3>${esc(r.title)} <span class="emo">${esc((r.emojis || []).join(''))}</span></h3>
       ${(r.tags || []).length ? `<div class="tags">${esc(r.tags.map((t) => '#' + t).join(' '))}</div>` : ''}
       ${r.description ? `<p>${esc(r.description)}</p>` : ''}
@@ -943,6 +998,11 @@ async function viewSettings() {
       <div class="row"><input id="new-cat" class="input grow" maxlength="${LIMITS.category}" placeholder="新增分類"><button class="btn small" id="add-cat">加入</button></div>
     </div>
     <div class="card">
+      <div class="bold">重新編號</div>
+      <div class="muted">每則紀錄的 No. 在新增時就固定，刪除後會留下空號。想讓號碼重新連續的話，可以依日期從 1 重新排一次${usingCloud() ? '，另一半看到的號碼也會一起更新' : ''}。</div>
+      <button class="btn small secondary" id="renumber">依日期重新編號</button>
+    </div>
+    <div class="card">
       <div class="bold" style="color:#9B2C1F">清除所有資料</div>
       <div class="muted">${usingCloud() ? '會刪掉雲端上你所有的紀錄和照片，沒辦法復原。' : '會刪掉這支手機上所有紀錄和照片，沒辦法復原。'}</div>
       <button class="btn small danger" id="wipe">全部清除</button>
@@ -950,6 +1010,11 @@ async function viewSettings() {
   `;
 
   if (usingCloud()) bindShareCard();
+  document.getElementById('renumber').addEventListener('click', async () => {
+    if (!confirm('每個類型都會依日期從 No. 1 重新排，原本的號碼會改變。確定嗎？')) return;
+    await renumberAll();
+    toast('已重新編號');
+  });
   document.getElementById('save-names').addEventListener('click', async () => {
     await DB.setSetting('names', { me: document.getElementById('set-me').value.trim(), partner: document.getElementById('set-partner').value.trim() });
     await loadNames();
@@ -1139,6 +1204,7 @@ async function viewPartnerTaskForm(id) {
     document.getElementById('task-photo').addEventListener('change', async (ev) => {
       const f = ev.target.files[0];
       if (!f) return;
+      if (f.size > LIMITS.photoFileMB * 1024 * 1024) { toast(`照片超過 ${LIMITS.photoFileMB} MB，換一張試試`); return; }
       try {
         photo = await compressImage(f);
         const box = document.getElementById('task-photo-box');
@@ -1357,6 +1423,7 @@ async function migrateLocalToCloud(progress = () => {}) {
 async function afterOwnerLogin() {
   if (!usingCloud() || CloudDB.isAnonymous() || isPartner()) return;
   await LocalDB.setSetting('hasAccount', true);
+  numbersChecked = false; // 換成雲端資料後重新檢查舊紀錄的編號
   if (await LocalDB.getSetting('migratedAt', null)) return;
   const count = (await LocalDB.allRecords()).length;
   if (!count) { await LocalDB.setSetting('migratedAt', Date.now()); return; }
@@ -1461,6 +1528,7 @@ async function route() {
     }
     if (!isGuest() && (page === 'login' || page === 'join')) { go('#/'); return; }
     await loadNames();
+    await ensureNumbers();
     if (isPartner()) {
       if (!page) { renderTabbar('home'); await viewPartnerHome(); }
       else if (page === 'list' && TYPES[arg] && arg !== 'fight') { renderTabbar(arg); await viewList(arg); }

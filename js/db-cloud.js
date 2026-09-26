@@ -136,6 +136,9 @@ const CloudDB = CLOUD_ENABLED ? (() => {
     async reviewSubmission(id, approve) {
       check(await client.from('task_submissions').update({ status: approve ? 'approved' : 'rejected', reviewed_at: new Date().toISOString() }).eq('id', id));
     },
+    async removeTaskPhoto(path) {
+      check(await client.storage.from(BUCKET).remove([path]));
+    },
     async taskPhoto(path) {
       const { data, error } = await client.storage.from(BUCKET).download(path);
       return error ? null : data;
