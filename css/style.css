@@ -37,16 +37,16 @@ button, input, textarea, select { font: inherit; color: inherit; }
 button { cursor: pointer; }
 h1, h2 { font-family: "Noto Serif TC", serif; margin: 0; }
 
+/* 每個區塊之間留一樣的間距，卡片才不會黏在一起 */
 #app {
   max-width: 520px;
   margin: 0 auto;
   padding: 20px 20px calc(110px + env(safe-area-inset-bottom));
-}
-body.no-tabbar #app { padding-bottom: calc(32px + env(safe-area-inset-bottom));
   display: flex;
   flex-direction: column;
-  gap: 14px;
+  gap: 16px;
 }
+body.no-tabbar #app { padding-bottom: calc(32px + env(safe-area-inset-bottom)); }
 
 .theme-happy { --accent: var(--happy); --accent-dark: var(--happy-dark); --accent-bg: var(--happy-bg); }
 .theme-cloud { --accent: var(--cloud); --accent-dark: var(--cloud-dark); --accent-bg: var(--cloud-bg); }
