@@ -123,6 +123,9 @@ create policy "tasks: owner review" on public.task_submissions
   for update to authenticated
   using (owner = auth.uid() and public.is_real_user())
   with check (owner = auth.uid() and public.is_real_user());
+-- 審核只能改狀態和時間，其他欄位（照片位置、紀錄、送出的人）都不能改
+revoke update on public.task_submissions from authenticated, anon;
+grant update (status, reviewed_at) on public.task_submissions to authenticated;
 drop policy if exists "tasks: owner delete" on public.task_submissions;
 create policy "tasks: owner delete" on public.task_submissions
   for delete to authenticated using (owner = auth.uid() and public.is_real_user());
@@ -314,12 +317,20 @@ create policy "photos: owner reads partner tasks" on storage.objects
   for select to authenticated
   using (
     bucket_id = 'photos' and public.is_real_user()
-    and exists (select 1 from public.task_submissions t where t.owner = auth.uid() and t.photo_path = name)
+    and exists (
+      select 1 from public.task_submissions t
+      where t.owner = auth.uid() and t.photo_path = name
+        and (storage.foldername(name))[1] = t.partner::text
+    )
   );
 drop policy if exists "photos: owner deletes partner tasks" on storage.objects;
 create policy "photos: owner deletes partner tasks" on storage.objects
   for delete to authenticated
   using (
     bucket_id = 'photos' and public.is_real_user()
-    and exists (select 1 from public.task_submissions t where t.owner = auth.uid() and t.photo_path = name)
+    and exists (
+      select 1 from public.task_submissions t
+      where t.owner = auth.uid() and t.photo_path = name
+        and (storage.foldername(name))[1] = t.partner::text
+    )
   );

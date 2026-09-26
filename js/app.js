@@ -66,15 +66,17 @@ function today() {
   const d = new Date();
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 }
+// 日期一律要是 2026-09-26 這種格式，其他內容（例如被塞進的 HTML）都當作沒有日期
+const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 function shortDate(iso) {
-  if (!iso) return '';
+  if (!DATE_RE.test(iso || '')) return '';
   const [, m, d] = iso.split('-');
   return `${Number(m)}/${Number(d)}`;
 }
 function longDate(iso) {
-  if (!iso) return '';
-  const [y, m, d] = iso.split('-');
-  const w = '日一二三四五六'[new Date(Number(y), Number(m) - 1, Number(d)).getDay()];
+  if (!DATE_RE.test(iso || '')) return '';
+  const [y, m, d] = iso.split('-').map(Number);
+  const w = '日一二三四五六'[new Date(y, m - 1, d).getDay()];
   return `${y} 年 ${Number(m)} 月 ${Number(d)} 日（${w}）`;
 }
 function daysAgo(ts) {
@@ -90,6 +92,9 @@ function toast(msg) {
 function go(hash) { location.hash = hash; }
 // 另一半模式：用分享碼加入的人
 function isPartner() { return CLOUD_ENABLED && CloudDB.isPartner(); }
+// 試用中：有雲端設定，但這支手機還沒登入過帳號（登入過一次之後，登出就回到登入畫面）
+function isGuest() { return CLOUD_ENABLED && !CloudDB.isSignedIn(); }
+async function hasAccountHere() { return !!(await LocalDB.getSetting('hasAccount', false)); }
 function ownerName() { return (isPartner() && CloudDB.partnerInfo().owner_name) || '對方'; }
 function newShareCode() {
   const bytes = crypto.getRandomValues(new Uint8Array(8));
@@ -170,9 +175,9 @@ async function viewHome() {
   const st = (s) => fights.filter((f) => (f.status || 'open') === s).length;
   const recent = all.slice().sort(byDateDesc).slice(0, 5);
   const lastBackup = await DB.getSetting('lastBackupAt', null);
-  const needBackup = !CLOUD_ENABLED && all.length > 0 && (!lastBackup || Date.now() - lastBackup > BACKUP_REMIND_DAYS * 86400000);
+  const needBackup = !usingCloud() && all.length > 0 && (!lastBackup || Date.now() - lastBackup > BACKUP_REMIND_DAYS * 86400000);
   let pending = [];
-  if (CLOUD_ENABLED) { try { pending = await CloudDB.submissions({ status: 'pending' }); } catch (e) { pending = []; } }
+  if (usingCloud()) { try { pending = await CloudDB.submissions({ status: 'pending' }); } catch (e) { pending = []; } }
   const isIOS = /iphone|ipad|ipod/i.test(navigator.userAgent);
   const standalone = window.matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
 
@@ -199,6 +204,10 @@ async function viewHome() {
     ${needBackup ? `<a class="card" href="#/settings" style="background:var(--progress-bg);border-color:transparent;gap:4px">
       <div class="bold" style="color:var(--progress-ink)">該備份囉</div>
       <div class="small" style="color:var(--progress-ink)">${lastBackup ? `上次備份是 ${daysAgo(lastBackup)} 天前` : '還沒有備份過'}，點這裡到設定頁匯出備份，再存到 iCloud 雲碟或 Google 雲端硬碟。</div>
+    </a>` : ''}
+    ${isGuest() ? `<a class="card" href="#/login" style="background:var(--happy-bg);border-color:transparent;gap:4px">
+      <div class="bold" style="color:var(--happy-dark)">${all.length ? '註冊，把紀錄存到雲端' : '歡迎！直接開始記錄吧'}</div>
+      <div class="small" style="color:var(--happy-dark)">${all.length ? `目前 ${all.length} 則紀錄只存在這支手機。` : '不用註冊就能先用，紀錄會先存在這支手機。'}註冊或登入後會自動搬上雲端，換手機不會不見，也能分享給另一半。</div>
     </a>` : ''}
     ${pending.length ? `<a class="card" href="#/view/${esc(pending[0].record_id)}" style="background:var(--lock-bg);border-color:transparent;gap:4px">
       <div class="bold" style="color:var(--lock)">有 ${pending.length} 個任務等你確認</div>
@@ -369,7 +378,7 @@ async function viewDetail(id) {
       task = `<div class="card" style="background:var(--lock-bg);border-color:transparent"><div class="small bold" style="color:var(--lock)">你完成任務解鎖了這則</div><div>${esc(r.task.text)}</div></div>`;
     } else {
       let subs = [];
-      if (CLOUD_ENABLED) { try { subs = await CloudDB.submissions({ recordId: r.id }); } catch (e) { subs = []; } }
+      if (usingCloud()) { try { subs = await CloudDB.submissions({ recordId: r.id }); } catch (e) { subs = []; } }
       const subCards = [];
       for (const sub of subs) {
         let img = '';
@@ -387,7 +396,7 @@ async function viewDetail(id) {
       }
       task = `<div class="card" style="background:var(--lock-bg);border-color:transparent">
         <div class="small bold" style="color:var(--lock)">解鎖任務（${modeText}）</div><div>${esc(r.task.text)}</div>
-        <div class="small" style="color:var(--lock)">${r.unlocked ? '已經解鎖，對方看得到這則。' : CLOUD_ENABLED ? '對方完成任務、你按「通過」之後，對方就看得到這則。' : '雲端版開啟分享碼後，對方才能做任務。'}</div>
+        <div class="small" style="color:var(--lock)">${r.unlocked ? '已經解鎖，對方看得到這則。' : usingCloud() ? '對方完成任務、你按「通過」之後，對方就看得到這則。' : '雲端版開啟分享碼後，對方才能做任務。'}</div>
         ${r.unlocked ? '<button class="btn small secondary" id="relock">重新上鎖</button>' : ''}
       </div>${subCards.join('')}`;
     }
@@ -613,7 +622,7 @@ async function viewForm(mode, arg) {
             <button class="opt ${rec.task.mode !== 'photo' ? 'on' : ''}" data-taskmode="confirm">按「完成」就好</button>
             <button class="opt ${rec.task.mode === 'photo' ? 'on' : ''}" data-taskmode="photo">要上傳照片</button>
           </div>` : ''}
-        <div class="muted small">${CLOUD_ENABLED ? '給對方看：對方用分享碼就看得到。上鎖：只有你看得到。任務解鎖：對方完成任務、你按通過後才看得到。' : '現在是單人版，這個設定會先記下來；換成雲端版並開啟分享碼後，對方就會依這個設定看到內容。'}</div>
+        <div class="muted small">${usingCloud() ? '給對方看：對方用分享碼就看得到。上鎖：只有你看得到。任務解鎖：對方完成任務、你按通過後才看得到。' : (CLOUD_ENABLED ? '這個設定會先記下來；註冊登入並開啟分享碼後，對方就會依這個設定看到內容。' : '現在是單人版，這個設定會先記下來；換成雲端版並開啟分享碼後，對方就會依這個設定看到內容。')}</div>
       </div>
       <button class="btn" id="save">儲存紀錄</button>
     `;
@@ -746,6 +755,8 @@ function checkBackup(data) {
     if (r.photoIds && (!Array.isArray(r.photoIds) || !r.photoIds.every((x) => SAFE_ID.test(x)))) throw new Error('備份檔內容不對，沒有匯入');
     if (r.visibility && !VISIBILITY[r.visibility]) r.visibility = 'locked';
     if (r.status && !STATUS[r.status]) r.status = 'open';
+    if (r.date && !DATE_RE.test(r.date)) throw new Error('備份檔內容不對，沒有匯入');
+    if (r.followUps && (!Array.isArray(r.followUps) || !r.followUps.every((f) => f && DATE_RE.test(f.date) && SAFE_ID.test(String(f.id))))) throw new Error('備份檔內容不對，沒有匯入');
   }
   for (const p of data.photos || []) if (!p || !SAFE_ID.test(p.id)) throw new Error('備份檔內容不對，沒有匯入');
 }
@@ -832,16 +843,21 @@ async function viewSettings() {
   const persisted = await isPersisted();
   // 雲端模式下，看看這支手機裡有沒有還沒搬上去的舊紀錄
   let localCount = 0;
-  if (CLOUD_ENABLED) { try { localCount = (await LocalDB.allRecords()).length; } catch (e) { localCount = 0; } }
-  const migratedAt = CLOUD_ENABLED ? await LocalDB.getSetting('migratedAt', null) : null;
-  const shareCard = CLOUD_ENABLED ? await shareCardHtml() : '';
+  if (usingCloud()) { try { localCount = (await LocalDB.allRecords()).length; } catch (e) { localCount = 0; } }
+  const migratedAt = usingCloud() ? await LocalDB.getSetting('migratedAt', null) : null;
+  const shareCard = usingCloud() ? await shareCardHtml() : '';
   app.className = '';
   app.innerHTML = `
     <div class="topbar">
       <a class="icon-btn" href="#/" aria-label="返回">${ICON.back}</a>
       <h1>設定</h1>
     </div>
-    ${CLOUD_ENABLED ? `<div class="card">
+    ${isGuest() ? `<div class="card" style="background:var(--happy-bg);border-color:transparent">
+      <div class="bold" style="color:var(--happy-dark)">註冊或登入</div>
+      <div class="small" style="color:var(--happy-dark)">現在的紀錄只存在這支手機。註冊或登入後會自動搬上雲端，換手機不會不見，也能產生分享碼給另一半。</div>
+      <a class="btn small" href="#/login">註冊／登入</a>
+    </div>` : ''}
+    ${usingCloud() ? `<div class="card">
       <div class="bold">雲端帳號</div>
       <div class="muted">已登入 ${esc(CloudDB.currentEmail())}，紀錄和照片都存在雲端，換手機只要登入同一個帳號就能看到。目前共 ${all.length} 則紀錄。</div>
       <button class="btn small secondary" id="logout">登出</button>
@@ -854,7 +870,7 @@ async function viewSettings() {
     ${shareCard}
     <div class="card">
       <div class="bold">備份</div>
-      ${CLOUD_ENABLED
+      ${usingCloud()
         ? '<div class="muted">資料已經在雲端了，想多一份保險的話，也可以匯出備份存起來。</div>'
         : `<div class="muted">紀錄和照片只存在這支手機的瀏覽器裡。清除瀏覽器資料或換手機前，記得先匯出備份。目前共 ${all.length} 則紀錄。</div>
       <div class="small">${lastBackup ? `上次備份：${daysAgo(lastBackup) === 0 ? '今天' : daysAgo(lastBackup) + ' 天前'}` : '還沒有備份過'}</div>
@@ -877,12 +893,12 @@ async function viewSettings() {
     </div>
     <div class="card">
       <div class="bold" style="color:#9B2C1F">清除所有資料</div>
-      <div class="muted">${CLOUD_ENABLED ? '會刪掉雲端上你所有的紀錄和照片，沒辦法復原。' : '會刪掉這支手機上所有紀錄和照片，沒辦法復原。'}</div>
+      <div class="muted">${usingCloud() ? '會刪掉雲端上你所有的紀錄和照片，沒辦法復原。' : '會刪掉這支手機上所有紀錄和照片，沒辦法復原。'}</div>
       <button class="btn small danger" id="wipe">全部清除</button>
     </div>
   `;
 
-  if (CLOUD_ENABLED) bindShareCard();
+  if (usingCloud()) bindShareCard();
   document.getElementById('export').addEventListener('click', async () => {
     toast('準備備份中…');
     const photos = await DB.allPhotos();
@@ -948,22 +964,8 @@ async function viewSettings() {
   if (migrate) migrate.addEventListener('click', async () => {
     migrate.disabled = true;
     try {
-      const records = await LocalDB.allRecords();
-      const photos = await LocalDB.allPhotos();
-      let done = 0;
-      for (const p of photos) {
-        await CloudDB.putPhoto(p);
-        migrate.textContent = `搬照片中… ${++done} / ${photos.length}`;
-      }
-      done = 0;
-      for (const r of records) {
-        await CloudDB.putRecord(r);
-        migrate.textContent = `搬紀錄中… ${++done} / ${records.length}`;
-      }
-      const localCats = await LocalDB.getSetting('categories', null);
-      if (localCats) await CloudDB.setSetting('categories', [...new Set([...(await getCategories()), ...localCats])]);
-      await LocalDB.setSetting('migratedAt', Date.now());
-      toast(`已搬上雲端：${records.length} 則紀錄、${photos.length} 張照片`);
+      const n = await migrateLocalToCloud((t) => { migrate.textContent = t; });
+      toast(`已搬上雲端：${n.records} 則紀錄、${n.photos} 張照片`);
       viewSettings();
     } catch (e) {
       migrate.disabled = false;
@@ -1128,7 +1130,7 @@ function viewPartnerSettings() {
   });
 }
 
-function viewJoin(notice) {
+function viewJoin(notice, code = '') {
   app.className = '';
   app.innerHTML = `
     <div style="display:flex;flex-direction:column;align-items:center;gap:10px;text-align:center;margin-top:40px">
@@ -1139,7 +1141,7 @@ function viewJoin(notice) {
     ${notice ? `<div class="card" style="background:var(--progress-bg);border-color:transparent;color:var(--progress-ink)">${esc(notice)}</div>` : ''}
     <form id="join-form" style="display:flex;flex-direction:column;gap:14px">
       <div class="field"><label for="j-code">分享碼</label>
-        <input id="j-code" class="input" autocapitalize="characters" autocomplete="off" required style="letter-spacing:4px;text-transform:uppercase"></div>
+        <input id="j-code" class="input" autocapitalize="characters" autocomplete="off" required value="${esc(/^[A-Za-z0-9]{6,12}$/.test(code) ? code.toUpperCase() : '')}" style="letter-spacing:4px;text-transform:uppercase"></div>
       <div class="field"><label for="j-pass">密碼</label>
         <input id="j-pass" class="input" type="password" autocomplete="off" required></div>
       <div class="field"><label for="j-name">你的名字</label>
@@ -1198,9 +1200,9 @@ async function shareCardHtml() {
   }
   return `<div class="card" id="share-card">
     <div class="bold">分享給另一半</div>
-    <div class="muted">把網址、分享碼和密碼告訴對方。對方打開網址後按「用分享碼加入」。</div>
+    <div class="muted">按下面的按鈕複製邀請連結傳給對方，密碼另外告訴他。對方點連結就會看到加入畫面，分享碼已經幫他填好。</div>
     <div class="share-code">${esc(share.code)}</div>
-    <button class="btn small secondary" id="s-copy">複製邀請文字（不含密碼）</button>
+    <button class="btn small secondary" id="s-copy">複製邀請連結（不含密碼）</button>
     <div class="field"><label for="s-name">你的名字（對方會看到）</label>
       <div class="row"><input id="s-name" class="input grow" maxlength="20" value="${esc(share.owner_name)}"><button class="btn small" id="s-save-name">儲存</button></div></div>
     <div class="field"><label for="s-pass">改分享密碼</label>
@@ -1238,7 +1240,7 @@ function bindShareCard() {
   });
   if ($('s-copy')) $('s-copy').addEventListener('click', async () => {
     const code = document.querySelector('.share-code').textContent;
-    const text = `打開 ${location.origin + location.pathname}，按「用分享碼加入」，分享碼是 ${code}，密碼我另外告訴你。`;
+    const text = `點這個連結加入我們的紀錄：${location.origin + location.pathname}#/join/${code}（密碼我另外告訴你）`;
     try { await navigator.clipboard.writeText(text); toast('已複製'); } catch (e) { prompt('複製下面這段文字', text); }
   });
   if ($('s-save-name')) $('s-save-name').addEventListener('click', async () => {
@@ -1272,6 +1274,42 @@ function bindShareCard() {
   }));
 }
 
+// 把手機裡（試用時）的紀錄和照片搬上雲端；同一則紀錄重搬只會覆蓋，不會重複
+async function migrateLocalToCloud(progress = () => {}) {
+  const records = await LocalDB.allRecords();
+  const photos = await LocalDB.allPhotos();
+  let done = 0;
+  for (const p of photos) {
+    await CloudDB.putPhoto(p);
+    progress(`搬照片中… ${++done} / ${photos.length}`);
+  }
+  done = 0;
+  for (const r of records) {
+    await CloudDB.putRecord(r);
+    progress(`搬紀錄中… ${++done} / ${records.length}`);
+  }
+  const localCats = await LocalDB.getSetting('categories', null);
+  if (localCats) await CloudDB.setSetting('categories', [...new Set([...(await getCategories()), ...localCats])]);
+  await LocalDB.setSetting('migratedAt', Date.now());
+  return { records: records.length, photos: photos.length };
+}
+
+// 自己的帳號登入後：記住這支手機登入過，第一次登入時自動把試用的紀錄搬上雲端
+async function afterOwnerLogin() {
+  if (!usingCloud() || CloudDB.isAnonymous() || isPartner()) return;
+  await LocalDB.setSetting('hasAccount', true);
+  if (await LocalDB.getSetting('migratedAt', null)) return;
+  const count = (await LocalDB.allRecords()).length;
+  if (!count) { await LocalDB.setSetting('migratedAt', Date.now()); return; }
+  toast(`正在把手機裡的 ${count} 則紀錄搬上雲端…`);
+  try {
+    const n = await migrateLocalToCloud();
+    toast(`已搬上雲端：${n.records} 則紀錄、${n.photos} 張照片`);
+  } catch (e) {
+    toast('搬上雲端失敗，可以到設定頁再試一次：' + e.message);
+  }
+}
+
 // ---------- 登入（雲端模式） ----------
 function viewLogin(mode = 'signin') {
   app.className = '';
@@ -1297,7 +1335,9 @@ function viewLogin(mode = 'signin') {
     <div id="login-msg" class="muted" style="text-align:center"></div>
     <button class="btn secondary small" id="switch">${isUp ? '已經有帳號？登入' : '第一次使用？建立帳號'}</button>
     <a class="btn secondary small" href="#/join">我是另一半，用分享碼加入</a>
+    <a class="btn secondary small" href="#/" id="try-first" hidden>先不登入，直接開始用</a>
   `;
+  hasAccountHere().then((has) => { const b = document.getElementById('try-first'); if (b && !has) b.hidden = false; });
   document.getElementById('switch').addEventListener('click', () => viewLogin(isUp ? 'signin' : 'signup'));
   document.getElementById('google-btn').addEventListener('click', async () => {
     try { await CloudDB.signInWithGoogle(); } catch (e) {
@@ -1325,6 +1365,7 @@ function viewLogin(mode = 'signin') {
       } else {
         await CloudDB.signIn(email, password);
       }
+      await afterOwnerLogin();
       go('#/');
       route();
     } catch (e) {
@@ -1348,14 +1389,18 @@ async function route() {
   app.className = '';
   window.scrollTo(0, 0);
   try {
-    if (CLOUD_ENABLED && !CloudDB.isSignedIn()) { renderTabbar(null); if (page === 'join') viewJoin(); else viewLogin(); return; }
+    if (isGuest()) {
+      if (page === 'join') { renderTabbar(null); viewJoin('', arg); return; }
+      // 登入過的手機登出後回到登入畫面；新使用者可以直接試用（資料先存在手機）
+      if (page === 'login' || await hasAccountHere()) { renderTabbar(null); viewLogin(); return; }
+    }
     // 臨時帳號但不是（或已經不是）另一半：分享被停止、被移除，或加入沒成功
     if (CLOUD_ENABLED && CloudDB.isAnonymous() && !isPartner()) {
       renderTabbar(null);
-      viewJoin(page === 'join' ? '' : '目前沒有閱讀權限，可能是分享已經停止或被移除了。請再輸入一次分享碼和密碼。');
+      viewJoin(page === 'join' ? '' : '目前沒有閱讀權限，可能是分享已經停止或被移除了。請再輸入一次分享碼和密碼。', page === 'join' ? arg : '');
       return;
     }
-    if (page === 'login' || page === 'join') { go('#/'); return; }
+    if (!isGuest() && (page === 'login' || page === 'join')) { go('#/'); return; }
     if (isPartner()) {
       if (!page) { renderTabbar('home'); await viewPartnerHome(); }
       else if (page === 'list' && TYPES[arg] && arg !== 'fight') { renderTabbar(arg); await viewList(arg); }
@@ -1400,7 +1445,7 @@ window.addEventListener('hashchange', route);
 requestPersist();
 (async () => {
   if (CLOUD_ENABLED) {
-    try { await CloudDB.loadSession(); } catch (e) { toast('連不上雲端：' + e.message); }
+    try { await CloudDB.loadSession(); await afterOwnerLogin(); } catch (e) { toast('連不上雲端：' + e.message); }
   }
   route();
 })();

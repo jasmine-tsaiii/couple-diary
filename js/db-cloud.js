@@ -212,5 +212,7 @@ const CloudDB = CLOUD_ENABLED ? (() => {
   };
 })() : null;
 
-// 畫面程式統一用 DB：有填雲端設定就用雲端，否則用手機本機
-const DB = CLOUD_ENABLED ? CloudDB : LocalDB;
+// 畫面程式統一用 DB：登入雲端帳號（或用分享碼加入）時用雲端，
+// 還沒登入的新使用者（試用中）和沒填雲端設定時用手機本機
+const usingCloud = () => CLOUD_ENABLED && CloudDB.isSignedIn();
+const DB = new Proxy({}, { get: (_, key) => (usingCloud() ? CloudDB : LocalDB)[key] });
