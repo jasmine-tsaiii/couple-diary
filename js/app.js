@@ -34,6 +34,11 @@ const VISIBILITY = {
 
 const DEFAULT_CATEGORIES = ['溝通', '價值觀', '金錢', '家人朋友', '時間分配', '生活習慣', '信任/安全感', '其他'];
 const MAX_EMOJIS = 3;
+// 各欄位的上限：畫面上擋，雲端資料庫也有對應的檢查
+const LIMITS = {
+  name: 20, title: 60, description: 2000, fightText: 1000, resolution: 500, followUp: 500,
+  tag: 12, tagsPerRecord: 10, photosPerRecord: 9, category: 12, categories: 30, task: 100, taskNote: 500,
+};
 const BACKUP_REMIND_DAYS = 14;
 
 const ICON = {
@@ -138,6 +143,15 @@ function compressImage(file, maxSide = 1280, quality = 0.82) {
   });
 }
 
+// 你和伴侶的名字（沒填時用「我」和「對方」）
+let NAMES = { me: '', partner: '' };
+async function loadNames() {
+  try { NAMES = { me: '', partner: '', ...(await DB.getSetting('names', {})) }; } catch (e) { NAMES = { me: '', partner: '' }; }
+}
+const myName = () => NAMES.me || '我';
+const partnerName = () => NAMES.partner || '對方';
+const diaryTitle = () => (NAMES.me && NAMES.partner ? `${NAMES.me}和${NAMES.partner}的紀錄` : '我們的紀錄');
+
 async function getCategories() {
   return DB.getSetting('categories', DEFAULT_CATEGORIES.slice());
 }
@@ -176,6 +190,7 @@ async function viewHome() {
   const recent = all.slice().sort(byDateDesc).slice(0, 5);
   const lastBackup = await DB.getSetting('lastBackupAt', null);
   const needBackup = !usingCloud() && all.length > 0 && (!lastBackup || Date.now() - lastBackup > BACKUP_REMIND_DAYS * 86400000);
+  const askNames = !NAMES.me && !NAMES.partner && !(await DB.getSetting('namesSkipped', false));
   let pending = [];
   if (usingCloud()) { try { pending = await CloudDB.submissions({ status: 'pending' }); } catch (e) { pending = []; } }
   const isIOS = /iphone|ipad|ipod/i.test(navigator.userAgent);
@@ -197,10 +212,19 @@ async function viewHome() {
     <div class="row between">
       <div>
         <div class="hello">今天是 ${longDate(today())}</div>
-        <h1 class="title-xl">我們的紀錄</h1>
+        <h1 class="title-xl">${esc(diaryTitle())}</h1>
       </div>
       <a class="icon-btn" href="#/settings" aria-label="設定">${ICON.gear}</a>
     </div>
+    ${askNames ? `<div class="card" id="names-card" style="gap:10px">
+      <div class="bold">先認識一下你們</div>
+      <div class="small muted">填上名字，紀錄裡就會用你們的名字，例如「${'小美'}的想法」。之後也可以在設定頁改。</div>
+      <div class="grid2">
+        <div class="field"><label for="n-me">你的名字</label><input id="n-me" class="input" maxlength="${LIMITS.name}"></div>
+        <div class="field"><label for="n-partner">伴侶的名字</label><input id="n-partner" class="input" maxlength="${LIMITS.name}"></div>
+      </div>
+      <div class="btn-row"><button class="btn small" id="n-save">儲存</button><button class="btn small secondary" id="n-skip">之後再說</button></div>
+    </div>` : ''}
     ${needBackup ? `<a class="card" href="#/settings" style="background:var(--progress-bg);border-color:transparent;gap:4px">
       <div class="bold" style="color:var(--progress-ink)">該備份囉</div>
       <div class="small" style="color:var(--progress-ink)">${lastBackup ? `上次備份是 ${daysAgo(lastBackup)} 天前` : '還沒有備份過'}，點這裡到設定頁匯出備份，再存到 iCloud 雲碟或 Google 雲端硬碟。</div>
@@ -230,6 +254,20 @@ async function viewHome() {
     <div class="section-title">最近的紀錄</div>
     <div class="list" id="recent">${recent.length ? '' : `<div class="empty">還沒有任何紀錄<a class="btn small" href="#/new/happy">寫下第一個美好時刻</a></div>`}</div>
   `;
+  if (askNames) {
+    document.getElementById('n-save').addEventListener('click', async () => {
+      const me = document.getElementById('n-me').value.trim();
+      const partner = document.getElementById('n-partner').value.trim();
+      if (!me || !partner) { toast('兩個名字都填一下'); return; }
+      await DB.setSetting('names', { me, partner });
+      await loadNames();
+      viewHome();
+    });
+    document.getElementById('n-skip').addEventListener('click', async () => {
+      await DB.setSetting('namesSkipped', true);
+      document.getElementById('names-card').remove();
+    });
+  }
   const box = document.getElementById('recent');
   for (const r of recent) box.appendChild(await listItem(r));
 }
@@ -406,8 +444,8 @@ async function viewDetail(id) {
   if (r.type === 'fight') {
     const s = r.status || 'open';
     const fu = r.followUps || [];
-    const myLabel = partner ? `${esc(ownerName())}的想法` : '我的想法';
-    const theirLabel = partner ? '你的想法（對方寫的）' : '對方的想法';
+    const myLabel = partner ? `${esc(ownerName())}的想法` : `${esc(myName())}的想法`;
+    const theirLabel = partner ? `${esc(CloudDB.partnerInfo().name)}的想法（${esc(ownerName())}寫的）` : `${esc(partnerName())}的想法`;
     fightPart = `
       ${partner
         ? `<div class="field"><div class="label">狀態</div><span class="badge ${STATUS[s].cls}" style="align-self:flex-start">${STATUS[s].label}</span></div>
@@ -415,7 +453,7 @@ async function viewDetail(id) {
         : `<div class="field"><div class="label">狀態</div>
         <div class="opts cols-3">${Object.entries(STATUS).map(([k, v]) => `<button class="opt ${k === s ? 'on' : ''}" data-status="${k}">${v.label}</button>`).join('')}</div>
       </div>
-      ${s === 'resolved' ? `<div class="field"><label for="resolution">我們怎麼解決的</label><textarea id="resolution" class="textarea" style="min-height:70px" placeholder="例如：隔週輪流陪家人">${esc(r.resolution || '')}</textarea></div>` : ''}`}
+      ${s === 'resolved' ? `<div class="field"><label for="resolution">我們怎麼解決的</label><textarea id="resolution" class="textarea" maxlength="${LIMITS.resolution}" style="min-height:70px" placeholder="例如：隔週輪流陪家人">${esc(r.resolution || '')}</textarea></div>` : ''}`}
       ${r.reason ? `<div class="card"><div class="small bold" style="color:var(--fight)">原因</div><p class="prose">${esc(r.reason)}</p></div>` : ''}
       ${r.myView || r.theirView ? `<div class="grid2">
         <div class="card"><div class="small bold" style="color:var(--fight)">${myLabel}</div><p class="prose" style="font-size:14px">${esc(r.myView || '—')}</p></div>
@@ -431,7 +469,7 @@ async function viewDetail(id) {
       </div>
       ${partner ? '' : `<div class="field"><label for="fu-text">新增後續</label>
         <input id="fu-date" class="input" type="date" value="${today()}" aria-label="後續日期">
-        <div class="row"><input id="fu-text" class="input grow" placeholder="發生了什麼新進展？"><button class="btn small" id="fu-add">加入</button></div>
+        <div class="row"><input id="fu-text" class="input grow" maxlength="${LIMITS.followUp}" placeholder="發生了什麼新進展？"><button class="btn small" id="fu-add">加入</button></div>
       </div>`}`;
   }
 
@@ -572,7 +610,7 @@ async function viewForm(mode, arg) {
         ${Object.entries(TYPES).map(([k, t]) => `<button class="${k === rec.type ? 'on' : ''}" data-type="${k}">${t.label}</button>`).join('')}
       </div>` : ''}
       <div class="field"><label for="f-title">${rec.type === 'fight' ? '議題' : '標題'}</label>
-        <input id="f-title" class="input" value="${esc(rec.title)}" placeholder="${rec.type === 'happy' ? '例如：一起去看海' : rec.type === 'cloud' ? '例如：約好的時間又遲到了' : '例如：回訊息太慢'}" maxlength="60"></div>
+        <input id="f-title" class="input" value="${esc(rec.title)}" placeholder="${rec.type === 'happy' ? '例如：一起去看海' : rec.type === 'cloud' ? '例如：約好的時間又遲到了' : '例如：回訊息太慢'}" maxlength="${LIMITS.title}"></div>
       <div class="field"><label for="f-date">日期</label>
         <input id="f-date" class="input" type="date" value="${esc(rec.date)}"></div>
       ${rec.type === 'fight' ? `
@@ -582,16 +620,16 @@ async function viewForm(mode, arg) {
             <button class="chip dashed" id="add-cat">＋ 自訂</button>
           </div></div>
         <div class="field"><label for="f-reason">原因</label>
-          <textarea id="f-reason" class="textarea" style="min-height:70px" placeholder="這次吵架是怎麼開始的？">${esc(rec.reason)}</textarea></div>
-        <div class="field"><label for="f-my">我的想法</label>
-          <textarea id="f-my" class="textarea" style="min-height:70px">${esc(rec.myView)}</textarea></div>
-        <div class="field"><label for="f-their">對方的想法</label>
-          <textarea id="f-their" class="textarea" style="min-height:70px">${esc(rec.theirView)}</textarea></div>
+          <textarea id="f-reason" class="textarea" maxlength="${LIMITS.fightText}" style="min-height:70px" placeholder="這次吵架是怎麼開始的？">${esc(rec.reason)}</textarea></div>
+        <div class="field"><label for="f-my">${esc(myName())}的想法</label>
+          <textarea id="f-my" class="textarea" maxlength="${LIMITS.fightText}" style="min-height:70px">${esc(rec.myView)}</textarea></div>
+        <div class="field"><label for="f-their">${esc(partnerName())}的想法</label>
+          <textarea id="f-their" class="textarea" maxlength="${LIMITS.fightText}" style="min-height:70px">${esc(rec.theirView)}</textarea></div>
         <div class="field"><div class="label">狀態</div>
           <div class="opts cols-3">${Object.entries(STATUS).map(([k, v]) => `<button class="opt ${k === rec.status ? 'on' : ''}" data-status="${k}">${v.label}</button>`).join('')}</div></div>
       ` : `
         <div class="field"><label for="f-desc">描述</label>
-          <textarea id="f-desc" class="textarea" placeholder="發生了什麼？">${esc(rec.description)}</textarea></div>
+          <textarea id="f-desc" class="textarea" maxlength="${LIMITS.description}" placeholder="發生了什麼？">${esc(rec.description)}</textarea></div>
       `}
       <div class="field"><div class="label">照片${rec.type === 'happy' ? '（沒放會用預設圖）' : '（可不放）'}</div>
         <div class="photos">
@@ -611,12 +649,12 @@ async function viewForm(mode, arg) {
         <div class="chips">
           ${tagList.map((t) => `<button class="chip ${rec.tags.includes(t) ? 'on' : ''}" data-tag="${esc(t)}">#${esc(t)}</button>`).join('')}
         </div>
-        <input id="f-tag" class="input" placeholder="輸入新標籤，按 Enter 加入" enterkeyhint="done"></div>
+        <input id="f-tag" class="input" maxlength="${LIMITS.tag}" placeholder="輸入新標籤，按 Enter 加入" enterkeyhint="done"></div>
       <div class="field"><div class="label">誰可以看</div>
         <div class="opts cols-3">${Object.entries(VISIBILITY).map(([k, v]) => `<button class="opt ${k === rec.visibility ? 'on' : ''}" data-vis="${k}">${v}</button>`).join('')}</div>
         ${rec.visibility === 'task' ? `
           <label for="f-task" class="muted">對方要完成的任務</label>
-          <input id="f-task" class="input" value="${esc(rec.task.text)}" placeholder="例如：帶我去吃早午餐，拍一張合照給我">
+          <input id="f-task" class="input" maxlength="${LIMITS.task}" value="${esc(rec.task.text)}" placeholder="例如：帶我去吃早午餐，拍一張合照給我">
           <div class="muted">完成方式</div>
           <div class="opts cols-2">
             <button class="opt ${rec.task.mode !== 'photo' ? 'on' : ''}" data-taskmode="confirm">按「完成」就好</button>
@@ -641,8 +679,9 @@ async function viewForm(mode, arg) {
     app.querySelectorAll('[data-cat]').forEach((b) => b.addEventListener('click', () => { collect(); rec.category = rec.category === b.dataset.cat ? '' : b.dataset.cat; render(); }));
     const addCat = document.getElementById('add-cat');
     if (addCat) addCat.addEventListener('click', async () => {
-      const name = (prompt('新分類的名字') || '').trim();
+      const name = (prompt(`新分類的名字（最多 ${LIMITS.category} 個字）`) || '').trim().slice(0, LIMITS.category);
       if (!name) return;
+      if (cats.length >= LIMITS.categories) { toast(`分類最多 ${LIMITS.categories} 個`); return; }
       collect();
       if (!cats.includes(name)) { cats.push(name); await DB.setSetting('categories', cats); }
       rec.category = name;
@@ -686,8 +725,9 @@ async function viewForm(mode, arg) {
     document.getElementById('f-tag').addEventListener('keydown', (ev) => {
       if (ev.key !== 'Enter' || ev.isComposing) return;
       ev.preventDefault();
-      const t = ev.target.value.trim().replace(/^#+/, '');
+      const t = ev.target.value.trim().replace(/^#+/, '').slice(0, LIMITS.tag);
       if (!t) return;
+      if (!rec.tags.includes(t) && rec.tags.length >= LIMITS.tagsPerRecord) { toast(`標籤最多 ${LIMITS.tagsPerRecord} 個`); return; }
       collect();
       if (!extraTags.includes(t)) extraTags.push(t);
       if (!rec.tags.includes(t)) rec.tags.push(t);
@@ -697,8 +737,11 @@ async function viewForm(mode, arg) {
     app.querySelectorAll('[data-taskmode]').forEach((b) => b.addEventListener('click', () => { collect(); rec.task.mode = b.dataset.taskmode; render(); }));
     document.getElementById('f-photos').addEventListener('change', async (ev) => {
       collect();
-      const files = [...ev.target.files];
+      let files = [...ev.target.files];
       if (!files.length) return;
+      const room = LIMITS.photosPerRecord - rec.photoIds.length;
+      if (room <= 0) { toast(`每則最多 ${LIMITS.photosPerRecord} 張照片`); return; }
+      if (files.length > room) { toast(`每則最多 ${LIMITS.photosPerRecord} 張，只加入前 ${room} 張`); files = files.slice(0, room); }
       toast('照片處理中…');
       for (const f of files) {
         try {
@@ -786,8 +829,8 @@ async function buildReadableExport() {
       const st = STATUS[r.status || 'open'].label;
       fight = `<div class="meta">分類：${esc(r.category || '未分類')}・狀態：${st}</div>
         ${r.reason ? `<h4>原因</h4><p>${esc(r.reason)}</p>` : ''}
-        ${r.myView ? `<h4>我的想法</h4><p>${esc(r.myView)}</p>` : ''}
-        ${r.theirView ? `<h4>對方的想法</h4><p>${esc(r.theirView)}</p>` : ''}
+        ${r.myView ? `<h4>${esc(myName())}的想法</h4><p>${esc(r.myView)}</p>` : ''}
+        ${r.theirView ? `<h4>${esc(partnerName())}的想法</h4><p>${esc(r.theirView)}</p>` : ''}
         ${r.resolution ? `<h4>我們怎麼解決的</h4><p>${esc(r.resolution)}</p>` : ''}
         ${(r.followUps || []).length ? `<h4>後續</h4><ul>${r.followUps.map((f) => `<li><b>${shortDate(f.date)}</b> ${esc(f.text)}</li>`).join('')}</ul>` : ''}`;
     }
@@ -829,7 +872,7 @@ p{margin:6px 0;white-space:pre-wrap}ul{margin:4px 0;padding-left:20px}
 .imgs img{width:calc(50% - 4px);border-radius:12px;object-fit:cover;max-height:320px}
 @media print{body{background:#fff}article{border-color:#ddd}}
 </style></head><body><main>
-<h1>我們的紀錄</h1>
+<h1>${esc(diaryTitle())}</h1>
 <div class="sub">匯出於 ${longDate(today())}・共 ${all.length} 則紀錄</div>
 ${section('happy')}${section('cloud')}${section('fight')}
 ${all.length ? '' : '<p>還沒有任何紀錄。</p>'}
@@ -869,6 +912,14 @@ async function viewSettings() {
     </div>` : ''}` : ''}
     ${shareCard}
     <div class="card">
+      <div class="bold">我們的名字</div>
+      <div class="grid2">
+        <div class="field"><label for="set-me">你的名字</label><input id="set-me" class="input" maxlength="${LIMITS.name}" value="${esc(NAMES.me)}"></div>
+        <div class="field"><label for="set-partner">伴侶的名字</label><input id="set-partner" class="input" maxlength="${LIMITS.name}" value="${esc(NAMES.partner)}"></div>
+      </div>
+      <button class="btn small" id="save-names">儲存名字</button>
+    </div>
+    <div class="card">
       <div class="bold">備份</div>
       ${usingCloud()
         ? '<div class="muted">資料已經在雲端了，想多一份保險的話，也可以匯出備份存起來。</div>'
@@ -889,7 +940,7 @@ async function viewSettings() {
     <div class="card">
       <div class="bold">吵架議題分類</div>
       <div class="chips">${cats.map((c) => `<span class="chip" style="display:inline-flex;align-items:center;gap:6px">${esc(c)}<button data-rm-cat="${esc(c)}" aria-label="刪除 ${esc(c)}" style="border:none;background:none;padding:0;display:flex">${ICON.x}</button></span>`).join('')}</div>
-      <div class="row"><input id="new-cat" class="input grow" placeholder="新增分類"><button class="btn small" id="add-cat">加入</button></div>
+      <div class="row"><input id="new-cat" class="input grow" maxlength="${LIMITS.category}" placeholder="新增分類"><button class="btn small" id="add-cat">加入</button></div>
     </div>
     <div class="card">
       <div class="bold" style="color:#9B2C1F">清除所有資料</div>
@@ -899,6 +950,11 @@ async function viewSettings() {
   `;
 
   if (usingCloud()) bindShareCard();
+  document.getElementById('save-names').addEventListener('click', async () => {
+    await DB.setSetting('names', { me: document.getElementById('set-me').value.trim(), partner: document.getElementById('set-partner').value.trim() });
+    await loadNames();
+    toast('已儲存名字');
+  });
   document.getElementById('export').addEventListener('click', async () => {
     toast('準備備份中…');
     const photos = await DB.allPhotos();
@@ -940,8 +996,9 @@ async function viewSettings() {
   });
 
   const addCat = async () => {
-    const name = document.getElementById('new-cat').value.trim();
+    const name = document.getElementById('new-cat').value.trim().slice(0, LIMITS.category);
     if (!name || cats.includes(name)) return;
+    if (cats.length >= LIMITS.categories) { toast(`分類最多 ${LIMITS.categories} 個`); return; }
     cats.push(name);
     await DB.setSetting('categories', cats);
     viewSettings();
@@ -1193,8 +1250,8 @@ async function shareCardHtml() {
     return `<div class="card" id="share-card">
       <div class="bold">分享給另一半</div>
       <div class="muted">產生分享碼和密碼給對方，對方就能看你「給對方看」和任務解鎖後的紀錄，也能做任務，但不能修改任何東西。</div>
-      <div class="field"><label for="s-name">你的名字（對方會看到）</label><input id="s-name" class="input" maxlength="20"></div>
-      <div class="field"><label for="s-pass">分享密碼（至少 6 個字，不要用你的登入密碼）</label><input id="s-pass" class="input" type="password" autocomplete="new-password" minlength="6"></div>
+      <div class="field"><label for="s-name">你的名字（對方會看到）</label><input id="s-name" class="input" maxlength="${LIMITS.name}" value="${esc(NAMES.me)}"></div>
+      <div class="field"><label for="s-pass">分享密碼（至少 6 個字，不要用你的登入密碼）</label><input id="s-pass" class="input" type="password" autocomplete="new-password" minlength="6" maxlength="72"></div>
       <button class="btn small" id="s-create">產生分享碼</button>
     </div>`;
   }
@@ -1206,7 +1263,7 @@ async function shareCardHtml() {
     <div class="field"><label for="s-name">你的名字（對方會看到）</label>
       <div class="row"><input id="s-name" class="input grow" maxlength="20" value="${esc(share.owner_name)}"><button class="btn small" id="s-save-name">儲存</button></div></div>
     <div class="field"><label for="s-pass">改分享密碼</label>
-      <div class="row"><input id="s-pass" class="input grow" type="password" autocomplete="new-password" minlength="6" placeholder="新密碼"><button class="btn small" id="s-save-pass">更改</button></div></div>
+      <div class="row"><input id="s-pass" class="input grow" type="password" autocomplete="new-password" minlength="6" maxlength="72" placeholder="新密碼"><button class="btn small" id="s-save-pass">更改</button></div></div>
     <div class="field"><div class="label">已加入的人</div>
       ${partners.length ? partners.map((p) => `<div class="row between"><span>${esc(p.name)}<span class="muted small">・${shortDate(p.joined_at.slice(0, 10))} 加入</span></span>
         <button class="btn small secondary" data-rm-partner="${esc(p.uid)}" data-name="${esc(p.name)}">移除</button></div>`).join('') : '<div class="muted">還沒有人加入</div>'}
@@ -1288,6 +1345,8 @@ async function migrateLocalToCloud(progress = () => {}) {
     await CloudDB.putRecord(r);
     progress(`搬紀錄中… ${++done} / ${records.length}`);
   }
+  const localNames = await LocalDB.getSetting('names', null);
+  if (localNames && (localNames.me || localNames.partner) && !(await CloudDB.getSetting('names', null))) await CloudDB.setSetting('names', localNames);
   const localCats = await LocalDB.getSetting('categories', null);
   if (localCats) await CloudDB.setSetting('categories', [...new Set([...(await getCategories()), ...localCats])]);
   await LocalDB.setSetting('migratedAt', Date.now());
@@ -1401,6 +1460,7 @@ async function route() {
       return;
     }
     if (!isGuest() && (page === 'login' || page === 'join')) { go('#/'); return; }
+    await loadNames();
     if (isPartner()) {
       if (!page) { renderTabbar('home'); await viewPartnerHome(); }
       else if (page === 'list' && TYPES[arg] && arg !== 'fight') { renderTabbar(arg); await viewList(arg); }

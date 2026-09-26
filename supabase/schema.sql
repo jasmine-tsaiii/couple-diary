@@ -30,6 +30,12 @@ create table if not exists public.settings (
   primary key (owner, key)
 );
 
+-- 大小上限：一則紀錄的文字內容最多約 100 KB（照片另外存），一個設定最多約 20 KB
+alter table public.records drop constraint if exists records_data_size;
+alter table public.records add constraint records_data_size check (octet_length(data::text) <= 100000) not valid;
+alter table public.settings drop constraint if exists settings_value_size;
+alter table public.settings add constraint settings_value_size check (octet_length(value::text) <= 20000) not valid;
+
 -- 是不是用 email 或 Google 登入的正式帳號（對方用分享碼加入時是臨時帳號）
 create or replace function public.is_real_user() returns boolean
 language sql stable as $$
@@ -153,7 +159,9 @@ begin
   if public.my_owner() is not null then raise exception '另一半的身分不能建立分享碼'; end if;
   if v_code !~ '^[A-Z0-9]{6,12}$' then raise exception '分享碼格式不對'; end if;
   if char_length(v_name) > 20 then raise exception '名字最多 20 個字'; end if;
-  if p_password is not null and char_length(p_password) < 6 then raise exception '密碼至少 6 個字'; end if;
+  if p_password is not null and (char_length(p_password) < 6 or octet_length(p_password) > 72) then
+    raise exception '密碼要 6 到 72 個字元';
+  end if;
 
   if exists (select 1 from public.shares where owner = auth.uid()) then
     update public.shares set
