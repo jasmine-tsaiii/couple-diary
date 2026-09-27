@@ -755,6 +755,26 @@ function showA2hs() {
   });
 }
 
+// 刪除這類救不回來的動作：跳一個確認視窗，按紅色按鈕才執行（不用打字，簡體輸入法打「删除」也不會卡住）
+function confirmDanger(title, text, okLabel) {
+  return new Promise((resolve) => {
+    const box = document.createElement('div');
+    box.className = 'celebrate danger-dlg';
+    box.innerHTML = `<div class="celebrate-box" role="alertdialog" aria-modal="true" aria-label="${esc(title)}">
+      <h2 style="font-size:20px">${esc(title)}</h2>
+      <div class="muted" style="white-space:pre-line;text-align:left">${esc(text)}</div>
+      <button class="btn danger-solid" id="danger-ok">${esc(okLabel)}</button>
+      <button class="btn secondary" id="danger-cancel">取消</button>
+    </div>`;
+    const done = (v) => { box.remove(); resolve(v); };
+    document.body.appendChild(box);
+    box.querySelector('#danger-ok').addEventListener('click', () => done(true));
+    box.querySelector('#danger-cancel').addEventListener('click', () => done(false));
+    box.addEventListener('click', (ev) => { if (ev.target === box) done(false); });
+    box.querySelector('#danger-cancel').focus();
+  });
+}
+
 // ---------- 6 位數字的分享密碼：一個輸入框疊在 6 個格子上（可以貼上、自動填入） ----------
 const SHARE_PASS_RE = /^\d{6}$/;
 function digitBoxes(id, label) {
@@ -2434,8 +2454,7 @@ async function viewSettings() {
     // 另一半寫的紀錄也存在你的空間裡，刪帳號會一起刪掉，先講清楚
     let others = 0;
     try { others = (await DB.allRecords()).filter((r) => !isMine(r)).length; } catch (e) { others = 0; }
-    const typed = prompt(`刪除帳號會刪掉雲端上所有紀錄、照片、分享和這個帳號本身，沒辦法復原。建議先匯出備份。${others ? `\n${partnerName()}寫的 ${others} 則紀錄也會一起刪掉，可以先請${partnerName()}到設定頁「匯出我寫的紀錄」。` : ''}\n確定的話請輸入「刪除」兩個字：`);
-    if ((typed || '').trim() !== '刪除') return;
+    if (!(await confirmDanger('永久刪除帳號？', `會刪掉雲端上所有紀錄、照片、分享和這個帳號本身，沒辦法復原。建議先匯出備份。${others ? `\n\n${partnerName()}寫的 ${others} 則紀錄也會一起刪掉，可以先請${partnerName()}到設定頁「匯出我寫的紀錄」。` : ''}`, '永久刪除帳號'))) return;
     withBusy(delAcc, '刪除中…', async () => {
       try { await CloudDB.deleteShare(); } catch (e) { /* 沒有分享碼就略過 */ }
       clearDraft();
@@ -2506,9 +2525,8 @@ async function viewEnd(keepUid = '') {
     });
   });
   const delBtn = document.getElementById('end-delete');
-  delBtn.addEventListener('click', () => {
-    const typed = prompt(`會刪掉這段關係的 ${all.length} 則紀錄和照片（包含${other}寫的），沒辦法復原。\n確定的話請輸入「刪除」兩個字：`);
-    if ((typed || '').trim() !== '刪除') return;
+  delBtn.addEventListener('click', async () => {
+    if (!(await confirmDanger('刪除這段關係的紀錄？', `會刪掉這段關係的 ${all.length} 則紀錄和照片（包含${other}寫的），沒辦法復原。`, '永久刪除'))) return;
     withBusy(delBtn, '刪除中…', async () => {
       // 先刪你資料夾裡的照片和任務照片（紀錄刪掉後就找不到了）
       for (const r of await DB.allRecords()) {
@@ -2537,9 +2555,8 @@ async function viewArchive() {
   const box = document.getElementById('archive-list');
   for (const r of list) box.appendChild(await listItem(r));
   const purge = document.getElementById('purge-archive');
-  if (purge) purge.addEventListener('click', () => {
-    const typed = prompt(`會永久刪除 ${list.length} 則封存的紀錄和照片，沒辦法復原。\n確定的話請輸入「刪除」兩個字：`);
-    if ((typed || '').trim() !== '刪除') return;
+  if (purge) purge.addEventListener('click', async () => {
+    if (!(await confirmDanger('刪除封存的回憶？', `會永久刪除 ${list.length} 則封存的紀錄和照片，沒辦法復原。`, '永久刪除'))) return;
     withBusy(purge, '刪除中…', async () => {
       for (const r of list) for (const pid of r.photoIds || []) if (CloudDB.photoIsMine(pid)) { try { await DB.deletePhoto(pid); } catch (e) { /* 之後再清 */ } }
       await CloudDB.deleteArchive();
@@ -2917,6 +2934,55 @@ function viewJoin(notice, code = '') {
 }
 
 // 另一半送出加入要求後，等主人同意
+// 新登入的正式帳號：還沒選過身分、沒有紀錄、沒有分享碼，就要先選（結果記在雲端設定 role）
+const roleCache = new Map();
+async function needsRoleChoice() {
+  const uid = CloudDB.myId();
+  if (roleCache.has(uid)) return roleCache.get(uid);
+  let need = false;
+  try {
+    const role = await DB.getSetting('role', null);
+    let fresh = '';
+    try { fresh = localStorage.getItem('newOwnerEmail') || ''; } catch (e) { fresh = ''; }
+    if (!role && fresh && fresh === (CloudDB.currentEmail() || '').toLowerCase()) {
+      await DB.setSetting('role', 'owner');
+      try { localStorage.removeItem('newOwnerEmail'); } catch (e) { /* 略過 */ }
+    } else if (!role) {
+      const [recs, share] = await Promise.all([DB.allRecords(), CloudDB.getShare().catch(() => null)]);
+      need = !recs.length && !share;
+      if (!need) await DB.setSetting('role', 'owner');
+    }
+  } catch (e) { need = false; }
+  roleCache.set(uid, need);
+  return need;
+}
+function viewRoleChoice() {
+  app.className = '';
+  app.innerHTML = `
+    <div style="display:flex;flex-direction:column;align-items:center;gap:10px;text-align:center;margin-top:32px">
+      ${mascotHtml('happy', 120)}
+      <h1 class="title-xl">歡迎！你是哪一位？</h1>
+      <div class="muted">${esc(CloudDB.currentEmail() || '')}</div>
+    </div>
+    <button class="card role-card" id="role-owner">
+      <div class="bold" style="font-size:17px">我要開始寫我們的日記</div>
+      <div class="small muted">你會是這本日記的主人，之後可以邀請另一半加入。</div>
+    </button>
+    <button class="card role-card" id="role-partner">
+      <div class="bold" style="font-size:17px">我是另一半，要加入對方的日記</div>
+      <div class="small muted">對方已經在用啾啾日記、給了你分享碼。之前綁定過帳號的話，選這個再輸入一次分享碼，之前寫的紀錄都會回來。</div>
+    </button>
+    <button class="text-link small" id="role-logout" style="background:none;border:none;cursor:pointer">登出，換別的帳號</button>
+  `;
+  document.getElementById('role-owner').addEventListener('click', async () => {
+    await DB.setSetting('role', 'owner');
+    roleCache.set(CloudDB.myId(), false);
+    go('#/'); route();
+  });
+  document.getElementById('role-partner').addEventListener('click', () => { go('#/join'); });
+  document.getElementById('role-logout').addEventListener('click', async () => { await CloudDB.signOut(); roleCache.clear(); go('#/login'); route(); });
+}
+
 function viewWaitingApproval() {
   const info = CloudDB.pendingJoin();
   app.className = '';
@@ -3306,6 +3372,8 @@ function viewLogin(mode = 'signin') {
       if (isUp) {
         const session = await CloudDB.signUp(email, password);
         track('sign_up', { method: 'email' });
+        // 從「註冊」建立的新 Email 帳號就是日記主人，不用再問身分
+        try { localStorage.setItem('newOwnerEmail', email.toLowerCase()); } catch (e) { /* 略過 */ }
         if (!session) {
           msg.textContent = '帳號建立好了！請到信箱點確認連結，確認後回到這裡登入。';
           btn.disabled = false;
@@ -3358,8 +3426,17 @@ async function route() {
       viewJoin(page === 'join' ? '' : '這段分享已經結束了，或這支手機的加入資料不見了。如果還要一起用，請對方給你分享碼和密碼，再加入一次。', page === 'join' ? arg : '');
       return;
     }
-    // 已經綁定過的另一半用 Google 登入回來，但還沒連到對方的日記：讓他再輸入一次分享碼
-    if (page === 'join' && rejoinNotice && !isPartner()) { renderTabbar(null); viewJoin('你已經用原本的帳號登入了，但還沒連到對方的日記。再輸入一次分享碼和密碼，對方按「同意」後就回來了，之前寫的紀錄都還在。', arg); return; }
+    // 用 Email / Google 登入、但還不是誰的另一半、自己也還沒開始寫：先問是主人還是另一半
+    // （另一半換了瀏覽器、重新登入時，才不會變成一本新的空日記）
+    if (usingCloud() && !isPartner() && !CloudDB.isAnonymous()) {
+      const choose = await needsRoleChoice();
+      if (page === 'join' && (rejoinNotice || choose)) {
+        renderTabbar(null);
+        viewJoin(rejoinNotice ? '你已經用原本的帳號登入了，但還沒連到對方的日記。再輸入一次分享碼和密碼，對方按「同意」後就回來了，之前寫的紀錄都還在。' : '輸入對方給你的分享碼和密碼，對方按「同意」後，這個帳號就會接到對方的日記。', arg);
+        return;
+      }
+      if (choose && !['settings', 'reset', 'feedback'].includes(page)) { renderTabbar(null); viewRoleChoice(); return; }
+    }
     if (!isGuest() && (page === 'login' || page === 'signup' || page === 'join')) { go('#/'); return; }
     await loadNames();
     await ensureNumbers();
