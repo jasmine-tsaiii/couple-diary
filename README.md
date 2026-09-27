@@ -50,18 +50,18 @@
 設定步驟：
 1. 在 Supabase 建立專案
 2. 到 **SQL Editor** 貼上 `supabase/schema.sql` 的內容並按 Run，這一步會建立資料表、照片空間和安全規則（每個人只能讀寫自己的資料）
-3. 到 **Authentication → URL Configuration**，把 Site URL 設成 `https://jasmine-tsaiii.github.io/couple-diary/`，這樣確認信的連結才會回到 App
+3. 到 **Authentication → URL Configuration**，把 Site URL 設成 `https://diary.jas-soul.com/`，這樣確認信的連結才會回到 App
 4. 把 **Project Settings → API** 裡的 Project URL 和 anon public key 填進 `js/config.js`
 
 想用 Google 登入的話，還要：
 - 在 Google Cloud Console 建立 OAuth 用戶端（網頁應用程式），「已授權的重新導向 URI」填 `https://<專案>.supabase.co/auth/v1/callback`
 - 在 Supabase 的 **Authentication → Sign In / Providers → Google** 開啟，貼上 Client ID 和 Client secret
-- 在 **Authentication → URL Configuration → Redirect URLs** 加上 `https://jasmine-tsaiii.github.io/couple-diary/`
+- 在 **Authentication → URL Configuration → Redirect URLs** 加上 `https://diary.jas-soul.com/`
 
 每次程式更新了 `supabase/schema.sql`，都要到 **SQL Editor** 整份重新貼上按 Run 一次（重複執行不會弄壞資料）。
 
 忘記密碼要能用，還要：
-- 在 **Authentication → URL Configuration → Redirect URLs** 加上 `https://jasmine-tsaiii.github.io/couple-diary/?reset=1`
+- 在 **Authentication → URL Configuration → Redirect URLs** 加上 `https://diary.jas-soul.com/?reset=1`
 - 建議在 **Authentication → Sign In / Providers → Email** 把最短密碼長度改成 8
 
 要開放分享碼，還要：
