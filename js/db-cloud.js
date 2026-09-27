@@ -84,6 +84,10 @@ const CloudDB = CLOUD_ENABLED ? (() => {
       // 從重設密碼信回來時，直接到設定新密碼的畫面；其他情況只把 ?code= 清掉
       if (code || params.get('reset')) history.replaceState(null, '', location.pathname + (params.get('reset') ? '#/reset' : (location.hash || '#/')));
       session = check(await client.auth.getSession()).session;
+      // 臨時帳號可能已經在別的瀏覽器綁定好了（例如從 Google 回來時開在 Safari），手機裡存的還是舊狀態：重新拿一次
+      if (session && session.user.is_anonymous) {
+        try { const r = await client.auth.refreshSession(); if (r && r.data && r.data.session) session = r.data.session; } catch (e) { /* 沒網路就先用舊的 */ }
+      }
       await loadPartner();
       return session;
     },

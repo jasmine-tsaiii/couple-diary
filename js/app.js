@@ -2692,10 +2692,16 @@ async function viewPartnerTaskForm(id) {
 // 另一半綁定 Email / Google：臨時帳號變成正式帳號（同一個身分，不用重新加入）
 // Google 綁定失敗的原因，換成看得懂的說明
 let bindError = '';
+let bindErrorExists = false;
+let rejoinNotice = false;
 function googleBindErrorText(err) {
   const o = esc(ownerName());
   const t = `${(err && err.code) || ''} ${(err && err.message) || ''}`;
-  if (/identity_already_exists|already linked|already (been )?registered|already exists|already in use/i.test(t)) return '這個 Google 帳號已經在啾啾日記註冊過了（可能之前用它登入過），不能再綁到這裡。請換另一個 Google 帳號，或改用下面的 Email 綁定。';
+  bindErrorExists = false;
+  if (/identity_already_exists|already linked|already (been )?registered|already exists|already in use/i.test(t)) {
+    bindErrorExists = true;
+    return '這個 Google 帳號已經有啾啾日記的帳號了（如果你之前綁定過，就是它）。按下面的「改用這個 Google 帳號登入」回到原本的帳號就好，不用再綁一次；之前寫的紀錄都還在。如果登入後又要你輸入分享碼，再輸入一次、等對方按同意就好。';
+  }
   if (/manual_linking_disabled|manual linking|linking is disabled/i.test(t)) return `Google 綁定還沒開通。請${o}到 Supabase 後台的 Authentication → Sign In / Providers，打開「Allow manual linking」。現在可以先用下面的 Email 綁定。`;
   if (/access_denied|not.*test user|unverified|blocked/i.test(t)) return `Google 擋下了這次登入。如果 Google 畫面寫「存取遭封鎖」或「應用程式未經驗證」，是 Google Cloud 的 OAuth 同意畫面還在「測試」模式：請${o}到 Google Cloud Console → OAuth 同意畫面按「發布應用程式」，或把這個 Gmail 加進「測試使用者」。現在可以先用下面的 Email 綁定。`;
   if (!err) return `從 Google 回來了，但綁定沒有完成。可能是網址設定還沒更新：請${o}到 Supabase 的 Authentication → URL Configuration，確認 Redirect URLs 有 https://diary.jas-soul.com/**。現在可以先用下面的 Email 綁定。`;
@@ -2733,6 +2739,7 @@ function viewBind(sentTo = '') {
     ${bindError ? `<div class="card" id="bind-error" role="alert" style="background:var(--open-bg);border-color:transparent;gap:4px">
       <div class="bold" style="color:var(--open-ink)">Google 綁定沒有成功</div>
       <div class="small" style="color:var(--open-ink)">${bindError}</div>
+      ${bindErrorExists ? '<button class="btn small" id="b-login-google" style="align-self:flex-start">改用這個 Google 帳號登入</button>' : ''}
     </div>` : ''}
     <button class="btn secondary" id="b-google"${IN_APP ? ' hidden' : ''}>用 Google 綁定</button>
     <form class="card" id="b-form" style="gap:10px">
@@ -2749,6 +2756,14 @@ function viewBind(sentTo = '') {
     withBusy(document.getElementById('b-pass-save'), '儲存中…', async () => { await CloudDB.updatePassword(v); toast('密碼已設定'); document.getElementById('b-pass').value = ''; });
   });
   if (bound) return;
+  const lg = document.getElementById('b-login-google');
+  if (lg) lg.addEventListener('click', () => withBusy(lg, '前往 Google…', async () => {
+    // 臨時身分登出，改用已經綁好的 Google 帳號登入；沒連到對方的話，回來後帶去輸入分享碼
+    try { sessionStorage.setItem('rejoinAfterLogin', '1'); } catch (e) { /* 略過 */ }
+    await CloudDB.signOut();
+    bindError = ''; bindErrorExists = false;
+    await CloudDB.signInWithGoogle();
+  }));
   const g = document.getElementById('b-google');
   g.addEventListener('click', () => withBusy(g, '前往 Google…', async () => {
     try { sessionStorage.setItem('linkPending', '1'); } catch (e) { /* 略過 */ }
@@ -2859,10 +2874,11 @@ function viewJoin(notice, code = '') {
       <button class="btn" type="submit" id="join-btn">加入</button>
     </form>
     <div id="join-msg" class="muted" style="text-align:center"></div>
-    <a class="btn secondary small" href="#/login" id="to-login">我是紀錄的主人，去登入</a>
+    <a class="btn secondary small" href="#/login" id="to-login">${rejoinNotice ? '回到首頁' : '我是紀錄的主人，或已經綁定過帳號，去登入'}</a>
   `;
   bindDigitBoxes(app);
   document.getElementById('to-login').addEventListener('click', async (ev) => {
+    rejoinNotice = false;
     // 臨時帳號登出，才會回到登入畫面
     if (CloudDB.isSignedIn() && CloudDB.isAnonymous()) { ev.preventDefault(); await CloudDB.signOut(); go('#/login'); route(); }
   });
@@ -2885,6 +2901,7 @@ function viewJoin(notice, code = '') {
         document.getElementById('j-name').value.trim(),
       )]);
       track('partner_join_request');
+      rejoinNotice = false;
       if (CloudDB.pendingJoin()) toast('已送出，等對方同意');
       go('#/');
       route();
@@ -3341,6 +3358,8 @@ async function route() {
       viewJoin(page === 'join' ? '' : '這段分享已經結束了，或這支手機的加入資料不見了。如果還要一起用，請對方給你分享碼和密碼，再加入一次。', page === 'join' ? arg : '');
       return;
     }
+    // 已經綁定過的另一半用 Google 登入回來，但還沒連到對方的日記：讓他再輸入一次分享碼
+    if (page === 'join' && rejoinNotice && !isPartner()) { renderTabbar(null); viewJoin('你已經用原本的帳號登入了，但還沒連到對方的日記。再輸入一次分享碼和密碼，對方按「同意」後就回來了，之前寫的紀錄都還在。', arg); return; }
     if (!isGuest() && (page === 'login' || page === 'signup' || page === 'join')) { go('#/'); return; }
     await loadNames();
     await ensureNumbers();
@@ -3604,6 +3623,12 @@ requestPersist();
     let linking = false;
     try { linking = !!sessionStorage.getItem('linkPending'); sessionStorage.removeItem('linkPending'); } catch (e) { /* 略過 */ }
     const urlErr = CloudDB.takeUrlError();
+    let rejoin = false;
+    try { rejoin = !!sessionStorage.getItem('rejoinAfterLogin'); sessionStorage.removeItem('rejoinAfterLogin'); } catch (e) { /* 略過 */ }
+    if (rejoin && CloudDB.isSignedIn() && !CloudDB.isAnonymous()) {
+      if (isPartner()) toast('歡迎回來！已經回到原本的帳號');
+      else if (!CloudDB.pendingJoin()) { rejoinNotice = true; go('#/join'); }
+    }
     if (linking && CloudDB.isBoundPartner()) { bindError = ''; toast('Google 綁定完成！'); }
     else if (linking && isPartner()) { bindError = googleBindErrorText(urlErr); go('#/bind'); }
     else if (urlErr) toast(/identity_already_exists|already/i.test(`${urlErr.code} ${urlErr.message}`) ? '這個 Google 帳號已經被用過了，換一個帳號或改用 Email。' : `Google 登入沒有成功：${urlErr.message || urlErr.code}`);
