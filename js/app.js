@@ -1068,7 +1068,7 @@ async function viewDetail(id) {
            ${s === 'resolved' && r.resolution ? `<div class="card"><div class="small bold" style="color:var(--fight)">我們怎麼解決的</div><p class="prose">${esc(r.resolution)}</p></div>` : ''}`
         : `<div class="field"><div class="label">狀態</div>
         <div class="opts cols-3">${Object.entries(STATUS).map(([k, v]) => `<button class="opt ${k === s ? 'on' : ''}" data-status="${k}">${v.label}</button>`).join('')}</div>
-        ${s === 'resolved' ? '' : '<div class="small muted">和好之後按「已解決」，印章冊的「烏雲放晴」就會加 1。</div>'}
+        ${s === 'resolved' ? '' : '<div class="small muted">和好之後按「已解決」，印章冊的「吵架和好」就會加 1。</div>'}
       </div>
       ${s === 'resolved' ? `<div class="field"><label for="resolution">我們怎麼解決的</label><textarea id="resolution" class="textarea" maxlength="${LIMITS.resolution}" style="min-height:70px" placeholder="例如：隔週輪流陪家人">${esc(r.resolution || '')}</textarea></div>` : ''}`}
       ${r.reason ? `<div class="card"><div class="small bold" style="color:var(--fight)">原因</div><p class="prose">${esc(r.reason)}</p></div>` : ''}
