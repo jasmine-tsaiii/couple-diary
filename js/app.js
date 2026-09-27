@@ -357,12 +357,17 @@ function renderTabbar(route) {
 
 // 付費功能（還沒推出）：雲端照片超過免費額度時跳出來，按「我有興趣」會記下來，讓你知道有多少人想要
 function showPaywall(q) {
+  // 另一半不能付費：告訴他額度是兩個人共用的，請主人看看
+  if (isPartner()) {
+    alert(`照片額度用完了：兩個人共用 ${q.limit} 張，目前用了 ${q.used} 張（你放了 ${q.mine || 0} 張）。刪掉用不到的照片就能空出位置，或請${ownerName()}到設定頁看看。`);
+    return;
+  }
   const box = document.createElement('div');
   box.className = 'celebrate';
   box.innerHTML = `<div class="celebrate-box" role="dialog" aria-label="付費功能">
     <div class="thumb" style="width:64px;height:64px;border-radius:99px;background:var(--lock-bg);color:var(--lock)">${ICON.lock}</div>
     <h2 style="font-size:20px">放更多照片是付費功能</h2>
-    <div class="muted">免費帳號可以在雲端放 ${q.limit} 張照片，你已經用了 ${q.used} 張。付費方案準備中，推出後就能放更多照片。</div>
+    <div class="muted">免費帳號可以在雲端放 ${q.limit} 張照片，已經用了 ${q.used} 張${q.mine != null && q.used > q.mine ? `（你 ${q.mine} 張、${esc(partnerName())} ${q.used - q.mine} 張）` : ''}。付費方案準備中，推出後就能放更多照片。</div>
     <div class="small muted">刪掉用不到的照片（或清空「最近刪除」）就能空出位置。</div>
     <button class="btn small" id="pw-yes">我有興趣，推出時想用</button>
     <button class="btn small secondary" id="pw-no">先不用</button>
@@ -1857,7 +1862,7 @@ async function viewSettings() {
     ${usingCloud() ? `<div class="card">
       <div class="bold">雲端帳號</div>
       <div class="muted">已登入 ${esc(CloudDB.currentEmail())}，紀錄和照片都存在雲端，換手機只要登入同一個帳號就能看到。目前共 ${all.length} 則紀錄。</div>
-      ${quota ? `<div class="small">雲端照片：${quota.used}${quota.limit != null ? ` / ${quota.limit} 張（免費帳號）` : ' 張（不限張數）'}</div>
+      ${quota ? `<div class="small">雲端照片：${quota.used}${quota.limit != null ? ` / ${quota.limit} 張（免費帳號，兩個人共用）` : ' 張（不限張數）'}${quota.mine != null && quota.used > quota.mine ? `・你 ${quota.mine} 張、${esc(partnerName())} ${quota.used - quota.mine} 張` : ''}</div>
         ${quota.limit != null ? `<div class="progress" style="height:6px"><div style="width:${Math.min(100, (quota.used / quota.limit) * 100)}%"></div></div>
         <button class="btn small secondary" id="more-photos">${ICON.lockSmall} 想放更多照片？</button>` : ''}` : ''}
       <button class="btn small secondary" id="logout">登出</button>
@@ -3084,15 +3089,24 @@ let pinLocked = false;
 async function showPinLock() {
   if (pinLocked || !pinSaved()) return;
   pinLocked = true;
-  let tries = 0;
+  // 猜錯太多次要等：5 次等 30 秒、10 次以上等 5 分鐘（記在這支手機，重新整理也不會歸零）
+  const fails = () => { try { return JSON.parse(localStorage.getItem('pinFails') || '{"n":0,"until":0}'); } catch (e) { return { n: 0, until: 0 }; } };
+  const setFails = (f) => { try { localStorage.setItem('pinFails', JSON.stringify(f)); } catch (e) { /* 略過 */ } };
   await pinPad({
     title: '輸入密碼',
     sub: '這支手機設了 App 密碼鎖',
     onDone: async (pin) => {
-      if (await pinCheck(pin)) return true;
-      tries += 1;
       const sub = document.getElementById('pin-sub');
-      if (sub) sub.textContent = tries >= 5 ? '密碼不對。忘記的話可以按下面的「忘記密碼？」' : '密碼不對，再試一次';
+      const f = fails();
+      if (f.until > Date.now()) {
+        if (sub) sub.textContent = `錯太多次了，請等 ${Math.ceil((f.until - Date.now()) / 1000)} 秒再試`;
+        return false;
+      }
+      if (await pinCheck(pin)) { setFails({ n: 0, until: 0 }); return true; }
+      f.n += 1;
+      f.until = f.n >= 10 ? Date.now() + 5 * 60000 : f.n % 5 === 0 ? Date.now() + 30000 : 0;
+      setFails(f);
+      if (sub) sub.textContent = f.until ? `錯太多次了，請等 ${f.n >= 10 ? '5 分鐘' : '30 秒'}再試。忘記的話可以按「忘記密碼？」` : '密碼不對，再試一次';
       return false;
     },
     forgot: (close) => {
@@ -3133,7 +3147,17 @@ function bindPinCard(refresh) {
       pinClear(); toast('已關閉密碼鎖'); refresh();
       return;
     }
-    if (!usingCloud() && !confirm('手機版的紀錄只存在這支手機，忘記密碼的話只能清除瀏覽器資料（紀錄會一起不見）。建議先匯出備份。要繼續設定嗎？')) return;
+    // 手機版忘記密碼只能清掉資料，所以開啟前要先有一份最近的備份
+    if (!usingCloud() && (await DB.allRecords()).length) {
+      const last = await DB.getSetting('lastBackupAt', null);
+      if (!last || Date.now() - last > 86400000) {
+        if (!confirm('手機版的紀錄只存在這支手機，忘記密碼的話只能清除瀏覽器資料，紀錄會一起不見。\n開啟密碼鎖前要先匯出一份備份，按「確定」現在匯出。')) return;
+        const exp = document.getElementById('export');
+        if (exp) exp.click();
+        toast('備份好之後，再按一次「開啟」設定密碼');
+        return;
+      }
+    }
     const a = await ask('設定 4 位數密碼', '之後打開 App 要輸入');
     if (!a) return;
     const b = await pinPad({ title: '再輸入一次', sub: '確認密碼', cancelable: true, onDone: async (x) => x === a });

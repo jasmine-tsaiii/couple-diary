@@ -1267,6 +1267,11 @@ language sql stable security definer set search_path = public as $$
                and (storage.foldername(o.name))[1] in (
                  select sp.owner::text union all select uid::text from public.partners where owner = sp.owner and approved)
                and coalesce((storage.foldername(o.name))[2], '') <> 't'
+               and storage.filename(o.name) not like 'task-%'),
+    -- 自己放的張數（設定頁顯示「你幾張、對方幾張」）
+    'mine', (select count(*) from storage.objects o
+             where o.bucket_id = 'photos' and (storage.foldername(o.name))[1] = auth.uid()::text
+               and coalesce((storage.foldername(o.name))[2], '') <> 't'
                and storage.filename(o.name) not like 'task-%')
   )
   from sp
