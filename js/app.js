@@ -570,6 +570,60 @@ async function viewWishes(show = 'todo') {
   }));
 }
 
+// ---------- 第一次打開的導覽：吉祥物帶三頁，主人和另一半各一版 ----------
+function tourKey(kind) { return kind === 'partner' ? `tourDone:p:${CloudDB.myId() || ''}` : 'tourDone'; }
+function tourDone(kind) { try { return !!localStorage.getItem(tourKey(kind)); } catch (e) { return true; } }
+function tourPages(kind) {
+  if (kind === 'partner') {
+    const o = esc(ownerName());
+    return [
+      { mood: 'happy', title: '這是你們兩個人的紀錄', text: `這裡看得到${o}分享給你的美好時刻、烏雲時刻和吵架議題。上鎖的紀錄，完成${o}出的任務後就能打開。` },
+      { mood: 'celebrate', title: '你也可以寫', text: CloudDB.isBoundPartner() ? '在美好時刻或烏雲時刻按「＋」，就能記下你自己的。每一則都可以選要給對方看，還是先上鎖。' : '綁定 Email 或 Google 之後，你也能記自己的美好、烏雲時刻，一起寫吵架議題。首頁有「綁定帳號」可以按。' },
+      { mood: 'clear', title: '回應對方的心意', text: `在${o}的美好時刻按愛心，在吵架議題寫下「我的補充」，讓${o}知道你看到了。` },
+    ];
+  }
+  return [
+    { mood: 'happy', title: '先記一則美好時刻', text: '開心的小事、想謝謝對方的事都可以記。按下面中間的「＋」就能寫。不開心的時候，也可以記在烏雲時刻或吵架議題。' },
+    { mood: 'celebrate', title: '分享給另一半', text: isGuest() ? '註冊或登入後，到設定頁拿邀請連結傳給另一半。每一則都可以選要給對方看，還是先上鎖。' : '到設定頁拿邀請連結傳給另一半。每一則都可以選要給對方看，還是先上鎖。' },
+    { mood: 'clear', title: '一起集印章', text: '記滿 1、5、10 則……就會拿到印章。到印章冊看看，下一個章還差多少。' },
+  ];
+}
+function showTour(kind) {
+  if (document.querySelector('.tour-dlg')) return;
+  const pages = tourPages(kind);
+  let i = 0;
+  const box = document.createElement('div');
+  box.className = 'celebrate tour-dlg';
+  const finish = () => { try { localStorage.setItem(tourKey(kind), String(Date.now())); } catch (e) { /* 略過 */ } box.remove(); document.removeEventListener('keydown', onKey); };
+  const onKey = (ev) => { if (ev.key === 'Escape') finish(); };
+  const render = () => {
+    const pg = pages[i];
+    const last = i === pages.length - 1;
+    box.innerHTML = `<div class="celebrate-box" role="dialog" aria-modal="true" aria-label="使用導覽">
+      ${mascotHtml(pg.mood, 150)}
+      <h2 style="font-size:20px">${pg.title}</h2>
+      <div class="muted">${pg.text}</div>
+      <div class="tour-dots" aria-label="第 ${i + 1} 頁，共 ${pages.length} 頁">${pages.map((_, k) => `<span class="${k === i ? 'on' : ''}"></span>`).join('')}</div>
+      <button class="btn" id="tour-next">${last ? '開始使用' : '下一步'}</button>
+      ${last ? '' : '<button class="btn secondary small" id="tour-skip">略過</button>'}
+    </div>`;
+    box.querySelector('#tour-next').addEventListener('click', () => { if (last) finish(); else { i += 1; render(); } });
+    const sk = box.querySelector('#tour-skip');
+    if (sk) sk.addEventListener('click', finish);
+    box.querySelector('#tour-next').focus();
+  };
+  document.body.appendChild(box);
+  document.addEventListener('keydown', onKey);
+  render();
+}
+function tourCard() {
+  return `<button class="card" id="tour-again" style="gap:4px;text-align:left;font:inherit;color:inherit;cursor:pointer">
+    <div class="row between" style="width:100%"><div class="bold">使用導覽</div><div class="muted">›</div></div>
+    <div class="small muted">再看一次這個 App 怎麼用</div>
+  </button>`;
+}
+document.addEventListener('click', (ev) => { if (ev.target.closest && ev.target.closest('#tour-again')) showTour(isPartner() ? 'partner' : 'owner'); });
+
 // ---------- 意見回饋：哪裡有問題、哪裡可以更好 ----------
 const FEEDBACK_KINDS = ['有問題', '建議', '喜歡的地方', '其他'];
 function feedbackCard() {
@@ -731,6 +785,11 @@ async function viewStamps() {
 }
 
 // ---------- 首頁 ----------
+// 兩個人都有寫的時候，小字顯示各自寫了幾則（一起累積，不是比賽）
+function splitLine(total, mine) {
+  if (!usingCloud() || mine >= total || mine === 0 && total === 0) return '';
+  return `<div class="small muted">你 ${mine}・${esc(otherName())} ${total - mine}</div>`;
+}
 async function viewHome() {
   const all = await liveRecords();
   // 另一半上鎖的紀錄你看不到內容，但數量要算進去（100 個目標是兩個人一起的）
@@ -796,6 +855,7 @@ async function viewHome() {
       <div class="row between"><div class="bold" style="color:var(--accent)">${TYPES[type].label}</div>
       <div class="count"><b>${n}</b> / ${TYPES[type].goal}</div></div>
       <div class="progress"><div style="width:${pct}%"></div></div>
+      ${splitLine(n, all.filter((r) => r.type === type && isMine(r)).length)}
       ${done ? '<div class="small bold" style="color:var(--accent-dark)">集滿 100 個了！</div>' : ''}
     </a>`;
   };
@@ -894,6 +954,7 @@ async function viewHome() {
   if (ewOk) ewOk.addEventListener('click', () => { try { localStorage.removeItem(`endedWith:${CloudDB.myId()}`); } catch (e) { /* 略過 */ } document.getElementById('ended-with').remove(); });
   const box = document.getElementById('recent');
   for (const r of recent) box.appendChild(await listItem(r));
+  if (!all.length && !tourDone('owner')) showTour('owner');
 }
 
 // 對方新寫的紀錄：記在這支手機上「看過了沒」，列表加小點、首頁提示。
@@ -1679,8 +1740,9 @@ async function viewForm(mode, arg) {
         && !confirm(`這則之前${otherName()}看得到，改成不給看之後就看不到了，但${otherName()}可能已經看過內容。確定要改嗎？`)) return;
       if (mode === 'edit') {
         const latest = await DB.getRecord(rec.id);
+        const byOther = latest && usingCloud() && latest.editedBy && latest.editedBy !== CloudDB.myId();
         if (latest && (latest.updatedAt || 0) !== loadedUpdatedAt
-          && !confirm('這則剛剛在別的裝置改過了。要用你現在的內容覆蓋嗎？按「取消」會重新載入最新的內容。')) {
+          && !confirm(`${byOther ? `${otherName()}剛剛也改了這則` : '這則剛剛在別的裝置改過了'}。要用你現在的內容覆蓋嗎？按「取消」會重新載入最新的內容。`)) {
           viewForm('edit', rec.id);
           return;
         }
@@ -1708,6 +1770,8 @@ async function viewForm(mode, arg) {
       if (rec.visibility !== 'task') rec.unlocked = false;
       rec.createdAt = rec.createdAt || now;
       rec.updatedAt = now;
+      // 記下最後是誰改的，兩個人同時改時可以說是誰
+      if (usingCloud()) rec.editedBy = CloudDB.myId();
       try { await DB.putRecord(rec); } catch (e) { await cleanup(); throw e; }
       // 紀錄存好之後，才刪掉這次移除的舊照片
       for (const id of removedPhotos) { try { await DB.deletePhoto(id); } catch (e) { /* 之後再清 */ } photoUrlCache.delete(id); thumbUrlCache.delete(id); }
@@ -1933,6 +1997,7 @@ async function viewSettings() {
         }).join('')}</div></div>`).join('')}
     </div>
     ${pinCardHtml()}
+    ${tourCard()}
     ${feedbackCard()}
     ${usingCloud() ? `<div class="card" id="end-card">
       <div class="bold">結束這段關係</div>
@@ -2251,13 +2316,14 @@ async function viewPartnerHome() {
   let pending = [];
   if (CloudDB.isBoundPartner()) { try { pending = (await CloudDB.submissions({ status: 'pending' })).filter((t) => all.some((r) => r.id === t.record_id && isMine(r))); } catch (e) { pending = []; } }
 
+  const bound = CloudDB.isBoundPartner();
   const typeCard = (type) => `<a class="card ${TYPES[type].theme}" href="#/list/${type}">
       <div class="row between"><div class="bold" style="color:var(--accent)">${TYPES[type].label}</div>
       <div class="count"><b>${count(type)}</b> 則</div></div>
       ${lockedOf(type) ? `<div class="small row" style="color:var(--lock);gap:4px">${ICON.lockSmall}另外還有 ${lockedOf(type)} 則上鎖</div>` : ''}
+      ${bound ? splitLine(count(type) + lockedOf(type), all.filter((r) => r.type === type && isMine(r)).length) : ''}
     </a>`;
 
-  const bound = CloudDB.isBoundPartner();
   app.innerHTML = `
     <div class="row between">
       <div>
@@ -2300,6 +2366,7 @@ async function viewPartnerHome() {
   `;
   const box = document.getElementById('recent');
   for (const r of recent) box.appendChild(await listItem(r));
+  if (!tourDone('partner')) showTour('partner');
 }
 
 async function viewPartnerTasks() {
@@ -2467,6 +2534,7 @@ function viewPartnerSettings() {
       <div class="muted">把你自己寫的紀錄和照片存成備份檔。之後用自己的帳號或手機版「匯入備份」就能還原。</div>
       <button class="btn small secondary" id="export-mine">匯出我寫的紀錄</button>
     </div>` : ''}
+    ${tourCard()}
     ${feedbackCard()}
     <div class="card">
       <div class="bold">離開</div>
@@ -3179,9 +3247,10 @@ function bindPinCard(refresh) {
 window.addEventListener('hashchange', route);
 requestPersist();
 (async () => {
+  // 密碼鎖最先蓋上，紀錄內容才不會先閃出來
+  showPinLock();
   if (CLOUD_ENABLED) {
     try { await CloudDB.loadSession(); await afterOwnerLogin(); } catch (e) { toast(cloudErrorText(e)); }
   }
   route();
-  showPinLock();
 })();

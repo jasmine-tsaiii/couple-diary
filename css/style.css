@@ -299,3 +299,9 @@ a.card:active { transform: scale(0.99); }
 /* 對方新寫的紀錄 */
 .new-dot { display: inline-block; width: 9px; height: 9px; border-radius: 99px; background: var(--accent, #A63D52); flex: none; vertical-align: middle; }
 .card.item .new-dot { align-self: center; margin-left: 4px; }
+
+/* 第一次打開的導覽 */
+.tour-dots { display: flex; gap: 8px; justify-content: center; }
+.tour-dots span { width: 8px; height: 8px; border-radius: 99px; background: var(--line, #E8DDD3); }
+.tour-dots span.on { background: var(--accent, #A63D52); width: 20px; }
+.tour-dlg .btn { width: 100%; }

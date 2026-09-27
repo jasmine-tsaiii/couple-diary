@@ -728,7 +728,7 @@ begin
     if v_type = 'fight' and r.visibility <> 'shared' then raise exception '找不到這個議題，或它沒有分享給你'; end if;
     if v_type = 'fight' and r.author is distinct from auth.uid() and public.space_paused(p.owner) then raise exception '對方暫停分享中，等對方打開再更新'; end if;
     if v_type <> 'fight' and r.author is distinct from auth.uid() then raise exception '只能修改你自己寫的紀錄'; end if;
-    v_data := r.data || v_in || jsonb_build_object('visibility', v_vis, 'updatedAt', v_now, 'editedAt', v_now);
+    v_data := r.data || v_in || jsonb_build_object('visibility', v_vis, 'updatedAt', v_now, 'editedAt', v_now, 'editedBy', auth.uid());
     if v_relock then v_data := v_data || jsonb_build_object('unlocked', false); end if;
     if v_data -> 'clearedAt' = 'null'::jsonb then v_data := v_data - 'clearedAt'; end if;
     update public.records set data = v_data, visibility = v_vis, updated_at = now(),
