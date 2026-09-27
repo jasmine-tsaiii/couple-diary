@@ -536,101 +536,225 @@ grant execute on function public.partner_set_wish_done(uuid, boolean) to authent
 grant execute on function public.partner_delete_wish(uuid) to authenticated;
 
 -- ============================================================
--- ---------- 雙人版（第一段）：吵架議題兩個人共用 ----------
+-- ---------- 雙人版：兩個人各記各的，吵架議題共用 ----------
 -- 每則紀錄記下「誰寫的」；舊紀錄都是主人寫的
 alter table public.records add column if not exists author uuid;
 update public.records set author = owner where author is null;
 alter table public.records alter column author set default auth.uid();
+create index if not exists records_owner_author_idx on public.records (owner, author);
 
--- 另一半新增或修改吵架議題（要先綁定 Email 或 Google，臨時帳號不能寫）
--- 只收文字欄位；編號、照片、誰可以看、誰寫的都由資料庫決定
-create or replace function public.partner_save_fight(p_rec jsonb) returns jsonb
+-- 主人：自己寫的全部看得到；另一半寫的只看得到「給對方看」和任務解鎖的
+drop policy if exists "records: owner full access" on public.records;
+drop policy if exists "records: owner read" on public.records;
+create policy "records: owner read" on public.records
+  for select to authenticated
+  using (
+    owner = auth.uid() and public.is_real_user()
+    and (author is null or author = auth.uid()
+         or ((data ->> 'deletedAt') is null and (visibility = 'shared' or (visibility = 'task' and unlocked)))
+         or (type = 'fight' and visibility = 'shared'))
+  );
+drop policy if exists "records: owner insert" on public.records;
+create policy "records: owner insert" on public.records
+  for insert to authenticated
+  with check (owner = auth.uid() and public.is_real_user() and author = auth.uid());
+-- 主人能改自己寫的，和分享的吵架議題（兩個人共用）
+drop policy if exists "records: owner update" on public.records;
+create policy "records: owner update" on public.records
+  for update to authenticated
+  using (owner = auth.uid() and public.is_real_user() and (author is null or author = auth.uid() or (type = 'fight' and visibility = 'shared')))
+  with check (owner = auth.uid() and public.is_real_user() and (author is null or author = auth.uid() or (type = 'fight' and visibility = 'shared')));
+-- 主人只能刪自己寫的；另一半刪掉、放在最近刪除的吵架議題，過期後主人可以清掉
+drop policy if exists "records: owner delete" on public.records;
+create policy "records: owner delete" on public.records
+  for delete to authenticated
+  using (owner = auth.uid() and public.is_real_user() and (author is null or author = auth.uid() or (type = 'fight' and (data ->> 'deletedAt') is not null)));
+
+-- 另一半：自己寫的全部看得到；主人寫的只看得到分享和任務解鎖的
+drop policy if exists "records: partner read" on public.records;
+create policy "records: partner read" on public.records
+  for select to authenticated
+  using (
+    owner = public.my_owner()
+    and (author = auth.uid()
+         or ((data ->> 'deletedAt') is null and (visibility = 'shared' or (visibility = 'task' and unlocked))))
+  );
+
+-- 對方上鎖的紀錄：只給類型和編號，不給內容（兩個人都用這個）
+create or replace function public.others_locked() returns jsonb
+language sql stable security definer set search_path = public as $$
+  select coalesce(jsonb_agg(jsonb_build_object('id', r.id, 'type', r.type, 'no', r.data -> 'no') order by r.created_at desc), '[]'::jsonb)
+  from public.records r
+  where r.owner = coalesce(public.my_owner(), case when public.is_real_user() then auth.uid() end)
+    and r.author is distinct from auth.uid()
+    and r.visibility = 'locked' and (r.data ->> 'deletedAt') is null
+$$;
+-- 舊版 App 用的名字，內容一樣
+create or replace function public.partner_locked() returns jsonb
+language sql stable security definer set search_path = public as $$ select public.others_locked() $$;
+
+-- 下一個編號：兩個人共用一組，看得到的、看不到的都算，也不重複用刪掉的號碼
+create or replace function public.take_next_no(p_owner uuid, p_type text) returns int
+language plpgsql security definer set search_path = public as $$
+declare v_no int;
+begin
+  select greatest(
+    coalesce(max((data ->> 'no')::int), 0),
+    coalesce((select (value ->> p_type)::int from public.settings where owner = p_owner and key = 'lastNo'), 0)
+  ) + 1 into v_no
+  from public.records where owner = p_owner and type = p_type;
+  insert into public.settings (owner, key, value) values (p_owner, 'lastNo', jsonb_build_object(p_type, v_no))
+  on conflict (owner, key) do update set value = coalesce(public.settings.value, '{}'::jsonb) || jsonb_build_object(p_type, v_no);
+  return v_no;
+end $$;
+-- 主人新增紀錄時拿編號（也會算到另一半上鎖、主人看不到的紀錄）
+create or replace function public.next_no(p_type text) returns int
+language plpgsql security definer set search_path = public as $$
+begin
+  if not public.is_real_user() then raise exception '請先登入'; end if;
+  if p_type not in ('happy', 'cloud', 'fight') then raise exception '類型不對'; end if;
+  return public.take_next_no(auth.uid(), p_type);
+end $$;
+-- 主人按「依日期重新編號」：兩個人的紀錄一起排
+create or replace function public.renumber_all() returns void
+language plpgsql security definer set search_path = public as $$
+begin
+  if not public.is_real_user() then raise exception '請先登入'; end if;
+  with n as (
+    select id, row_number() over (partition by type order by data ->> 'date', coalesce((data ->> 'createdAt')::bigint, 0), id) as no
+    from public.records where owner = auth.uid() and (data ->> 'deletedAt') is null
+  )
+  update public.records r set data = r.data || jsonb_build_object('no', n.no)
+  from n where r.id = n.id and (r.data ->> 'no') is distinct from n.no::text;
+  insert into public.settings (owner, key, value)
+  select auth.uid(), 'lastNo', coalesce(jsonb_object_agg(type, c), '{}'::jsonb)
+  from (select type, count(*) as c from public.records where owner = auth.uid() and (data ->> 'deletedAt') is null group by type) x
+  on conflict (owner, key) do update set value = excluded.value;
+end $$;
+
+-- 另一半新增或修改紀錄（要先綁定 Email 或 Google，臨時帳號不能寫）
+-- 美好、烏雲：只能改自己寫的；吵架議題：分享的都能改。只收文字欄位，編號、照片、誰寫的由資料庫決定
+drop function if exists public.partner_save_fight(jsonb);
+drop function if exists public.partner_delete_fight(text);
+create or replace function public.partner_save_record(p_rec jsonb) returns jsonb
 language plpgsql security definer set search_path = public as $$
 declare
   p public.partners;
   r public.records;
   v_id text := p_rec ->> 'id';
+  v_type text;
+  v_vis text;
   v_now bigint := (extract(epoch from now()) * 1000)::bigint;
   v_in jsonb := '{}'::jsonb;
   v_data jsonb;
-  v_no int;
+  v_str text[];
+  v_arr text[];
   k text;
 begin
-  if not public.is_real_user() then raise exception '要先綁定 Email 或 Google 帳號，才能新增或修改吵架議題'; end if;
+  if not public.is_real_user() then raise exception '要先綁定 Email 或 Google 帳號，才能新增或修改紀錄'; end if;
   select * into p from public.partners where uid = auth.uid() and approved;
   if not found then raise exception '你還沒有用分享碼加入，或還在等對方同意'; end if;
   if v_id is null or v_id !~ '^[A-Za-z0-9_-]{1,40}$' then raise exception '紀錄編號不對'; end if;
 
-  -- 檢查每個欄位
-  foreach k in array array['title', 'date', 'category', 'reason', 'myView', 'theirView', 'status', 'resolution'] loop
+  select * into r from public.records where id = v_id for update;
+  v_type := case when found then r.type else p_rec ->> 'type' end;
+  if v_type is null or v_type not in ('happy', 'cloud', 'fight') then raise exception '類型不對'; end if;
+
+  -- 每種紀錄收哪些欄位
+  if v_type = 'fight' then
+    v_str := array['title', 'date', 'category', 'reason', 'myView', 'theirView', 'status', 'resolution'];
+    v_arr := array['followUps', 'emojis', 'tags'];
+  else
+    v_str := array['title', 'date', 'description'];
+    v_arr := array['emojis', 'tags'] || case when v_type = 'cloud' then array['reflections'] else array[]::text[] end;
+  end if;
+  foreach k in array v_str loop
     if p_rec ? k then
       if jsonb_typeof(p_rec -> k) <> 'string' then raise exception '資料格式不對：%', k; end if;
       v_in := v_in || jsonb_build_object(k, p_rec ->> k);
     end if;
   end loop;
-  foreach k in array array['followUps', 'emojis', 'tags'] loop
+  foreach k in array v_arr loop
     if p_rec ? k then
       if jsonb_typeof(p_rec -> k) <> 'array' then raise exception '資料格式不對：%', k; end if;
       v_in := v_in || jsonb_build_object(k, p_rec -> k);
     end if;
   end loop;
-  if char_length(coalesce(v_in ->> 'title', 'x')) not between 1 and 60 then raise exception '議題要 1 到 60 個字'; end if;
+  if char_length(coalesce(v_in ->> 'title', 'x')) not between 1 and 60 then raise exception '標題要 1 到 60 個字'; end if;
   if v_in ? 'date' and v_in ->> 'date' !~ '^\d{4}-\d{2}-\d{2}$' then raise exception '日期格式不對'; end if;
+  if char_length(coalesce(v_in ->> 'description', '')) > 2000 then raise exception '描述最多 2000 個字'; end if;
   if char_length(coalesce(v_in ->> 'category', '')) > 12 then raise exception '分類最多 12 個字'; end if;
   if greatest(char_length(coalesce(v_in ->> 'reason', '')), char_length(coalesce(v_in ->> 'myView', '')), char_length(coalesce(v_in ->> 'theirView', ''))) > 1000 then raise exception '每一欄最多 1000 個字'; end if;
   if char_length(coalesce(v_in ->> 'resolution', '')) > 500 then raise exception '解法最多 500 個字'; end if;
   if v_in ? 'status' and v_in ->> 'status' not in ('open', 'progress', 'resolved') then raise exception '狀態不對'; end if;
   if jsonb_array_length(coalesce(v_in -> 'followUps', '[]')) > 100 then raise exception '每個議題最多 100 則後續'; end if;
+  if jsonb_array_length(coalesce(v_in -> 'reflections', '[]')) > 50 then raise exception '每則最多 50 則反思'; end if;
   if jsonb_array_length(coalesce(v_in -> 'emojis', '[]')) > 5 or jsonb_array_length(coalesce(v_in -> 'tags', '[]')) > 10 then raise exception '表情或標籤太多了'; end if;
-
-  select * into r from public.records where id = v_id for update;
-  if found then
-    -- 修改：只能改分享給你的吵架議題
-    if r.owner <> p.owner or r.type <> 'fight' or r.visibility <> 'shared' or (r.data ->> 'deletedAt') is not null then
-      raise exception '找不到這個議題，或它沒有分享給你';
-    end if;
-    v_data := r.data || v_in || jsonb_build_object('updatedAt', v_now, 'editedAt', v_now);
-    update public.records set data = v_data, updated_at = now() where id = v_id;
+  -- 誰可以看：吵架議題一律分享；美好、烏雲可以分享或上鎖（任務解鎖之後再開放）
+  if v_type = 'fight' then v_vis := 'shared';
   else
-    -- 新增：一律兩個人都看得到；編號接在最大號後面
-    if (select count(*) from public.records where owner = p.owner and author = auth.uid()) >= 1000 then
-      raise exception '新增的議題太多了';
+    v_vis := coalesce(p_rec ->> 'visibility', case when r.id is not null then r.visibility when v_type = 'cloud' then 'locked' else 'shared' end);
+    if v_vis not in ('shared', 'locked') then raise exception '另一半的紀錄目前只能選「給對方看」或「上鎖」'; end if;
+  end if;
+  -- 烏雲放晴：時間由資料庫記
+  if v_type = 'cloud' and p_rec ? 'clearedAt' then
+    v_in := v_in || jsonb_build_object('clearedAt', case when jsonb_typeof(p_rec -> 'clearedAt') = 'number' then to_jsonb(coalesce((r.data ->> 'clearedAt')::bigint, v_now)) else 'null'::jsonb end);
+  end if;
+
+  if r.id is not null then
+    if r.owner <> p.owner or (r.data ->> 'deletedAt') is not null then raise exception '找不到這則紀錄'; end if;
+    if v_type = 'fight' and r.visibility <> 'shared' then raise exception '找不到這個議題，或它沒有分享給你'; end if;
+    if v_type <> 'fight' and r.author is distinct from auth.uid() then raise exception '只能修改你自己寫的紀錄'; end if;
+    v_data := r.data || v_in || jsonb_build_object('visibility', v_vis, 'updatedAt', v_now, 'editedAt', v_now);
+    if v_data -> 'clearedAt' = 'null'::jsonb then v_data := v_data - 'clearedAt'; end if;
+    update public.records set data = v_data, visibility = v_vis, updated_at = now() where id = v_id;
+  else
+    if (select count(*) from public.records where owner = p.owner and author = auth.uid()) >= 3000 then
+      raise exception '紀錄太多了';
     end if;
-    select greatest(
-      coalesce(max((data ->> 'no')::int), 0),
-      coalesce((select (value ->> 'fight')::int from public.settings where owner = p.owner and key = 'lastNo'), 0)
-    ) + 1 into v_no
-    from public.records where owner = p.owner and type = 'fight';
-    insert into public.settings (owner, key, value) values (p.owner, 'lastNo', jsonb_build_object('fight', v_no))
-    on conflict (owner, key) do update set value = coalesce(public.settings.value, '{}'::jsonb) || jsonb_build_object('fight', v_no);
-    v_data := jsonb_build_object('status', 'open', 'followUps', '[]'::jsonb, 'emojis', '[]'::jsonb, 'tags', '[]'::jsonb,
-                                 'category', '', 'reason', '', 'myView', '', 'theirView', '', 'resolution', '', 'description', '')
+    v_data := jsonb_build_object('emojis', '[]'::jsonb, 'tags', '[]'::jsonb, 'description', '')
+      || case when v_type = 'fight' then jsonb_build_object('status', 'open', 'followUps', '[]'::jsonb, 'category', '', 'reason', '', 'myView', '', 'theirView', '', 'resolution', '')
+              when v_type = 'cloud' then jsonb_build_object('reflections', '[]'::jsonb) else '{}'::jsonb end
       || v_in
-      || jsonb_build_object('id', v_id, 'type', 'fight', 'no', v_no, 'visibility', 'shared', 'unlocked', false,
+      || jsonb_build_object('id', v_id, 'type', v_type, 'no', public.take_next_no(p.owner, v_type), 'visibility', v_vis, 'unlocked', false,
                             'photoIds', '[]'::jsonb, 'task', jsonb_build_object('text', '', 'mode', 'confirm'),
                             'author', auth.uid(), 'authorName', p.name, 'v', 1,
                             'createdAt', v_now, 'updatedAt', v_now);
+    if v_data -> 'clearedAt' = 'null'::jsonb then v_data := v_data - 'clearedAt'; end if;
     if not v_data ? 'date' then v_data := v_data || jsonb_build_object('date', to_char(now(), 'YYYY-MM-DD')); end if;
-    insert into public.records (id, owner, author, type, visibility, data) values (v_id, p.owner, auth.uid(), 'fight', 'shared', v_data);
+    insert into public.records (id, owner, author, type, visibility, data) values (v_id, p.owner, auth.uid(), v_type, v_vis, v_data);
   end if;
   return v_data;
 end $$;
 
--- 另一半刪掉自己新增的吵架議題（移到主人的「最近刪除」，30 天內可以救回來）
-create or replace function public.partner_delete_fight(p_id text) returns void
+-- 另一半刪掉自己寫的紀錄：美好、烏雲直接刪掉；吵架議題移到主人的「最近刪除」
+create or replace function public.partner_delete_record(p_id text) returns void
 language plpgsql security definer set search_path = public as $$
 declare
   v_now bigint := (extract(epoch from now()) * 1000)::bigint;
+  r public.records;
 begin
   if not public.is_real_user() then raise exception '要先綁定帳號'; end if;
-  update public.records set data = data || jsonb_build_object('deletedAt', v_now, 'updatedAt', v_now), updated_at = now()
-  where id = p_id and owner = public.my_owner() and type = 'fight' and author = auth.uid() and (data ->> 'deletedAt') is null;
-  if not found then raise exception '只能刪除你自己新增的議題'; end if;
+  select * into r from public.records
+  where id = p_id and owner = public.my_owner() and author = auth.uid() and (data ->> 'deletedAt') is null for update;
+  if not found then raise exception '只能刪除你自己寫的紀錄'; end if;
+  if r.type = 'fight' then
+    update public.records set data = data || jsonb_build_object('deletedAt', v_now, 'updatedAt', v_now), updated_at = now() where id = p_id;
+  else
+    delete from public.records where id = p_id;
+  end if;
 end $$;
-revoke all on function public.partner_save_fight(jsonb) from public, anon;
-revoke all on function public.partner_delete_fight(text) from public, anon;
-grant execute on function public.partner_save_fight(jsonb) to authenticated;
-grant execute on function public.partner_delete_fight(text) to authenticated;
+revoke all on function public.take_next_no(uuid, text) from public, anon, authenticated;
+revoke all on function public.others_locked() from public, anon;
+revoke all on function public.next_no(text) from public, anon;
+revoke all on function public.renumber_all() from public, anon;
+revoke all on function public.partner_save_record(jsonb) from public, anon;
+revoke all on function public.partner_delete_record(text) from public, anon;
+grant execute on function public.others_locked() to authenticated;
+grant execute on function public.next_no(text) to authenticated;
+grant execute on function public.renumber_all() to authenticated;
+grant execute on function public.partner_save_record(jsonb) to authenticated;
+grant execute on function public.partner_delete_record(text) to authenticated;
 
 -- 意見回饋：訪客、主人、另一半都能送出；只有你在 Supabase 後台看得到（沒有讀取權限）
 create table if not exists public.feedback (

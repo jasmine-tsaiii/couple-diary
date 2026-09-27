@@ -219,10 +219,13 @@ const CloudDB = CLOUD_ENABLED ? (() => {
       if (partner) { check(await client.rpc('partner_delete_wish', { p_id: id })); return; }
       check(await client.from('wishes').delete().eq('id', id).eq('owner', userId()));
     },
-    async partnerLocked() {
-      const { data, error } = await client.rpc('partner_locked');
+    // 對方上鎖的紀錄（只有類型和編號）
+    async othersLocked() {
+      let { data, error } = await client.rpc('others_locked');
+      if (error && partner) ({ data, error } = await client.rpc('partner_locked'));
       return error ? [] : data || [];
     },
+    async partnerLocked() { return this.othersLocked(); },
     async removePartner(uid) {
       check(await client.from('partners').delete().eq('uid', uid).eq('owner', userId()));
     },
@@ -259,10 +262,9 @@ const CloudDB = CLOUD_ENABLED ? (() => {
       return row ? row.data : undefined;
     },
     async putRecord(rec) {
-      // 另一半只能新增、修改吵架議題，透過資料庫函式檢查
+      // 另一半寫在主人的空間裡，透過資料庫函式檢查（只能改自己寫的，和分享的吵架議題）
       if (partner) {
-        if (rec.type !== 'fight') throw new Error('另一半只能新增或修改吵架議題');
-        check(await client.rpc('partner_save_fight', { p_rec: rec }));
+        check(await client.rpc('partner_save_record', { p_rec: rec }));
         return;
       }
       check(await client.from('records').upsert({
@@ -274,8 +276,16 @@ const CloudDB = CLOUD_ENABLED ? (() => {
         updated_at: new Date().toISOString(),
       }));
     },
-    async partnerDeleteFight(id) {
-      check(await client.rpc('partner_delete_fight', { p_id: id }));
+    async partnerDeleteRecord(id) {
+      check(await client.rpc('partner_delete_record', { p_id: id }));
+    },
+    // 新紀錄的編號：兩個人共用，資料庫也會算到對方上鎖的紀錄（還沒更新資料表時回傳 null）
+    async nextNo(type) {
+      const { data, error } = await client.rpc('next_no', { p_type: type });
+      return error ? null : data;
+    },
+    async renumberAll() {
+      check(await client.rpc('renumber_all'));
     },
     async deleteRecord(id) {
       check(await client.from('records').delete().eq('id', id));
