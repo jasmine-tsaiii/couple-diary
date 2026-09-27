@@ -23,6 +23,46 @@
   --accent: var(--happy);
   --accent-dark: var(--happy-dark);
   --accent-bg: var(--happy-bg);
+  --seg: #F1E9E1;
+  --dash: #C9B8AB;
+  --press: #FAF6F1;
+  --danger: #9B2C1F;
+  --danger-line: #E8C4BE;
+  --toast-bg: #2B2320;
+  --toast-ink: #FFFFFF;
+}
+/* 深色模式：跟著手機設定，或在設定頁手動選（<html data-theme="dark|light">） */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --bg: #1C1816; --card: #27211E; --line: #3A312C; --field: #4A3F39;
+    --ink: #F2EAE4; --muted: #B5A79E; --soft: #CDBFB6;
+    --happy: #C4536C; --happy-dark: #F2A7B8; --happy-bg: #3A2229;
+    --cloud: #9A6A1E; --cloud-dark: #E9C27F; --cloud-bg: #362A17;
+    --fight: #5566B0; --fight-dark: #AEB9EE; --fight-bg: #232941;
+    --lock: #C3B2E3; --lock-bg: #2C2536;
+    --open-bg: #3E2320; --open-ink: #F4AFA3;
+    --progress-bg: #3A2F18; --progress-ink: #EBC87E;
+    --resolved-bg: #1D3324; --resolved-ink: #9FD3AC;
+    --seg: #302824; --dash: #5E514A; --press: #2F2824;
+    --danger: #F09A8C; --danger-line: #5A2E28;
+    --toast-bg: #F2EAE4; --toast-ink: #1C1816;
+  }
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --bg: #1C1816; --card: #27211E; --line: #3A312C; --field: #4A3F39;
+  --ink: #F2EAE4; --muted: #B5A79E; --soft: #CDBFB6;
+  --happy: #C4536C; --happy-dark: #F2A7B8; --happy-bg: #3A2229;
+  --cloud: #9A6A1E; --cloud-dark: #E9C27F; --cloud-bg: #362A17;
+  --fight: #5566B0; --fight-dark: #AEB9EE; --fight-bg: #232941;
+  --lock: #C3B2E3; --lock-bg: #2C2536;
+  --open-bg: #3E2320; --open-ink: #F4AFA3;
+  --progress-bg: #3A2F18; --progress-ink: #EBC87E;
+  --resolved-bg: #1D3324; --resolved-ink: #9FD3AC;
+  --seg: #302824; --dash: #5E514A; --press: #2F2824;
+  --danger: #F09A8C; --danger-line: #5A2E28;
+  --toast-bg: #F2EAE4; --toast-ink: #1C1816;
 }
 
 * { box-sizing: border-box; }
@@ -142,7 +182,7 @@ input.input[type="date"]::-webkit-date-and-time-value { text-align: left; margin
 input.input[type="date"]::-webkit-datetime-edit { padding: 0; }
 .textarea { height: auto; min-height: 96px; padding: 12px 14px; resize: vertical; line-height: 1.5; }
 .input:focus, .textarea:focus { outline: 2px solid var(--accent); outline-offset: 0; border-color: transparent; }
-.seg { display: grid; gap: 6px; background: #F1E9E1; border-radius: 14px; padding: 4px; }
+.seg { display: grid; gap: 6px; background: var(--seg); border-radius: 14px; padding: 4px; }
 .seg button { height: 40px; border: none; border-radius: 10px; background: transparent; color: var(--soft); font-size: 14px; }
 .seg button.on { background: var(--accent); color: #fff; font-weight: 700; }
 .opts { display: grid; gap: 6px; }
@@ -160,7 +200,7 @@ input.input[type="date"]::-webkit-datetime-edit { padding: 0; }
   font-size: 22px; display: inline-flex; align-items: center; justify-content: center; padding: 0;
 }
 .emoji.on { border: 2px solid var(--accent); background: var(--accent-bg); }
-.emoji.add { border: 1.5px dashed #C9B8AB; background: transparent; color: var(--muted); }
+.emoji.add { border: 1.5px dashed var(--dash); background: transparent; color: var(--muted); }
 
 .photos { display: flex; gap: 8px; flex-wrap: wrap; }
 .photo {
@@ -172,7 +212,7 @@ input.input[type="date"]::-webkit-datetime-edit { padding: 0; }
   background: rgba(255,255,255,0.92); display: flex; align-items: center; justify-content: center; padding: 0;
 }
 .photo-add {
-  width: 84px; height: 84px; border-radius: 12px; border: 1.5px dashed #C9B8AB; background: transparent;
+  width: 84px; height: 84px; border-radius: 12px; border: 1.5px dashed var(--dash); background: transparent;
   display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px;
   color: var(--muted); font-size: 12px; cursor: pointer;
 }
@@ -184,7 +224,7 @@ input.input[type="date"]::-webkit-datetime-edit { padding: 0; }
   display: inline-flex; align-items: center; justify-content: center;
 }
 .btn.secondary { background: var(--card); color: var(--soft); border: 1px solid var(--field); font-weight: 500; }
-.btn.danger { background: var(--card); color: #9B2C1F; border: 1px solid #E8C4BE; font-weight: 500; }
+.btn.danger { background: var(--card); color: var(--danger); border: 1px solid var(--danger-line); font-weight: 500; }
 .btn.small { height: 40px; font-size: 14px; border-radius: 12px; }
 .btn-row { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
 
@@ -225,7 +265,7 @@ input.input[type="date"]::-webkit-datetime-edit { padding: 0; }
 
 .toast {
   position: fixed; left: 50%; bottom: calc(100px + env(safe-area-inset-bottom)); transform: translateX(-50%);
-  background: var(--ink); color: #fff; padding: 10px 18px; border-radius: 99px; font-size: 14px;
+  background: var(--toast-bg); color: var(--toast-ink); padding: 10px 18px; border-radius: 99px; font-size: 14px;
   opacity: 0; pointer-events: none; transition: opacity .2s; z-index: 20; white-space: nowrap;
 }
 .toast.show { opacity: 1; }
@@ -245,7 +285,7 @@ input.input[type="date"]::-webkit-datetime-edit { padding: 0; }
 }
 .stamp.got .stamp-face {
   border: 3px solid var(--happy); background: var(--happy-bg); filter: none; opacity: 1; transform: rotate(-8deg);
-  box-shadow: inset 0 0 0 3px #fff;
+  box-shadow: inset 0 0 0 3px var(--card);
 }
 .stamp-name { font-size: 12px; font-weight: 700; }
 .stamp-sub { font-size: 11px; color: var(--muted); }
@@ -332,7 +372,8 @@ button, .btn, .chip, .pin-keys, .pin-lock { touch-action: manipulation; }
 body.no-tabbar .to-top { bottom: calc(20px + env(safe-area-inset-bottom)); }
 
 /* 閱讀版（存成 PDF） */
-.read-view { position: fixed; inset: 0; z-index: 900; background: #FBF7F2; overflow-y: auto; -webkit-overflow-scrolling: touch; }
+.read-view { --bg: #FBF7F2; --card: #FFFFFF; --line: #EFE6DD; --field: #E3D8CE; --ink: #2B2320; --muted: #6B5E57; --soft: #5A4D46; color-scheme: light;
+  position: fixed; inset: 0; z-index: 900; background: #FBF7F2; color: #2B2320; overflow-y: auto; -webkit-overflow-scrolling: touch; }
 .read-toolbar { position: sticky; top: 0; z-index: 1; display: flex; justify-content: space-between; gap: 8px; padding: calc(10px + env(safe-area-inset-top)) 16px 10px; background: rgba(251, 247, 242, .95); border-bottom: 1px solid var(--line); }
 .read-hint { padding: 8px 16px 0; max-width: 720px; margin: 0 auto; }
 body.reading { overflow: hidden; }
@@ -378,7 +419,7 @@ body::before { content: ''; position: fixed; top: 0; left: 0; right: 0; height: 
   background: var(--card); border: 1px solid var(--line); border-radius: 18px; padding: 14px;
   display: flex; flex-direction: column; gap: 6px; text-decoration: none; color: var(--ink); min-width: 0;
 }
-.ftile:active { background: #FAF6F1; }
+.ftile:active { background: var(--press); }
 .ftile-icon { display: inline-flex; }
 .ftile-icon svg { width: 26px; height: 26px; }
 .ftile-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
@@ -394,7 +435,7 @@ body::before { content: ''; position: fixed; top: 0; left: 0; right: 0; height: 
 .text-link { align-self: center; color: var(--muted); text-decoration: underline; padding: 10px; }
 .btn.danger-solid { background: #9B2C1F; color: #fff; border: none; }
 .role-card { text-align: left; font: inherit; color: inherit; cursor: pointer; gap: 6px; width: 100%; }
-.role-card:active { background: #FAF6F1; }
+.role-card:active { background: var(--press); }
 
 /* 新帳號的範例紀錄 */
 .example-card { gap: 6px; border-style: dashed; background: transparent; }
@@ -403,3 +444,6 @@ body::before { content: ''; position: fixed; top: 0; left: 0; right: 0; height: 
 
 .legal-links { text-align: center; }
 .legal-links a { color: var(--muted); }
+
+/* 外觀：跟隨系統／淺色／深色 */
+.theme-pick { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; }

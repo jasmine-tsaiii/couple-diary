@@ -623,6 +623,34 @@ function tourCard() {
 }
 document.addEventListener('click', (ev) => { if (ev.target.closest && ev.target.closest('#tour-again')) showTour(isPartner() ? 'partner' : 'owner'); });
 // 設定頁「匿名使用統計」開關（config.js 沒填 GA 評估 ID 時不顯示）
+// ---------- 外觀：跟隨系統／淺色／深色（存在這支手機） ----------
+const THEMES = [['system', '跟隨手機'], ['light', '淺色'], ['dark', '深色']];
+function currentTheme() { try { return localStorage.getItem('theme') || 'system'; } catch (e) { return 'system'; } }
+function applyTheme(t = currentTheme()) {
+  const root = document.documentElement;
+  if (t === 'light' || t === 'dark') root.dataset.theme = t; else delete root.dataset.theme;
+  const dark = t === 'dark' || (t === 'system' && window.matchMedia && matchMedia('(prefers-color-scheme: dark)').matches);
+  const meta = document.querySelector('meta[name="theme-color"]');
+  if (meta) meta.setAttribute('content', dark ? '#1C1816' : '#FBF7F2');
+}
+applyTheme();
+if (window.matchMedia) { try { matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => applyTheme()); } catch (e) { /* 舊瀏覽器 */ } }
+function themeCard() {
+  const cur = currentTheme();
+  return `<div class="card" style="gap:8px">
+    <div class="bold">外觀</div>
+    <div class="theme-pick">${THEMES.map(([k, l]) => `<button class="chip ${k === cur ? 'on' : ''}" data-theme-pick="${k}" aria-pressed="${k === cur}">${l}</button>`).join('')}</div>
+    <div class="small muted">晚上寫日記可以選深色，比較不刺眼。只會改這支手機。</div>
+  </div>`;
+}
+document.addEventListener('click', (ev) => {
+  const b = ev.target.closest && ev.target.closest('[data-theme-pick]');
+  if (!b) return;
+  try { localStorage.setItem('theme', b.dataset.themePick); } catch (e) { /* 存不了就只改這次 */ }
+  applyTheme(b.dataset.themePick);
+  document.querySelectorAll('[data-theme-pick]').forEach((x) => { const on = x === b; x.classList.toggle('on', on); x.setAttribute('aria-pressed', String(on)); });
+});
+
 const ANALYTICS_NOTE = '我們用 Google Analytics 了解有多少人在用、哪些功能有人用。只會記「新增了一則美好」這類次數，不會傳送你寫的標題、內容、名字或照片。';
 function analyticsCard() {
   if (!window.Analytics || !window.Analytics.configured()) return '';
@@ -2306,13 +2334,14 @@ async function viewSettings() {
       ${archivedCount ? `<a class="btn small secondary" href="#/archive">封存的回憶（${archivedCount} 則）</a>` : ''}
     </div>` : ''}
     <div class="card">
-      <div class="bold" style="color:#9B2C1F">清除所有資料</div>
+      <div class="bold" style="color:var(--danger)">清除所有資料</div>
       <div class="muted">${usingCloud() ? '會刪掉雲端上你所有的紀錄和照片，也會停止分享、移除另一半，沒辦法復原。' : '會刪掉這支手機上所有紀錄和照片，沒辦法復原。'}</div>
       <button class="btn small danger" id="wipe">全部清除</button>
       ${usingCloud() ? '<button class="btn small secondary" id="delete-account">刪除帳號</button>' : ''}
     </div>
     <h2 class="section-title set-sec" id="set-other">其他</h2>
     ${tourCard()}
+    ${themeCard()}
     ${analyticsCard()}
     ${feedbackCard()}
   `;
@@ -2558,7 +2587,7 @@ async function viewEnd(keepUid = '') {
       <button class="btn small" id="end-archive">封存並結束</button>
     </div>
     <div class="card" style="gap:8px">
-      <div class="bold" style="color:#9B2C1F">全部刪除</div>
+      <div class="bold" style="color:var(--danger)">全部刪除</div>
       <div class="small muted">這段關係的紀錄（包含${esc(other)}寫的）、照片和一起完成的事全部刪掉，沒辦法復原。建議先到設定頁匯出備份。之前封存的不會動。</div>
       <button class="btn small danger" id="end-delete">刪除並結束</button>
     </div>
@@ -2888,6 +2917,7 @@ function viewPartnerSettings() {
       <button class="btn small secondary" id="export-mine">匯出我寫的紀錄</button>
     </div>` : ''}
     ${tourCard()}
+    ${themeCard()}
     ${analyticsCard()}
     ${feedbackCard()}
     <div class="card">
