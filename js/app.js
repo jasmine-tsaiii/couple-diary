@@ -211,6 +211,28 @@ function compressImage(file, maxSide = 1280, quality = 0.82) {
 let NAMES = { me: '', partner: '' };
 async function loadNames() {
   try { NAMES = { me: '', partner: '', ...(await DB.getSetting('names', {})) }; } catch (e) { NAMES = { me: '', partner: '' }; }
+  // 吉祥物的顏色：另一半看到的是主人選的顏色
+  try { MASCOT_PICK = isPartner() ? (CloudDB.partnerInfo().mascot || null) : await DB.getSetting('mascot', null); } catch (e) { MASCOT_PICK = null; }
+}
+// ---------- 吉祥物「啾啾與啵啵」 ----------
+let MASCOT_PICK = null;
+function mascotHtml(mood, width, extraClass = '') {
+  if (!window.Mascot) return '';
+  return `<div class="mascot ${extraClass}" style="width:${width}px" aria-hidden="true">${window.Mascot.svg(mood, MASCOT_PICK || window.Mascot.DEFAULT)}</div>`;
+}
+// 空白狀態（.empty）自動加上等紀錄的吉祥物；錯誤畫面加 no-mascot 就不放
+new MutationObserver(() => {
+  app.querySelectorAll('.empty:not(.no-mascot):not([data-m])').forEach((e) => { e.dataset.m = '1'; e.insertAdjacentHTML('afterbegin', mascotHtml('empty', 160)); });
+}).observe(app, { childList: true, subtree: true });
+// 按「已放晴」之後，吉祥物出來曬一下太陽
+function showClearMascot() {
+  const box = document.createElement('div');
+  box.className = 'celebrate mascot-pop';
+  box.innerHTML = `<div class="celebrate-box" role="status">${mascotHtml('clear', 160)}<div class="bold">放晴了！</div></div>`;
+  document.body.appendChild(box);
+  const close = () => box.remove();
+  box.addEventListener('click', close);
+  setTimeout(close, 1800);
 }
 const myName = () => NAMES.me || '我';
 // 時間戳記轉成當地的 YYYY-MM-DD
@@ -637,6 +659,7 @@ async function showNewStamps() {
   const box = document.createElement('div');
   box.className = 'celebrate';
   box.innerHTML = `<div class="celebrate-box" role="dialog" aria-label="解鎖印章">
+    ${mascotHtml('celebrate', 180)}
     <div class="small bold" style="color:var(--happy)">解鎖新印章！</div>
     <div class="stamp got"><div class="stamp-face">${s.icon}</div></div>
     <h2 style="font-size:22px">${esc(s.name)}</h2>
@@ -756,6 +779,7 @@ async function viewHome() {
       </div>
       <a class="icon-btn" href="#/settings" aria-label="設定">${ICON.gear}</a>
     </div>
+    <div class="mascot-hello">${mascotHtml('happy', 110)}<div class="small muted">今天有想記下的小事嗎？</div></div>
     ${askNames ? `<div class="card" id="names-card" style="gap:10px">
       <div class="bold">先認識一下你們</div>
       <div class="small muted">填上名字，紀錄裡就會用你們的名字，例如「${'小美'}的想法」。之後也可以在設定頁改。</div>
@@ -867,7 +891,7 @@ async function viewList(type, tagFilter) {
       <h1>${conf.label}</h1>
       <div class="count"><b style="font-size:16px;color:var(--accent)">${total}</b>${type === 'cloud' ? ' 則' : ` / ${conf.goal}`}</div>
     </div>
-    ${type === 'cloud' ? '' : `<div class="progress" style="height:8px"><div style="width:${pct}%"></div></div>`}
+    ${type === 'cloud' ? `<div class="card mascot-hello" style="background:var(--cloud-bg);border-color:transparent">${mascotHtml('cloud', 120)}<div class="small" style="color:var(--cloud-dark)">不開心的時刻也值得記下來，心情過去了就按「已放晴」。</div></div>` : `<div class="progress" style="height:8px"><div style="width:${pct}%"></div></div>`}
     ${twoAuthors ? `<div class="chips">
       ${[['all', '全部'], ['mine', '我的'], ['other', `${esc(otherName())}的`]].map(([k, l]) => `<button class="chip ${k === who ? 'on' : ''}" data-who="${k}">${l}</button>`).join('')}
     </div>` : ''}
@@ -940,12 +964,14 @@ async function viewFights(catFilter, statusFilter) {
   const partner = isPartner();
   const myId = usingCloud() ? CloudDB.myId() : null;
   const byOther = (f) => usingCloud() && f.author && f.author !== myId;
+  const openCount = fights.filter((f) => (f.status || 'open') !== 'resolved').length;
   app.className = 'theme-fight';
   app.innerHTML = `
     <div class="topbar">
       <a class="icon-btn" href="#/" aria-label="返回">${ICON.back}</a>
       <h1>吵架議題</h1>
     </div>
+    ${openCount ? `<div class="card mascot-hello" style="background:var(--fight-bg);border-color:transparent">${mascotHtml('fight', 120)}<div class="small" style="color:var(--fight-dark)">還有 ${openCount} 個沒解決。先深呼吸，再慢慢聊。</div></div>` : ''}
     ${partner ? `<a class="btn" href="${CloudDB.isBoundPartner() ? '#/new/fight' : '#/bind'}">＋ 新增議題</a>
       ${CloudDB.isBoundPartner() ? '' : `<div class="small muted">綁定帳號後，就能和${esc(ownerName())}一起新增、更新吵架議題。</div>`}` : ''}
     ${counts.length ? `<div class="card">
@@ -1249,7 +1275,9 @@ async function viewDetail(id) {
     const clearBtn = document.getElementById('clear-btn');
     clearBtn.addEventListener('click', () => withBusy(clearBtn, '', async () => {
       // 另一半的紀錄透過資料庫函式改，要明確送出「取消放晴」
+      const wasCleared = !!r.clearedAt;
       await updateRecord(r.id, (x) => { if (x.clearedAt) { if (partner) x.clearedAt = null; else delete x.clearedAt; } else x.clearedAt = Date.now(); });
+      if (!wasCleared) showClearMascot();
       viewDetail(r.id);
     }));
     const rfAdd = document.getElementById('rf-add');
@@ -1797,6 +1825,16 @@ async function viewSettings() {
       <div class="muted small">點一個標籤可以改名或刪除，所有用到它的紀錄會一起改。</div>
       <div class="chips">${usedTags.map(([t, n]) => `<button class="chip" data-edit-tag="${esc(t)}">#${esc(t)} <span class="muted">${n}</span></button>`).join('')}</div>
     </div>` : ''}
+    <div class="card" style="gap:10px">
+      <div class="bold">吉祥物顏色</div>
+      <div class="small muted">啾啾和啵啵的顏色可以自己挑${usingCloud() ? `，${esc(partnerName())}看到的也是這個顏色` : ''}。</div>
+      <div id="mascot-preview" style="align-self:center">${mascotHtml('happy', 150)}</div>
+      ${[['left', '左邊（啾啾）'], ['right', '右邊（啵啵）']].map(([side, label]) => `<div class="field" style="gap:6px"><div class="label">${label}</div>
+        <div class="swatches">${(window.Mascot ? window.Mascot.COLORS : []).map(([n, body]) => {
+          const on = ((MASCOT_PICK || (window.Mascot && window.Mascot.DEFAULT) || {})[side]) === n;
+          return `<button class="swatch ${on ? 'on' : ''}" data-mside="${side}" data-mcolor="${esc(n)}" aria-pressed="${on}" title="${esc(n)}"><span style="background:${body}"></span>${esc(n)}</button>`;
+        }).join('')}</div></div>`).join('')}
+    </div>
     ${feedbackCard()}
     <div class="card">
       <div class="bold">重新編號</div>
@@ -1812,6 +1850,13 @@ async function viewSettings() {
   `;
 
   if (usingCloud()) bindShareCard();
+  app.querySelectorAll('[data-mside]').forEach((b) => b.addEventListener('click', async () => {
+    const pick = { ...(MASCOT_PICK || window.Mascot.DEFAULT), [b.dataset.mside]: b.dataset.mcolor };
+    MASCOT_PICK = pick;
+    document.getElementById('mascot-preview').innerHTML = mascotHtml('happy', 150);
+    app.querySelectorAll(`[data-mside="${b.dataset.mside}"]`).forEach((x) => { const on = x === b; x.classList.toggle('on', on); x.setAttribute('aria-pressed', on); });
+    try { await DB.setSetting('mascot', pick); } catch (e) { toast('顏色沒有存成功：' + cloudErrorText(e)); }
+  }));
   const more = document.getElementById('more-photos');
   if (more) more.addEventListener('click', () => showPaywall(quota));
   app.querySelectorAll('[data-restore]').forEach((b) => b.addEventListener('click', () => withBusy(b, '', async () => {
@@ -2012,6 +2057,7 @@ async function viewPartnerHome() {
       </div>
       <a class="icon-btn" href="#/settings" aria-label="設定">${ICON.gear}</a>
     </div>
+    <div class="mascot-hello">${mascotHtml('happy', 110)}<div class="small muted">${bound ? '今天有想記下的小事嗎？' : `看看${esc(ownerName())}分享了什麼`}</div></div>
     ${tasks.length ? `<a class="card" href="#/tasks" style="background:var(--lock-bg);border-color:transparent;gap:4px">
       <div class="bold" style="color:var(--lock)">${todo ? `有 ${todo} 個任務可以解鎖` : '任務都送出了'}</div>
       <div class="small" style="color:var(--lock)">${todo ? `完成任務、${esc(ownerName())}確認之後，就能看到上鎖的紀錄。` : `等${esc(ownerName())}確認中。`}</div>
@@ -2649,7 +2695,7 @@ async function route() {
     if (!page || page === 'view') checkNewStamps().catch(() => {});
   } catch (e) {
     console.error(e);
-    app.innerHTML = `<div class="empty">${esc(cloudErrorText(e))}<button class="btn small" id="reload">重新整理</button></div>`;
+    app.innerHTML = `<div class="empty no-mascot">${esc(cloudErrorText(e))}<button class="btn small" id="reload">重新整理</button></div>`;
     document.getElementById('reload').addEventListener('click', () => location.reload());
   }
 }

@@ -246,7 +246,9 @@ $$;
 -- 對方看自己的身分：名字、對方的名字
 create or replace function public.partner_info() returns jsonb
 language sql stable security definer set search_path = public as $$
-  select jsonb_build_object('owner', p.owner, 'name', p.name, 'owner_name', s.owner_name, 'approved', p.approved)
+  select jsonb_build_object('owner', p.owner, 'name', p.name, 'owner_name', s.owner_name, 'approved', p.approved,
+    -- 吉祥物顏色跟著主人的設定
+    'mascot', (select value from public.settings where owner = p.owner and key = 'mascot'))
   from public.partners p join public.shares s on s.owner = p.owner
   where p.uid = auth.uid()
 $$;

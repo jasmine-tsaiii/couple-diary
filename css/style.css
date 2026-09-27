@@ -268,3 +268,14 @@ a.card:active { transform: scale(0.99); }
   color: #fff; font-weight: 700; display: flex; align-items: center; justify-content: center; padding: 0; margin-top: 1px;
 }
 .wish-check.on { background: var(--happy); border-color: var(--happy); }
+
+/* 吉祥物「啾啾與啵啵」 */
+.mascot svg { width: 100%; height: auto; display: block; }
+.empty .mascot { margin: 0 auto 4px; }
+.celebrate-box .mascot { margin: 0 auto; }
+.mascot-hello { display: flex; flex-direction: row; align-items: center; gap: 12px; }
+.mascot-hello .mascot { flex: none; }
+.swatches { display: flex; flex-wrap: wrap; gap: 6px; }
+.swatch { display: inline-flex; align-items: center; gap: 6px; padding: 6px 10px; border-radius: 99px; border: 1.5px solid var(--line); background: var(--card); font: inherit; font-size: 13px; color: var(--ink); cursor: pointer; }
+.swatch span { width: 16px; height: 16px; border-radius: 50%; border: 1px solid rgba(74, 53, 48, .3); }
+.swatch.on { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-bg); font-weight: 700; }
