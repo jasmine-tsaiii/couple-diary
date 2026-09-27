@@ -351,3 +351,29 @@ body::before { content: ''; position: fixed; top: 0; left: 0; right: 0; height: 
 .digit-cells span.on { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-bg); }
 .digits-input { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; font-size: 16px; border: 0; padding: 0; caret-color: transparent; }
 .gear-btn { flex-direction: column; width: auto; min-width: 44px; height: auto; gap: 0; font-size: 11px; color: var(--soft); }
+
+/* 首頁：今天想記下什麼（三個大按鈕） */
+.quick-rec { gap: 12px; }
+.quick-head { display: flex; align-items: center; gap: 12px; font-size: 17px; }
+.quick-head .mascot { flex: none; }
+.quick-btns { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+.quick-btn {
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px;
+  min-height: 64px; padding: 10px 4px; border-radius: 14px; text-decoration: none;
+  background: var(--accent-bg); color: var(--accent-dark); font-weight: 700;
+}
+.quick-btn:active { filter: brightness(0.96); }
+
+/* 首頁：所有功能格子 */
+.home-tiles { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+.ftile {
+  background: var(--card); border: 1px solid var(--line); border-radius: 18px; padding: 14px;
+  display: flex; flex-direction: column; gap: 6px; text-decoration: none; color: var(--ink); min-width: 0;
+}
+.ftile:active { background: #FAF6F1; }
+.ftile-icon { display: inline-flex; }
+.ftile-icon svg { width: 26px; height: 26px; }
+.ftile-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.ftile-wide, .ftile:last-child:nth-child(odd) { grid-column: span 2; }
+.ftile-wide { flex-direction: row; align-items: center; gap: 12px; background: var(--happy-bg); border-color: transparent; color: var(--happy-dark); }
+.ftile-wide .muted { color: var(--happy-dark); }

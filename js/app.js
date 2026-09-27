@@ -383,17 +383,6 @@ function showPaywall(q) {
   });
 }
 
-// 首頁的「一起完成的事」卡片（雲端資料表還沒建立時就不顯示）
-function wishCard(list) {
-  if (!list) return '';
-  const done = list.filter((w) => w.done).length;
-  const next = list.find((w) => !w.done);
-  return `<a class="card theme-happy" href="#/wishes" style="gap:6px">
-    <div class="row between"><div><div class="bold" style="color:var(--accent)">📝 一起完成的事</div><div class="small muted">情侶待辦清單</div></div><div class="count"><b>${done}</b> / ${list.length}</div></div>
-    <div class="small muted">${list.length ? (next ? `下一件：${esc(next.title)}` : '全部完成了！再加幾件吧') : '寫下想和對方一起做的事，兩個人都能打勾'}</div>
-  </a>`;
-}
-
 // ---------- 一起完成的事：兩個人一起的待辦清單 ----------
 const WISH_CATS = ['約會', '旅行', '一起學', '生活', '其他'];
 const WISH_IDEAS = ['一起看日出', '一起做一頓晚餐', '去一個沒去過的城市', '一起完成一幅拼圖', '一起學一道新料理', '一起去露營', '拍一組情侶寫真', '一起看完一部影集', '一起運動一個月', '寫一封信給一年後的我們'];
@@ -877,6 +866,38 @@ async function viewStamps() {
 }
 
 // ---------- 首頁 ----------
+// 首頁上方的「今天想記下什麼？」：三個大按鈕直接開始寫
+function quickRecord(text) {
+  return `<div class="card quick-rec">
+    <div class="quick-head">${mascotHtml('happy', 64)}<div class="bold">${text}</div></div>
+    <div class="quick-btns">
+      <a class="quick-btn theme-happy" href="#/new/happy">${ICON.heart}<span>記美好</span></a>
+      <a class="quick-btn theme-cloud" href="#/new/cloud">${ICON.cloud}<span>記烏雲</span></a>
+      <a class="quick-btn theme-fight" href="#/new/fight">${ICON.bolt}<span>記吵架</span></a>
+    </div>
+  </div>`;
+}
+const TILE_ICON = {
+  wish: '<svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 11l3 3 8-8"/><path d="M20 12v7a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h9"/></svg>',
+  stamp: '<svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="9" r="6"/><path d="M8.5 14 7 22l5-3 5 3-1.5-8"/></svg>',
+  share: '<svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="9" cy="8" r="3.5"/><path d="M2.5 20a6.5 6.5 0 0 1 13 0"/><path d="M19 8v6M16 11h6"/></svg>',
+};
+// 「所有功能」的一格：圖示、名稱、一行狀態
+function homeTile({ href, icon, color, title, sub, extra = '', id = '', cls = '' }) {
+  return `<a class="ftile ${cls}" href="${href}"${id ? ` id="${id}"` : ''}>
+    <span class="ftile-icon" style="color:${color}">${icon}</span>
+    <span class="ftile-text"><span class="bold">${title}</span><span class="small muted">${sub}</span>${extra}</span>
+  </a>`;
+}
+function fightSub(fights) {
+  const open = fights.filter((f) => (f.status || 'open') !== 'resolved').length;
+  return !fights.length ? '還沒有吵架紀錄' : open ? `${open} 個還沒解決` : '都解決了';
+}
+function wishTile(list) {
+  if (!list) return '';
+  const done = list.filter((w) => w.done).length;
+  return homeTile({ href: '#/wishes', icon: TILE_ICON.wish, color: 'var(--happy)', title: '一起完成的事', sub: list.length ? `情侶待辦・${done} / ${list.length}` : '情侶待辦清單' });
+}
 // 兩個人都有寫的時候，小字顯示各自寫了幾則（一起累積，不是比賽）
 function splitLine(total, mine) {
   if (!usingCloud() || mine >= total || mine === 0 && total === 0) return '';
@@ -888,7 +909,6 @@ async function viewHome() {
   const lockedOthers = usingCloud() ? await CloudDB.othersLocked() : [];
   const count = (t) => all.filter((r) => r.type === t).length + lockedOthers.filter((x) => x.type === t).length;
   const fights = all.filter((r) => r.type === 'fight');
-  const st = (s) => fights.filter((f) => (f.status || 'open') === s).length;
   const recent = all.slice().sort(byDateDesc).slice(0, 5);
   const lastBackup = await DB.getSetting('lastBackupAt', null);
   // 手機版 14 天提醒一次；雲端版免費方案沒有自動備份，30 天提醒一次
@@ -920,43 +940,29 @@ async function viewHome() {
   const standalone = window.matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
 
   // 烏雲不當成要集滿的目標，改看「美好：烏雲」的比例（研究說幸福的情侶大約是 5 : 1）
-  const ratioCard = () => {
+  const ratioText = () => {
     const h = count('happy');
     const c = count('cloud');
     const ratio = c ? h / c : 0;
-    const label = !c ? (h ? '還沒有烏雲，繼續保持 ☀️' : '記下不開心的時刻，這裡會顯示美好和烏雲的比例') : `美好 : 烏雲 = ${ratio >= 10 ? Math.round(ratio) : Math.round(ratio * 10) / 10} : 1`;
-    const pct = h + c ? (h / (h + c)) * 100 : 0;
-    const hint = !c ? '' : ratio >= 5 ? '已經達到幸福情侶的 5 : 1 了！' : `再 ${Math.ceil(c * 5 - h)} 個美好時刻就到 5 : 1（研究說幸福的情侶大約是這個比例）`;
-    return `<a class="card theme-cloud" href="#/list/cloud">
-      <div class="row between"><div class="bold" style="color:var(--cloud)">烏雲時刻</div><div class="count"><b>${c}</b> 則</div></div>
-      <div class="ratio-bar" aria-hidden="true"><div style="width:${pct}%"></div></div>
-      <div class="small bold">${label}</div>
-      ${hint ? `<div class="small muted">${hint}</div>` : ''}
-    </a>`;
+    if (!c) return h ? '還沒有烏雲，繼續保持 ☀️' : '記下不開心的時刻';
+    return `美好 : 烏雲 = ${ratio >= 10 ? Math.round(ratio) : Math.round(ratio * 10) / 10} : 1${ratio >= 5 ? '（達到 5 : 1 了！）' : ''}`;
   };
   const wishes = await loadWishesSafe();
-  const stampCard = () => {
-    const stamps = allStamps(all);
-    const got = stamps.filter((x) => x.got);
-    const next = nextStamp(all);
-    return `<a class="card" href="#/stamps" style="gap:8px">
-      <div class="row between"><div class="bold">印章冊</div><div class="count"><b>${got.length}</b> / ${stamps.length}</div></div>
-      <div class="row" style="gap:6px;font-size:22px">${got.slice(-6).map((x) => x.icon).join('') || '<span class="small muted">還沒有印章</span>'}</div>
-      ${next ? `<div class="small muted">再 ${next.need} ${esc(next.group.unit)}，就能拿到「${esc(next.name)}」${next.icon}</div>` : '<div class="small muted">全部集滿了！</div>'}
-    </a>`;
-  };
-  const progressCard = (type) => {
-    const n = count(type);
-    const pct = Math.min(100, (n / TYPES[type].goal) * 100);
-    const done = n >= TYPES[type].goal;
-    return `<a class="card ${TYPES[type].theme}" href="#/list/${type}">
-      <div class="row between"><div class="bold" style="color:var(--accent)">${TYPES[type].label}</div>
-      <div class="count"><b>${n}</b> / ${TYPES[type].goal}</div></div>
-      <div class="progress"><div style="width:${pct}%"></div></div>
-      ${splitLine(n, all.filter((r) => r.type === type && isMine(r)).length)}
-      ${done ? '<div class="small bold" style="color:var(--accent-dark)">集滿 100 個了！</div>' : ''}
-    </a>`;
-  };
+  const nHappy = count('happy');
+  const stamps = allStamps(all);
+  const gotStamps = stamps.filter((x) => x.got).length;
+  const taskSub = pending.length ? `${pending.length} 個等你確認` : myTodo ? `${esc(partnerName())}出了 ${myTodo} 個給你` : '上鎖紀錄的解鎖任務';
+  const shareSub = !usingCloud() ? '登入之後就能分享' : hasPartner ? `${esc(partnerName())}已加入・邀請、暫停分享` : joinReqs.length ? '有人想加入，等你同意' : '還沒邀請・傳邀請連結給對方';
+  const tilesHtml = [
+    homeTile({ href: '#/list/happy', icon: ICON.heart, color: 'var(--happy)', title: '美好時刻', sub: `${nHappy} / ${TYPES.happy.goal}`,
+      extra: `${splitLine(nHappy, all.filter((r) => r.type === 'happy' && isMine(r)).length)}${nHappy >= TYPES.happy.goal ? '<span class="small bold" style="color:var(--happy-dark)">集滿 100 個了！</span>' : ''}` }),
+    homeTile({ href: '#/list/cloud', icon: ICON.cloud, color: 'var(--cloud)', title: '烏雲時刻', sub: ratioText() }),
+    homeTile({ href: '#/fights', icon: ICON.bolt, color: 'var(--fight)', title: '吵架議題', sub: fightSub(fights) }),
+    wishTile(wishes),
+    homeTile({ href: '#/stamps', icon: TILE_ICON.stamp, color: 'var(--cloud)', title: '印章冊', sub: `已集 ${gotStamps} / ${stamps.length}` }),
+    usingCloud() ? homeTile({ href: '#/tasks', icon: ICON.lock, color: 'var(--lock)', title: '解鎖任務', sub: taskSub }) : '',
+    homeTile({ href: isGuest() ? '#/login' : '#/settings', icon: TILE_ICON.share, color: 'var(--happy-dark)', title: '分享給另一半', sub: shareSub, id: 'tile-share', cls: 'ftile-wide' }),
+  ].join('');
 
   app.innerHTML = `
     <div class="row between">
@@ -967,7 +973,7 @@ async function viewHome() {
       </div>
       <a class="icon-btn gear-btn" href="#/settings" aria-label="設定">${ICON.gear}<span>設定</span></a>
     </div>
-    <div class="mascot-hello">${mascotHtml('happy', 110)}<div class="small muted">今天有想記下的小事嗎？</div></div>
+    ${quickRecord('今天想記下什麼？')}
     ${joinReqs.map((j) => `<div class="card join-req" style="background:var(--lock-bg);border-color:transparent;gap:8px">
       <div class="bold" style="color:var(--lock)">${esc(j.name)} 想加入你們的日記</div>
       <div class="small" style="color:var(--lock)">是你的另一半就按「同意」，同意後對方就能看到分享的紀錄、一起寫。不認識的人請按「拒絕」。</div>
@@ -1016,26 +1022,12 @@ async function viewHome() {
       <div class="bold" style="color:var(--lock)">${esc(partnerName())}出了 ${myTodo} 個任務給你</div>
       <div class="small" style="color:var(--lock)">完成任務、${esc(partnerName())}確認之後，就能看到那則上鎖的紀錄 ›</div>
     </a>` : ''}
-    ${isIOS && !standalone ? `<div class="card" style="background:var(--lock-bg);border-color:transparent;gap:4px">
-      <div class="bold" style="color:var(--lock)">建議加到主畫面</div>
-      <div class="small" style="color:var(--lock)">在 Safari 按「分享 → 加入主畫面」，之後都從主畫面打開，資料才不會因為太久沒開而被自動清掉。</div>
-    </div>` : ''}
     ${memory ? `<a class="card theme-happy" href="#/view/${esc(memory.id)}" style="background:var(--happy-bg);border-color:transparent;gap:4px">
       <div class="small bold" style="color:var(--happy-dark)">${Number(today().slice(0, 4)) - Number(memory.date.slice(0, 4))} 年前的今天</div>
       <div class="bold">${esc(memory.title)}</div>
     </a>` : ''}
-    ${progressCard('happy')}
-    ${ratioCard()}
-    ${wishCard(wishes)}
-    ${stampCard()}
-    <a class="card theme-fight" href="#/fights">
-      <div class="bold" style="color:var(--fight)">吵架議題</div>
-      <div class="status-grid">
-        <div class="status-tile st-open"><b>${st('open')}</b><span class="small">未解決</span></div>
-        <div class="status-tile st-progress"><b>${st('progress')}</b><span class="small">處理中</span></div>
-        <div class="status-tile st-resolved"><b>${st('resolved')}</b><span class="small">已解決</span></div>
-      </div>
-    </a>
+    <div class="section-title">所有功能</div>
+    <div class="home-tiles">${tilesHtml}</div>
     <div class="section-title">最近的紀錄</div>
     <div class="list" id="recent">${recent.length ? '' : `<div class="empty">還沒有任何紀錄<a class="btn small" href="#/new/happy">寫下第一個美好時刻</a></div>`}</div>
   `;
@@ -1053,8 +1045,10 @@ async function viewHome() {
       document.getElementById('names-card').remove();
     });
   }
-  const ig = document.getElementById('invite-go');
-  if (ig) ig.addEventListener('click', () => { try { sessionStorage.setItem('jumpShare', '1'); } catch (e) { /* 略過 */ } });
+  ['invite-go', 'tile-share'].forEach((id) => {
+    const el = document.getElementById(id);
+    if (el && el.getAttribute('href') === '#/settings') el.addEventListener('click', () => { try { sessionStorage.setItem('jumpShare', '1'); } catch (e) { /* 略過 */ } });
+  });
   const ih = document.getElementById('invite-hide');
   if (ih) ih.addEventListener('click', () => { try { localStorage.setItem('inviteCardHidden', '1'); } catch (e) { /* 略過 */ } document.getElementById('invite-card').remove(); });
   app.querySelectorAll('[data-home-approve]').forEach((b) => b.addEventListener('click', async () => {
@@ -2467,7 +2461,6 @@ async function viewPartnerHome() {
   const all = await liveRecords();
   const count = (t) => all.filter((r) => r.type === t).length;
   const fights = all.filter((r) => r.type === 'fight');
-  const st = (s) => fights.filter((f) => (f.status || 'open') === s).length;
   const recent = all.slice().sort(byDateDesc).slice(0, 5);
   const tasks = await CloudDB.partnerTasks();
   const todo = tasks.filter((t) => !t.submission || t.submission.status !== 'pending').length;
@@ -2477,12 +2470,15 @@ async function viewPartnerHome() {
   if (CloudDB.isBoundPartner()) { try { pending = (await CloudDB.submissions({ status: 'pending' })).filter((t) => all.some((r) => r.id === t.record_id && isMine(r))); } catch (e) { pending = []; } }
 
   const bound = CloudDB.isBoundPartner();
-  const typeCard = (type) => `<a class="card ${TYPES[type].theme}" href="#/list/${type}">
-      <div class="row between"><div class="bold" style="color:var(--accent)">${TYPES[type].label}</div>
-      <div class="count"><b>${count(type)}</b> 則</div></div>
-      ${lockedOf(type) ? `<div class="small row" style="color:var(--lock);gap:4px">${ICON.lockSmall}另外還有 ${lockedOf(type)} 則上鎖</div>` : ''}
-      ${bound ? splitLine(count(type) + lockedOf(type), all.filter((r) => r.type === type && isMine(r)).length) : ''}
-    </a>`;
+  const typeTile = (type, icon, color, sub) => homeTile({ href: `#/list/${type}`, icon, color, title: TYPES[type].label, sub,
+    extra: `${lockedOf(type) ? `<span class="small row" style="color:var(--lock);gap:4px">${ICON.lockSmall}另有 ${lockedOf(type)} 則上鎖</span>` : ''}${bound ? splitLine(count(type) + lockedOf(type), all.filter((r) => r.type === type && isMine(r)).length) : ''}` });
+  const tilesHtml = [
+    typeTile('happy', ICON.heart, 'var(--happy)', `${count('happy') + lockedOf('happy')} / ${TYPES.happy.goal}`),
+    typeTile('cloud', ICON.cloud, 'var(--cloud)', `${count('cloud')} 則`),
+    homeTile({ href: '#/fights', icon: ICON.bolt, color: 'var(--fight)', title: '吵架議題', sub: fightSub(fights) }),
+    wishTile(await loadWishesSafe()),
+    homeTile({ href: '#/tasks', icon: ICON.lock, color: 'var(--lock)', title: '解鎖任務', sub: pending.length ? `${pending.length} 個等你確認` : todo ? `${todo} 個可以解鎖` : tasks.length ? `等${esc(ownerName())}確認中` : '目前沒有任務' }),
+  ].join('');
 
   app.innerHTML = `
     <div class="row between">
@@ -2492,7 +2488,7 @@ async function viewPartnerHome() {
       </div>
       <a class="icon-btn gear-btn" href="#/settings" aria-label="設定">${ICON.gear}<span>設定</span></a>
     </div>
-    <div class="mascot-hello">${mascotHtml('happy', 110)}<div class="small muted">${bound ? '今天有想記下的小事嗎？' : `看看${esc(ownerName())}分享了什麼`}</div></div>
+    ${bound ? quickRecord('今天想記下什麼？') : `<div class="mascot-hello">${mascotHtml('happy', 110)}<div class="small muted">看看${esc(ownerName())}分享了什麼</div></div>`}
     ${info.paused ? `<div class="card" id="paused-note" style="background:var(--lock-bg);border-color:transparent;gap:4px">
       <div class="bold" style="color:var(--lock)">${esc(ownerName())}暫時停止分享</div>
       <div class="small" style="color:var(--lock)">這段時間看不到${esc(ownerName())}寫的紀錄，你自己寫的照舊。${esc(ownerName())}恢復之後就會回來，什麼都不會不見。</div>
@@ -2510,17 +2506,8 @@ async function viewPartnerHome() {
       <div class="bold" style="color:var(--fight-dark)">綁定帳號，你也可以寫紀錄</div>
       <div class="small muted">現在是用分享碼暫時登入。綁定 Email 或 Google 後，就能記自己的美好、烏雲時刻，一起寫吵架議題，換手機也不用重新加入 ›</div>
     </a>` : ''}
-    ${typeCard('happy')}
-    ${typeCard('cloud')}
-    ${wishCard(await loadWishesSafe())}
-    <a class="card theme-fight" href="#/fights">
-      <div class="bold" style="color:var(--fight)">吵架議題</div>
-      <div class="status-grid">
-        <div class="status-tile st-open"><b>${st('open')}</b><span class="small">未解決</span></div>
-        <div class="status-tile st-progress"><b>${st('progress')}</b><span class="small">處理中</span></div>
-        <div class="status-tile st-resolved"><b>${st('resolved')}</b><span class="small">已解決</span></div>
-      </div>
-    </a>
+    <div class="section-title">所有功能</div>
+    <div class="home-tiles">${tilesHtml}</div>
     <div class="section-title">${bound ? '最近的紀錄' : '最近分享的紀錄'}</div>
     <div class="list" id="recent">${recent.length ? '' : bound ? `<div class="empty">還沒有紀錄<a class="btn small" href="#/new/happy">寫下第一個美好時刻</a></div>` : `<div class="empty">${esc(ownerName())}還沒有分享紀錄給你</div>`}</div>
   `;
