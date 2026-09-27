@@ -345,6 +345,177 @@ function showPaywall(q) {
   });
 }
 
+// 首頁的「一起完成的事」卡片（雲端資料表還沒建立時就不顯示）
+function wishCard(list) {
+  if (!list) return '';
+  const done = list.filter((w) => w.done).length;
+  const next = list.find((w) => !w.done);
+  return `<a class="card theme-happy" href="#/wishes" style="gap:6px">
+    <div class="row between"><div class="bold" style="color:var(--accent)">一起完成的事</div><div class="count"><b>${done}</b> / ${list.length}</div></div>
+    <div class="small muted">${list.length ? (next ? `下一件：${esc(next.title)}` : '全部完成了！再加幾件吧') : '寫下想和對方一起做的事，兩個人都能打勾'}</div>
+  </a>`;
+}
+
+// ---------- 一起完成的事：兩個人一起的待辦清單 ----------
+const WISH_CATS = ['約會', '旅行', '一起學', '生活', '其他'];
+const WISH_IDEAS = ['一起看日出', '一起做一頓晚餐', '去一個沒去過的城市', '一起完成一幅拼圖', '一起學一道新料理', '一起去露營', '拍一組情侶寫真', '一起看完一部影集', '一起運動一個月', '寫一封信給一年後的我們'];
+const WISH_MAX = 200;
+// 手機版存在設定裡；雲端版存在 wishes 資料表（另一半也能新增、打勾）
+const Wishes = {
+  async list() {
+    if (usingCloud()) return CloudDB.listWishes();
+    return (await LocalDB.getSetting('wishes', [])).slice().sort((a, b) => (a.created_at < b.created_at ? -1 : 1));
+  },
+  async add(w) {
+    if (usingCloud()) return CloudDB.addWish(w);
+    const list = await LocalDB.getSetting('wishes', []);
+    if (list.length >= WISH_MAX) throw new Error(`一起完成的事最多 ${WISH_MAX} 件`);
+    list.push({ id: DB.uid(), done: false, done_at: null, done_by_name: '', record_id: null, created_by: 'owner', created_at: new Date().toISOString(), ...w });
+    await LocalDB.setSetting('wishes', list);
+  },
+  async update(id, patch) {
+    if (usingCloud()) return CloudDB.updateWish(id, patch);
+    const list = await LocalDB.getSetting('wishes', []);
+    await LocalDB.setSetting('wishes', list.map((w) => (w.id === id ? { ...w, ...patch } : w)));
+  },
+  async setDone(id, done) {
+    const name = isPartner() ? '' : myName();
+    if (usingCloud()) return CloudDB.setWishDone(id, done, name);
+    return Wishes.update(id, { done, done_at: done ? new Date().toISOString() : null, done_by_name: done ? name : '' });
+  },
+  async remove(id) {
+    if (usingCloud()) return CloudDB.deleteWish(id);
+    const list = await LocalDB.getSetting('wishes', []);
+    await LocalDB.setSetting('wishes', list.filter((w) => w.id !== id));
+  },
+};
+// 印章要用到「完成了幾件」，讀清單時順便記下來
+let wishDoneCount = 0;
+async function loadWishesSafe() {
+  try { const list = await Wishes.list(); wishDoneCount = list.filter((w) => w.done).length; return list; } catch (e) { return null; }
+}
+// 完成後要記成美好時刻：先把標題、日期帶到新增畫面
+let formPrefill = null;
+
+// 新增／修改一件事的小視窗
+function wishDialog(w, onSave) {
+  const box = document.createElement('div');
+  box.className = 'celebrate wish-dlg';
+  box.innerHTML = `<form class="celebrate-box" style="align-items:stretch;text-align:left" role="dialog" aria-label="${w ? '修改' : '新增'}一起完成的事">
+    <h2 style="font-size:20px">${w ? '修改' : '想一起完成什麼？'}</h2>
+    <div class="field"><label for="w-title">要做的事</label><input id="w-title" class="input" maxlength="60" required value="${esc(w ? w.title : '')}" placeholder="例如：一起看日出"></div>
+    <div class="field"><div class="label">分類</div><div class="chips">${WISH_CATS.map((c) => `<button type="button" class="chip ${w && w.category === c ? 'on' : ''}" data-wcat="${c}">${c}</button>`).join('')}</div></div>
+    <div class="field"><label for="w-note">備註（可不填）</label><textarea id="w-note" class="textarea" maxlength="300" style="min-height:60px" placeholder="例如：想去合歡山">${esc(w ? w.note : '')}</textarea></div>
+    <button class="btn" type="submit" id="w-save">${w ? '儲存' : '加入清單'}</button>
+    <button class="btn secondary small" type="button" id="w-cancel">取消</button>
+  </form>`;
+  document.body.appendChild(box);
+  let cat = w ? w.category : '';
+  box.querySelectorAll('[data-wcat]').forEach((b) => b.addEventListener('click', () => {
+    cat = cat === b.dataset.wcat ? '' : b.dataset.wcat;
+    box.querySelectorAll('[data-wcat]').forEach((x) => x.classList.toggle('on', x.dataset.wcat === cat));
+  }));
+  const close = () => box.remove();
+  box.querySelector('#w-cancel').addEventListener('click', close);
+  box.querySelector('#w-title').focus();
+  box.querySelector('form').addEventListener('submit', (ev) => {
+    ev.preventDefault();
+    const title = box.querySelector('#w-title').value.trim();
+    if (!title) return;
+    withBusy(box.querySelector('#w-save'), '儲存中…', async () => {
+      await onSave({ title: title.slice(0, 60), note: box.querySelector('#w-note').value.trim().slice(0, 300), category: cat });
+      close();
+    });
+  });
+}
+
+// 完成時問要不要記成美好時刻（只有紀錄主人能新增紀錄）
+function askRecordWish(w) {
+  if (isPartner()) return;
+  if (!confirm(`🎉 完成「${w.title}」了！要把它記成一則美好時刻嗎？`)) return;
+  formPrefill = { title: w.title, description: w.note || '', wishId: w.id };
+  go('#/new/happy');
+}
+
+async function viewWishes(show = 'todo') {
+  const list = await Wishes.list();
+  wishDoneCount = list.filter((w) => w.done).length;
+  const todo = list.filter((w) => !w.done);
+  const done = list.filter((w) => w.done).sort((a, b) => (a.done_at < b.done_at ? 1 : -1));
+  const partner = isPartner();
+  const who = (w) => (w.created_by === 'partner' ? (partner ? '你加的' : `${esc(w.created_by_name || partnerName())}加的`) : (partner ? `${esc(ownerName())}加的` : ''));
+  const canDelete = (w) => !partner || w.created_by === 'partner';
+  const item = (w) => `<div class="card" style="flex-direction:row;align-items:flex-start;gap:12px">
+      <button class="wish-check ${w.done ? 'on' : ''}" data-wdone="${esc(w.id)}" aria-label="${w.done ? '取消完成' : '標成完成'}：${esc(w.title)}">${w.done ? '✓' : ''}</button>
+      <div class="grow" style="display:flex;flex-direction:column;gap:4px">
+        <div class="bold" style="${w.done ? 'text-decoration:line-through;color:var(--muted)' : ''}">${esc(w.title)}</div>
+        ${w.note ? `<div class="small muted">${esc(w.note)}</div>` : ''}
+        <div class="small muted">${[w.category ? esc(w.category) : '', who(w), w.done ? `${shortDate(dateOf(Date.parse(w.done_at)))} ${w.done_by_name ? `${esc(w.done_by_name)}打勾` : '完成'}` : ''].filter(Boolean).join('・')}</div>
+        ${!partner && w.done && !w.record_id ? `<button class="btn small secondary" data-wrec="${esc(w.id)}" style="align-self:flex-start">記成美好時刻</button>` : ''}
+        ${!partner && w.record_id ? `<a class="small" href="#/view/${esc(w.record_id)}" style="color:var(--happy-dark)">❤️ 看那則美好時刻</a>` : ''}
+      </div>
+      <div style="display:flex;flex-direction:column;gap:4px">
+        ${partner ? '' : `<button class="btn small secondary" data-wedit="${esc(w.id)}">編輯</button>`}
+        ${canDelete(w) ? `<button class="btn small secondary" data-wdel="${esc(w.id)}">刪除</button>` : ''}
+      </div>
+    </div>`;
+  app.className = 'theme-happy';
+  app.innerHTML = `
+    <div class="topbar">
+      <a class="icon-btn" href="#/" aria-label="返回">${ICON.back}</a>
+      <h1>一起完成的事</h1>
+      <div class="count"><b style="font-size:16px;color:var(--accent)">${done.length}</b> / ${list.length}</div>
+    </div>
+    <div class="muted small">想和${esc(partner ? ownerName() : partnerName())}一起做的事都寫在這裡，兩個人都能新增、打勾。</div>
+    <button class="btn" id="w-add">＋ 新增一件事</button>
+    <div class="chips">
+      <button class="chip ${show === 'todo' ? 'on' : ''}" data-wshow="todo">還沒完成 ${todo.length}</button>
+      <button class="chip ${show === 'done' ? 'on' : ''}" data-wshow="done">完成了 ${done.length}</button>
+    </div>
+    <div class="list">${(show === 'todo' ? todo : done).map(item).join('')}</div>
+    ${show === 'todo' && !todo.length ? `<div class="card" style="gap:8px">
+      <div class="bold">${list.length ? '全部完成了！再想幾件吧' : '還沒有清單，從這些點子開始？'}</div>
+      <div class="chips">${WISH_IDEAS.filter((i) => !list.some((w) => w.title === i)).slice(0, 8).map((i) => `<button class="chip" data-widea="${esc(i)}">＋ ${esc(i)}</button>`).join('')}</div>
+    </div>` : ''}
+    ${show === 'done' && !done.length ? '<div class="empty">還沒有完成的事，一起加油！</div>' : ''}
+  `;
+  const refresh = () => viewWishes(show);
+  app.querySelectorAll('[data-wshow]').forEach((b) => b.addEventListener('click', () => viewWishes(b.dataset.wshow)));
+  document.getElementById('w-add').addEventListener('click', () => {
+    if (list.length >= WISH_MAX) { toast(`最多 ${WISH_MAX} 件`); return; }
+    wishDialog(null, async (w) => { await Wishes.add({ ...w, created_by_name: partner ? '' : myName() }); toast('已加入清單'); refresh(); });
+  });
+  app.querySelectorAll('[data-widea]').forEach((b) => b.addEventListener('click', () => withBusy(b, '', async () => {
+    await Wishes.add({ title: b.dataset.widea, note: '', category: '', created_by_name: partner ? '' : myName() });
+    refresh();
+  })));
+  app.querySelectorAll('[data-wdone]').forEach((b) => b.addEventListener('click', () => withBusy(b, '', async () => {
+    const w = list.find((x) => x.id === b.dataset.wdone);
+    await Wishes.setDone(w.id, !w.done);
+    if (!w.done) {
+      toast(partner ? `完成了！${ownerName()}會看到` : '完成了！');
+      checkNewStamps().catch(() => {});
+      askRecordWish(w);
+      if (location.hash.startsWith('#/new')) return;
+    }
+    refresh();
+  })));
+  app.querySelectorAll('[data-wrec]').forEach((b) => b.addEventListener('click', () => {
+    const w = list.find((x) => x.id === b.dataset.wrec);
+    formPrefill = { title: w.title, description: w.note || '', wishId: w.id };
+    go('#/new/happy');
+  }));
+  app.querySelectorAll('[data-wedit]').forEach((b) => b.addEventListener('click', () => {
+    const w = list.find((x) => x.id === b.dataset.wedit);
+    wishDialog(w, async (patch) => { await Wishes.update(w.id, patch); toast('已儲存'); refresh(); });
+  }));
+  app.querySelectorAll('[data-wdel]').forEach((b) => b.addEventListener('click', () => {
+    const w = list.find((x) => x.id === b.dataset.wdel);
+    if (!confirm(`刪除「${w.title}」？`)) return;
+    withBusy(b, '', async () => { await Wishes.remove(w.id); refresh(); });
+  }));
+}
+
 // ---------- 印章冊：像集點卡一樣，達到里程碑就蓋一個章 ----------
 // 每一組：怎麼算數量、各階段的門檻、每個章的圖案和名字
 const STAMP_GROUPS = [
@@ -358,6 +529,8 @@ const STAMP_GROUPS = [
     steps: [[1, '💭', '第一次反思'], [5, '📖', '反思 5 次'], [10, '🧘', '反思 10 次']] },
   { key: 'task', title: '任務解鎖', help: '把紀錄設成「任務解鎖」，另一半完成任務、你按「通過並解鎖」就算 1 個（雲端版開啟分享碼後才能用）。', unit: '個任務解鎖', u: '個', count: (c) => c.unlocked,
     steps: [[1, '🔓', '第一次解鎖'], [5, '🗝️', '解鎖 5 個'], [10, '🎁', '解鎖 10 個']] },
+  { key: 'wish', title: '一起完成', help: '在首頁的「一起完成的事」清單打勾，每完成 1 件算 1 個，你們兩個誰打勾都算。', unit: '件一起完成的事', u: '件', count: (c) => c.wishes,
+    steps: [[1, '✅', '第一件完成'], [5, '🎯', '完成 5 件'], [10, '🗺️', '完成 10 件'], [30, '🌟', '完成 30 件']] },
   { key: 'days', title: '在一起', help: '到設定頁填「在一起的日期」，每天自動累積，在一起那天算第 1 天。', unit: '天', u: '天', count: (c) => c.days,
     steps: [[100, '💯', '100 天'], [365, '🎂', '一週年'], [1000, '💍', '1000 天']] },
 ];
@@ -368,6 +541,7 @@ function stampCounts(all) {
     cleared: all.filter((r) => r.type === 'cloud' && r.clearedAt).length,
     reflections: all.reduce((n, r) => n + (r.reflections || []).length, 0),
     unlocked: all.filter((r) => r.visibility === 'task' && r.unlocked).length,
+    wishes: wishDoneCount,
     days: togetherDays(),
   };
 }
@@ -391,6 +565,7 @@ async function checkNewStamps() {
   try { await showNewStamps(); } finally { stampChecking = false; }
 }
 async function showNewStamps() {
+  await loadWishesSafe();
   const got = allStamps(await liveRecords()).filter((s) => s.got);
   const seen = await DB.getSetting('stamps', null);
   if (!seen) { await DB.setSetting('stamps', Object.fromEntries(got.map((s) => [s.id, Date.now()]))); return; }
@@ -417,6 +592,7 @@ async function showNewStamps() {
 
 async function viewStamps() {
   const all = await liveRecords();
+  await loadWishesSafe();
   const stamps = allStamps(all);
   const next = nextStamp(all);
   app.className = '';
@@ -485,6 +661,7 @@ async function viewHome() {
       ${hint ? `<div class="small muted">${hint}</div>` : ''}
     </a>`;
   };
+  const wishes = await loadWishesSafe();
   const stampCard = () => {
     const stamps = allStamps(all);
     const got = stamps.filter((x) => x.got);
@@ -552,6 +729,7 @@ async function viewHome() {
     </a>` : ''}
     ${progressCard('happy')}
     ${ratioCard()}
+    ${wishCard(wishes)}
     ${stampCard()}
     <a class="card theme-fight" href="#/fights">
       <div class="bold" style="color:var(--fight)">吵架議題</div>
@@ -1017,8 +1195,12 @@ async function viewForm(mode, arg) {
       photoIds: [], emojis: [], tags: [], visibility: defaultVisibility(type), task: { text: '', mode: 'confirm' },
       category: '', reason: '', myView: '', theirView: '', status: 'open', resolution: '', followUps: [],
     };
+    // 從「一起完成的事」過來：帶入標題和內容，不問草稿
+    const prefill = type === 'happy' ? formPrefill : null;
+    formPrefill = null;
+    if (prefill) { rec.title = prefill.title; rec.description = prefill.description; rec.wishId = prefill.wishId; }
     // 上次寫到一半沒存（例如 App 被關掉）：問要不要接著寫
-    const draft = loadDraft();
+    const draft = prefill ? null : loadDraft();
     if (draft && draft.rec && TYPES[draft.rec.type]) {
       const label = draft.rec.title ? `「${draft.rec.title.slice(0, 20)}」` : '';
       if (confirm(`有一則${TYPES[draft.rec.type].label}${label}還沒儲存（${daysAgo(draft.savedAt) === 0 ? '今天' : daysAgo(draft.savedAt) + ' 天前'}寫的，照片要重新選）。要接著寫嗎？`)) {
@@ -1285,6 +1467,7 @@ async function viewForm(mode, arg) {
       dirty = false;
       clearTimeout(draftTimer);
       if (mode === 'new') clearDraft();
+      if (mode === 'new' && rec.wishId) { try { await Wishes.update(rec.wishId, { record_id: rec.id }); } catch (e) { /* 連不到清單也沒關係 */ } }
       toast('已儲存');
       go(`#/view/${rec.id}`);
     }));
@@ -1687,6 +1870,7 @@ async function viewPartnerHome() {
     </a>` : ''}
     ${typeCard('happy')}
     ${typeCard('cloud')}
+    ${wishCard(await loadWishesSafe())}
     <a class="card theme-fight" href="#/fights">
       <div class="bold" style="color:var(--fight)">吵架議題</div>
       <div class="status-grid">
@@ -2186,6 +2370,7 @@ async function route() {
       else if (page === 'fights') { renderTabbar('fight'); await viewFights(); }
       else if (page === 'view') { renderTabbar(null); await viewDetail(arg); }
       else if (page === 'tasks') { renderTabbar('tasks'); await viewPartnerTasks(); }
+      else if (page === 'wishes') { renderTabbar(null); await viewWishes(); }
       else if (page === 'task') { renderTabbar(null); await viewPartnerTaskForm(arg); }
       else if (page === 'settings') { renderTabbar(null); viewPartnerSettings(); }
       else go('#/');
@@ -2199,6 +2384,7 @@ async function route() {
     else if (page === 'edit') { renderTabbar(null); await viewForm('edit', arg); }
     else if (page === 'settings') { renderTabbar(null); await viewSettings(); }
     else if (page === 'stamps') { renderTabbar(null); await viewStamps(); }
+    else if (page === 'wishes') { renderTabbar(null); await viewWishes(); }
     else go('#/');
     if (!page || page === 'view') checkNewStamps().catch(() => {});
   } catch (e) {

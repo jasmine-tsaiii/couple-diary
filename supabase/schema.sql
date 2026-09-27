@@ -449,6 +449,93 @@ grant execute on function public.toggle_heart(text) to authenticated;
 grant execute on function public.add_partner_note(text, text) to authenticated;
 
 -- ============================================================
+-- 一起完成的事：兩個人都能新增、打勾的清單（紀錄主人擁有這份清單）
+-- ============================================================
+create table if not exists public.wishes (
+  id              uuid primary key default gen_random_uuid(),
+  owner           uuid not null references auth.users (id) on delete cascade,
+  title           text not null check (char_length(title) between 1 and 60),
+  note            text not null default '' check (char_length(note) <= 300),
+  category        text not null default '' check (char_length(category) <= 12),
+  created_by      text not null default 'owner' check (created_by in ('owner', 'partner')),
+  created_by_name text not null default '' check (char_length(created_by_name) <= 20),
+  done            boolean not null default false,
+  done_at         timestamptz,
+  done_by_name    text not null default '' check (char_length(done_by_name) <= 20),
+  record_id       text,
+  created_at      timestamptz not null default now()
+);
+create index if not exists wishes_owner_idx on public.wishes (owner, created_at);
+alter table public.wishes enable row level security;
+
+-- 你：全部都能讀寫；另一半：只能讀，新增和打勾要透過下面的函式
+drop policy if exists "wishes: owner all" on public.wishes;
+create policy "wishes: owner all" on public.wishes
+  for all to authenticated
+  using (owner = auth.uid() and public.is_real_user())
+  with check (owner = auth.uid() and public.is_real_user());
+drop policy if exists "wishes: partner read" on public.wishes;
+create policy "wishes: partner read" on public.wishes
+  for select to authenticated using (owner = public.my_owner());
+
+-- 一份清單最多 200 件
+create or replace function public.wishes_limit() returns trigger
+language plpgsql security definer set search_path = public as $$
+begin
+  if (select count(*) from public.wishes where owner = new.owner) >= 200 then
+    raise exception '一起完成的事最多 200 件';
+  end if;
+  return new;
+end $$;
+drop trigger if exists wishes_limit on public.wishes;
+create trigger wishes_limit before insert on public.wishes for each row execute function public.wishes_limit();
+
+create or replace function public.partner_add_wish(p_title text, p_note text, p_category text) returns void
+language plpgsql security definer set search_path = public as $$
+declare
+  p public.partners;
+begin
+  select * into p from public.partners where uid = auth.uid() and approved;
+  if not found then raise exception '你還沒有用分享碼加入'; end if;
+  insert into public.wishes (owner, title, note, category, created_by, created_by_name)
+  values (p.owner, trim(coalesce(p_title, '')), trim(coalesce(p_note, '')), trim(coalesce(p_category, '')), 'partner', p.name);
+end $$;
+
+create or replace function public.partner_set_wish_done(p_id uuid, p_done boolean) returns void
+language plpgsql security definer set search_path = public as $$
+declare
+  p public.partners;
+begin
+  select * into p from public.partners where uid = auth.uid() and approved;
+  if not found then raise exception '你還沒有用分享碼加入'; end if;
+  update public.wishes set
+    done = p_done,
+    done_at = case when p_done then now() else null end,
+    done_by_name = case when p_done then p.name else '' end
+  where id = p_id and owner = p.owner;
+  if not found then raise exception '找不到這件事'; end if;
+end $$;
+
+-- 另一半只能刪自己加的
+create or replace function public.partner_delete_wish(p_id uuid) returns void
+language plpgsql security definer set search_path = public as $$
+declare
+  p public.partners;
+begin
+  select * into p from public.partners where uid = auth.uid() and approved;
+  if not found then raise exception '你還沒有用分享碼加入'; end if;
+  delete from public.wishes where id = p_id and owner = p.owner and created_by = 'partner';
+  if not found then raise exception '只能刪除你自己加的'; end if;
+end $$;
+
+revoke all on function public.partner_add_wish(text, text, text) from public, anon;
+revoke all on function public.partner_set_wish_done(uuid, boolean) from public, anon;
+revoke all on function public.partner_delete_wish(uuid) from public, anon;
+grant execute on function public.partner_add_wish(text, text, text) to authenticated;
+grant execute on function public.partner_set_wish_done(uuid, boolean) to authenticated;
+grant execute on function public.partner_delete_wish(uuid) to authenticated;
+
+-- ============================================================
 -- 3. 照片：放在不公開的 photos 儲存空間，路徑是「使用者 id/照片 id.jpg」
 -- ============================================================
 insert into storage.buckets (id, name, public)

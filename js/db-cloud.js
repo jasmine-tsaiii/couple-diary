@@ -172,6 +172,27 @@ const CloudDB = CLOUD_ENABLED ? (() => {
     async noteUpgradeInterest() {
       await client.rpc('note_upgrade_interest');
     },
+    // ---- 一起完成的事（主人直接寫；另一半透過資料庫函式新增、打勾、刪自己加的） ----
+    async listWishes() {
+      const { data, error } = await client.from('wishes').select('*').eq('owner', dataOwner()).order('created_at');
+      if (error) { if (/wishes/.test(error.message)) throw new Error('要先到 Supabase 重新執行最新的 schema.sql，才能使用「一起完成的事」'); throw new Error(error.message); }
+      return data || [];
+    },
+    async addWish(w) {
+      if (partner) { check(await client.rpc('partner_add_wish', { p_title: w.title, p_note: w.note, p_category: w.category })); return; }
+      check(await client.from('wishes').insert({ owner: userId(), title: w.title, note: w.note, category: w.category, created_by: 'owner', created_by_name: w.created_by_name || '' }));
+    },
+    async updateWish(id, patch) {
+      check(await client.from('wishes').update(patch).eq('id', id).eq('owner', userId()));
+    },
+    async setWishDone(id, done, name) {
+      if (partner) { check(await client.rpc('partner_set_wish_done', { p_id: id, p_done: done })); return; }
+      check(await client.from('wishes').update({ done, done_at: done ? new Date().toISOString() : null, done_by_name: done ? name : '' }).eq('id', id).eq('owner', userId()));
+    },
+    async deleteWish(id) {
+      if (partner) { check(await client.rpc('partner_delete_wish', { p_id: id })); return; }
+      check(await client.from('wishes').delete().eq('id', id).eq('owner', userId()));
+    },
     async partnerLocked() {
       const { data, error } = await client.rpc('partner_locked');
       return error ? [] : data || [];
@@ -272,6 +293,7 @@ const CloudDB = CLOUD_ENABLED ? (() => {
       } catch (e) { /* 舊版資料表沒有任務，略過 */ }
       check(await client.from('records').delete().eq('owner', uid));
       check(await client.from('settings').delete().eq('owner', uid));
+      try { check(await client.from('wishes').delete().eq('owner', uid)); } catch (e) { /* 舊版資料表沒有清單 */ }
       const names = await listPhotoNames();
       for (let i = 0; i < names.length; i += 100) {
         const batch = names.slice(i, i + 100);
