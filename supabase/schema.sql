@@ -653,6 +653,7 @@ declare
   v_str text[];
   v_arr text[];
   k text;
+  v_relock boolean := false;
 begin
   if not public.is_real_user() then raise exception '要先綁定 Email 或 Google 帳號，才能新增或修改紀錄'; end if;
   select * into p from public.partners where uid = auth.uid() and approved;
@@ -693,11 +694,18 @@ begin
   if jsonb_array_length(coalesce(v_in -> 'followUps', '[]')) > 100 then raise exception '每個議題最多 100 則後續'; end if;
   if jsonb_array_length(coalesce(v_in -> 'reflections', '[]')) > 50 then raise exception '每則最多 50 則反思'; end if;
   if jsonb_array_length(coalesce(v_in -> 'emojis', '[]')) > 5 or jsonb_array_length(coalesce(v_in -> 'tags', '[]')) > 10 then raise exception '表情或標籤太多了'; end if;
-  -- 誰可以看：吵架議題一律分享；美好、烏雲可以分享或上鎖（任務解鎖之後再開放）
+  -- 誰可以看：吵架議題一律分享；美好、烏雲可以分享、上鎖，或出任務讓對方解鎖
   if v_type = 'fight' then v_vis := 'shared';
   else
     v_vis := coalesce(p_rec ->> 'visibility', case when r.id is not null then r.visibility when v_type = 'cloud' then 'locked' else 'shared' end);
-    if v_vis not in ('shared', 'locked') then raise exception '另一半的紀錄目前只能選「給對方看」或「上鎖」'; end if;
+    if v_vis not in ('shared', 'locked', 'task') then raise exception '誰可以看的設定不對'; end if;
+    if v_vis = 'task' then
+      if char_length(trim(coalesce(p_rec -> 'task' ->> 'text', ''))) not between 1 and 100 then raise exception '解鎖任務要 1 到 100 個字'; end if;
+      v_in := v_in || jsonb_build_object('task', jsonb_build_object('text', trim(p_rec -> 'task' ->> 'text'),
+        'mode', case when p_rec -> 'task' ->> 'mode' = 'photo' then 'photo' else 'confirm' end));
+    end if;
+    -- 重新上鎖：只能從解鎖改回上鎖，不能自己解鎖
+    v_relock := r.id is not null and r.unlocked and (p_rec -> 'unlocked') = 'false'::jsonb;
   end if;
   -- 烏雲放晴：時間由資料庫記
   if v_type = 'cloud' and p_rec ? 'clearedAt' then
@@ -710,18 +718,20 @@ begin
     if v_type = 'fight' and r.author is distinct from auth.uid() and public.space_paused(p.owner) then raise exception '對方暫停分享中，等對方打開再更新'; end if;
     if v_type <> 'fight' and r.author is distinct from auth.uid() then raise exception '只能修改你自己寫的紀錄'; end if;
     v_data := r.data || v_in || jsonb_build_object('visibility', v_vis, 'updatedAt', v_now, 'editedAt', v_now);
+    if v_relock then v_data := v_data || jsonb_build_object('unlocked', false); end if;
     if v_data -> 'clearedAt' = 'null'::jsonb then v_data := v_data - 'clearedAt'; end if;
-    update public.records set data = v_data, visibility = v_vis, updated_at = now() where id = v_id;
+    update public.records set data = v_data, visibility = v_vis, updated_at = now(),
+      unlocked = case when v_relock then false else unlocked end where id = v_id;
   else
     if (select count(*) from public.records where owner = p.owner and author = auth.uid()) >= 3000 then
       raise exception '紀錄太多了';
     end if;
-    v_data := jsonb_build_object('emojis', '[]'::jsonb, 'tags', '[]'::jsonb, 'description', '')
+    v_data := jsonb_build_object('emojis', '[]'::jsonb, 'tags', '[]'::jsonb, 'description', '', 'task', jsonb_build_object('text', '', 'mode', 'confirm'))
       || case when v_type = 'fight' then jsonb_build_object('status', 'open', 'followUps', '[]'::jsonb, 'category', '', 'reason', '', 'myView', '', 'theirView', '', 'resolution', '')
               when v_type = 'cloud' then jsonb_build_object('reflections', '[]'::jsonb) else '{}'::jsonb end
       || v_in
       || jsonb_build_object('id', v_id, 'type', v_type, 'no', public.take_next_no(p.owner, v_type), 'visibility', v_vis, 'unlocked', false,
-                            'photoIds', '[]'::jsonb, 'task', jsonb_build_object('text', '', 'mode', 'confirm'),
+                            'photoIds', '[]'::jsonb,
                             'author', auth.uid(), 'authorName', p.name, 'v', 1,
                             'createdAt', v_now, 'updatedAt', v_now);
     if v_data -> 'clearedAt' = 'null'::jsonb then v_data := v_data - 'clearedAt'; end if;
@@ -1076,3 +1086,158 @@ language sql stable security definer set search_path = public as $$
     and r.visibility = 'locked' and (r.data ->> 'deletedAt') is null
     and (public.my_owner() is null or not public.space_paused(r.owner))
 $$;
+
+-- ============================================================
+-- 雙人版第三段：互相出任務。誰寫的紀錄誰審核；退回時可以寫一句原因。
+-- ============================================================
+alter table public.task_submissions add column if not exists review_note text not null default '';
+alter table public.task_submissions drop constraint if exists task_submissions_review_note_len;
+alter table public.task_submissions add constraint task_submissions_review_note_len check (char_length(review_note) <= 200);
+
+-- 寫紀錄的人看得到別人對這則送出的任務（主人本來就看得到自己空間的全部）
+drop policy if exists "tasks: author read" on public.task_submissions;
+create policy "tasks: author read" on public.task_submissions
+  for select to authenticated
+  using (public.is_real_user() and exists (select 1 from public.records r where r.id = record_id and r.author = auth.uid()));
+-- 審核一律透過 review_task，不能直接改
+drop policy if exists "tasks: owner review" on public.task_submissions;
+revoke update on public.task_submissions from authenticated, anon;
+
+-- 我可以做的任務：對方寫的、出了任務、還沒解鎖的紀錄（只給任務內容，不給紀錄本身）
+create or replace function public.member_tasks() returns jsonb
+language sql stable security definer set search_path = public as $$
+  select coalesce(jsonb_agg(jsonb_build_object(
+    'id', r.id,
+    'type', r.type,
+    'task', jsonb_build_object('text', r.data -> 'task' ->> 'text', 'mode', r.data -> 'task' ->> 'mode'),
+    'submission', (
+      select jsonb_build_object('status', t.status, 'created_at', t.created_at, 'review_note', t.review_note)
+      from public.task_submissions t
+      where t.record_id = r.id and t.partner = auth.uid()
+      order by t.created_at desc limit 1
+    )
+  ) order by r.created_at desc), '[]'::jsonb)
+  from public.records r
+  where r.owner = coalesce(public.my_owner(), case when public.is_real_user() then auth.uid() end)
+    and r.author is distinct from auth.uid()
+    and (public.my_owner() is null or not public.space_paused(r.owner))
+    and r.visibility = 'task' and not r.unlocked and (r.data ->> 'deletedAt') is null
+$$;
+create or replace function public.partner_tasks() returns jsonb
+language sql stable security definer set search_path = public as $$ select public.member_tasks() $$;
+
+-- 送出任務（兩個人都可以；照片要先上傳到自己的資料夾）
+create or replace function public.submit_task(p_record_id text, p_note text, p_photo_path text) returns void
+language plpgsql security definer set search_path = public as $$
+declare
+  v_space uuid := coalesce(public.my_owner(), case when public.is_real_user() then auth.uid() end);
+  r public.records;
+begin
+  if v_space is null then raise exception '你還沒有用分享碼加入，或還在等對方同意'; end if;
+  select * into r from public.records
+  where id = p_record_id and owner = v_space and author is distinct from auth.uid()
+    and visibility = 'task' and not unlocked and (data ->> 'deletedAt') is null;
+  if not found then raise exception '找不到這個任務，可能已經解鎖了'; end if;
+  if public.my_owner() is not null and public.space_paused(v_space) then raise exception '對方暫停分享中，等對方打開再送出'; end if;
+  if char_length(coalesce(p_note, '')) > 500 then raise exception '留言最多 500 個字'; end if;
+  if p_photo_path is not null and p_photo_path !~ ('^' || auth.uid()::text || '/task-[A-Za-z0-9_-]+\.jpg$') then
+    raise exception '照片位置不對';
+  end if;
+  if r.data -> 'task' ->> 'mode' = 'photo' and p_photo_path is null then raise exception '這個任務要上傳照片'; end if;
+  if exists (select 1 from public.task_submissions where record_id = r.id and partner = auth.uid() and status = 'pending') then
+    raise exception '已經送出了，等對方確認';
+  end if;
+  if (select count(*) from public.task_submissions
+      where record_id = r.id and partner = auth.uid() and created_at > now() - interval '1 day') >= 5 then
+    raise exception '這個任務今天已經送出 5 次了，明天再試';
+  end if;
+  insert into public.task_submissions (owner, record_id, partner, partner_name, note, photo_path)
+  values (v_space, r.id, auth.uid(), public.member_name(), coalesce(p_note, ''), p_photo_path);
+end $$;
+
+-- 審核：只有寫那則紀錄的人能審；通過時同時解鎖紀錄
+create or replace function public.review_task(p_id uuid, p_approve boolean, p_note text) returns void
+language plpgsql security definer set search_path = public as $$
+declare
+  t public.task_submissions;
+begin
+  if not public.is_real_user() then raise exception '請先登入'; end if;
+  if char_length(coalesce(p_note, '')) > 200 then raise exception '原因最多 200 個字'; end if;
+  select t0.* into t from public.task_submissions t0 join public.records r on r.id = t0.record_id
+  where t0.id = p_id and t0.status = 'pending' and r.author = auth.uid()
+  for update of t0;
+  if not found then raise exception '找不到這個任務，可能已經審核過了'; end if;
+  update public.task_submissions
+    set status = case when p_approve then 'approved' else 'rejected' end, reviewed_at = now(),
+        review_note = case when p_approve then '' else trim(coalesce(p_note, '')) end
+    where id = t.id;
+  if p_approve then
+    update public.records
+      set unlocked = true, updated_at = now(),
+          data = data || jsonb_build_object('unlocked', true,
+            'unlockedAt', (extract(epoch from now()) * 1000)::bigint,
+            'updatedAt', (extract(epoch from now()) * 1000)::bigint)
+      where id = t.record_id and author = auth.uid() and visibility = 'task';
+  end if;
+end $$;
+create or replace function public.review_task(p_id uuid, p_approve boolean) returns void
+language sql security definer set search_path = public as $$ select public.review_task(p_id, p_approve, null) $$;
+revoke all on function public.member_tasks() from public, anon;
+revoke all on function public.review_task(uuid, boolean, text) from public, anon;
+revoke all on function public.review_task(uuid, boolean) from public, anon;
+grant execute on function public.member_tasks() to authenticated;
+grant execute on function public.review_task(uuid, boolean, text) to authenticated;
+grant execute on function public.review_task(uuid, boolean) to authenticated;
+
+-- 任務照片：兩個人都能放進自己資料夾，不算照片額度
+drop policy if exists "photos: owner insert" on storage.objects;
+create policy "photos: owner insert" on storage.objects
+  for insert to authenticated
+  with check (
+    bucket_id = 'photos' and (storage.foldername(name))[1] = auth.uid()::text
+    and (
+      (public.is_real_user() and storage.filename(name) not like 'task-%' and (
+        (coalesce((storage.foldername(name))[2], '') = 't' and public.thumb_ok(name))
+        or (coalesce((storage.foldername(name))[2], '') = '' and public.photo_quota_ok())
+      ))
+      or ((public.my_owner() is not null or public.is_real_user())
+          and coalesce((storage.foldername(name))[2], '') = '' and storage.filename(name) like 'task-%')
+    )
+  );
+create or replace function public.photo_quota() returns jsonb
+language sql stable security definer set search_path = public as $$
+  select jsonb_build_object(
+    'plan', coalesce((select plan from public.plans where owner = auth.uid()), 'free'),
+    'limit', case when coalesce((select plan from public.plans where owner = auth.uid()), 'free') = 'plus' then null else 30 end,
+    'used', (select count(*) from storage.objects o
+             where o.bucket_id = 'photos' and (storage.foldername(o.name))[1] = auth.uid()::text
+               and coalesce((storage.foldername(o.name))[2], '') <> 't'
+               and storage.filename(o.name) not like 'task-%')
+  )
+$$;
+
+-- 寫紀錄的人看得到、刪得掉對方為這則送出的任務照片
+drop policy if exists "photos: owner reads partner tasks" on storage.objects;
+drop policy if exists "photos: author reads task photos" on storage.objects;
+create policy "photos: author reads task photos" on storage.objects
+  for select to authenticated
+  using (
+    bucket_id = 'photos' and public.is_real_user()
+    and exists (
+      select 1 from public.task_submissions t join public.records r on r.id = t.record_id
+      where r.author = auth.uid() and t.photo_path = name
+        and (storage.foldername(name))[1] = t.partner::text
+    )
+  );
+drop policy if exists "photos: owner deletes partner tasks" on storage.objects;
+drop policy if exists "photos: author deletes task photos" on storage.objects;
+create policy "photos: author deletes task photos" on storage.objects
+  for delete to authenticated
+  using (
+    bucket_id = 'photos' and public.is_real_user()
+    and exists (
+      select 1 from public.task_submissions t join public.records r on r.id = t.record_id
+      where r.author = auth.uid() and t.photo_path = name
+        and (storage.foldername(name))[1] = t.partner::text
+    )
+  );

@@ -142,7 +142,10 @@ const CloudDB = CLOUD_ENABLED ? (() => {
       await this.signOut();
     },
     async partnerTasks() {
-      return check(await client.rpc('partner_tasks')) || [];
+      // 對方寫的、出了任務的紀錄（兩個人都能做對方的任務）；舊版資料庫只有 partner_tasks
+      const r = await client.rpc('member_tasks');
+      if (r.error && /member_tasks|function/i.test(r.error.message || '')) return check(await client.rpc('partner_tasks')) || [];
+      return check(r) || [];
     },
     async submitTask(recordId, note, blob) {
       let path = null;
@@ -230,14 +233,15 @@ const CloudDB = CLOUD_ENABLED ? (() => {
       check(await client.from('partners').delete().eq('uid', uid).eq('owner', userId()));
     },
     async submissions(filter = {}) {
-      let q = client.from('task_submissions').select('*').eq('owner', userId());
+      // 看得到哪些由資料庫決定：自己寫的紀錄收到的任務（主人另外看得到整個空間的）
+      let q = client.from('task_submissions').select('*');
       if (filter.recordId) q = q.eq('record_id', filter.recordId);
       if (filter.status) q = q.eq('status', filter.status);
       return check(await q.order('created_at', { ascending: false }));
     },
-    async reviewSubmission(id, approve) {
-      // 通過時資料庫會一起解鎖紀錄
-      check(await client.rpc('review_task', { p_id: id, p_approve: approve }));
+    async reviewSubmission(id, approve, note = null) {
+      // 通過時資料庫會一起解鎖紀錄；退回時可以附一句原因
+      check(await client.rpc('review_task', { p_id: id, p_approve: approve, p_note: note }));
     },
     async removeTaskPhoto(path) {
       check(await client.storage.from(BUCKET).remove([path]));

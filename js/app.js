@@ -724,7 +724,10 @@ async function viewHome() {
   const needBackup = all.length > 0 && (!lastBackup || Date.now() - lastBackup > remindDays * 86400000);
   const askNames = !NAMES.me && !NAMES.partner && !(await DB.getSetting('namesSkipped', false));
   let pending = [];
-  if (usingCloud()) { try { pending = (await CloudDB.submissions({ status: 'pending' })).filter((t) => all.some((r) => r.id === t.record_id)); } catch (e) { pending = []; } }
+  if (usingCloud()) { try { pending = (await CloudDB.submissions({ status: 'pending' })).filter((t) => all.some((r) => r.id === t.record_id && isMine(r))); } catch (e) { pending = []; } }
+  let myTasks = [];
+  if (usingCloud()) { try { myTasks = await CloudDB.partnerTasks(); } catch (e) { myTasks = []; } }
+  const myTodo = myTasks.filter((t) => !t.submission || t.submission.status !== 'pending').length;
   let joinReqs = [];
   if (usingCloud()) { try { joinReqs = (await CloudDB.listPartners()).filter((p) => p.approved === false); } catch (e) { joinReqs = []; } }
   // 「一年前的今天」只挑美好時刻，免得一打開就看到舊的烏雲
@@ -805,6 +808,10 @@ async function viewHome() {
     ${pending.length ? `<a class="card" href="#/view/${esc(pending[0].record_id)}" style="background:var(--lock-bg);border-color:transparent;gap:4px">
       <div class="bold" style="color:var(--lock)">有 ${pending.length} 個任務等你確認</div>
       <div class="small" style="color:var(--lock)">${esc(pending[0].partner_name)} 完成了任務，點這裡去看看，確認後那則紀錄就會解鎖給對方看。</div>
+    </a>` : ''}
+    ${myTodo ? `<a class="card" href="#/tasks" id="my-tasks-card" style="background:var(--lock-bg);border-color:transparent;gap:4px">
+      <div class="bold" style="color:var(--lock)">${esc(partnerName())}出了 ${myTodo} 個任務給你</div>
+      <div class="small" style="color:var(--lock)">完成任務、${esc(partnerName())}確認之後，就能看到那則上鎖的紀錄 ›</div>
     </a>` : ''}
     ${isIOS && !standalone ? `<div class="card" style="background:var(--lock-bg);border-color:transparent;gap:4px">
       <div class="bold" style="color:var(--lock)">建議加到主畫面</div>
@@ -1045,7 +1052,7 @@ async function viewDetail(id) {
           const blob = await CloudDB.taskPhoto(sub.photo_path);
           if (blob) img = `<img src="${URL.createObjectURL(blob)}" alt="任務照片" style="width:100%;border-radius:12px">`;
         }
-        const stText = { pending: '等你確認', approved: '已通過', rejected: '已退回' }[sub.status];
+        const stText = { pending: '等你確認', approved: '已通過', rejected: '已退回' }[sub.status] + (sub.status === 'rejected' && sub.review_note ? `：${esc(sub.review_note)}` : '');
         subCards.push(`<div class="card" style="gap:6px">
           <div class="row between"><span class="bold">${esc(sub.partner_name)} 送出的任務</span><span class="small muted">${shortDate(sub.created_at.slice(0, 10))}・${stText}</span></div>
           ${sub.note ? `<div class="prose">${esc(sub.note)}</div>` : ''}
@@ -1256,9 +1263,10 @@ async function viewDetail(id) {
     viewDetail(r.id);
   })));
   app.querySelectorAll('[data-reject]').forEach((b) => b.addEventListener('click', () => {
-    if (!confirm('退回這次的任務？對方可以再送一次。')) return;
+    const why = prompt('退回這次的任務？對方可以再送一次。\n想說一下原因的話寫在這裡（可以不寫，最多 200 個字）：', '');
+    if (why === null) return;
     withBusy(b, '', async () => {
-      await CloudDB.reviewSubmission(b.dataset.reject, false);
+      await CloudDB.reviewSubmission(b.dataset.reject, false, why.trim().slice(0, 200) || null);
       // 退回的任務照片用不到了，順便刪掉
       if (b.dataset.photo) { try { await CloudDB.removeTaskPhoto(b.dataset.photo); } catch (e) { /* 刪不掉沒關係 */ } }
       viewDetail(r.id);
@@ -1442,7 +1450,7 @@ async function viewForm(mode, arg) {
         </div>
         <input id="f-tag" class="input" maxlength="${LIMITS.tag}" placeholder="輸入新標籤，按 Enter 加入" enterkeyhint="done"></div>
       ${fightAlwaysShared() ? `<div class="small muted">${partner ? `吵架議題是兩個人的事，${esc(ownerName())}也看得到、也能一起更新。` : usingCloud() ? `吵架議題是兩個人的事，${esc(partnerName())}也看得到、也能一起更新狀態和後續。` : '吵架議題是兩個人的事，開啟分享後兩個人都看得到。'}</div>` : `<div class="field"><div class="label">誰可以看</div>
-        <div class="opts ${partner ? 'cols-2' : 'cols-3'}">${Object.keys(VISIBILITY).filter((k) => !partner || k !== 'task').map((k) => `<button class="opt ${k === rec.visibility ? 'on' : ''}" data-vis="${k}">${esc(visLabel(k))}</button>`).join('')}</div>
+        <div class="opts cols-3">${Object.keys(VISIBILITY).map((k) => `<button class="opt ${k === rec.visibility ? 'on' : ''}" data-vis="${k}">${esc(visLabel(k))}</button>`).join('')}</div>
         ${rec.visibility === 'task' ? `
           <label for="f-task" class="muted">對方要完成的任務</label>
           <input id="f-task" class="input" maxlength="${LIMITS.task}" value="${esc(rec.task.text)}" placeholder="例如：帶我去吃早午餐，拍一張合照給我">
@@ -1452,7 +1460,7 @@ async function viewForm(mode, arg) {
             <button class="opt ${rec.task.mode === 'photo' ? 'on' : ''}" data-taskmode="photo">要上傳照片</button>
           </div>
           ${mode === 'edit' && originalUnlocked && originalVisibility === 'task' ? `<div class="small muted">這則已經解鎖了，改任務內容不會重新上鎖，${esc(otherName())}還是看得到。想收回的話，改成「上鎖」。</div>` : ''}` : ''}
-        <div class="muted small">${partner ? `給${esc(ownerName())}看：${esc(ownerName())}看得到。上鎖：只有你看得到，${esc(ownerName())}只會看到「有一則上鎖」。` : usingCloud() ? '給對方看：對方用分享碼就看得到。上鎖：只有你看得到。任務解鎖：對方完成任務、你按通過後才看得到。' : (CLOUD_ENABLED ? '這個設定會先記下來；註冊登入並開啟分享碼後，對方就會依這個設定看到內容。' : '現在是單人版，這個設定會先記下來；換成雲端版並開啟分享碼後，對方就會依這個設定看到內容。') + '目前「上鎖」只是標記，拿到這支手機的人還是看得到。'}</div>
+        <div class="muted small">${partner ? `給${esc(ownerName())}看：${esc(ownerName())}看得到。上鎖：只有你看得到，${esc(ownerName())}只會看到「有一則上鎖」。任務解鎖：${esc(ownerName())}完成任務、你按通過後才看得到。` : usingCloud() ? '給對方看：對方用分享碼就看得到。上鎖：只有你看得到。任務解鎖：對方完成任務、你按通過後才看得到。' : (CLOUD_ENABLED ? '這個設定會先記下來；註冊登入並開啟分享碼後，對方就會依這個設定看到內容。' : '現在是單人版，這個設定會先記下來；換成雲端版並開啟分享碼後，對方就會依這個設定看到內容。') + '目前「上鎖」只是標記，拿到這支手機的人還是看得到。'}</div>
       </div>`}
       <button class="btn" id="save">${partner ? '儲存' : usingCloud() && (rec.visibility === 'shared' || fightAlwaysShared()) && rec.type !== 'happy' ? `儲存並給${esc(partnerName())}看` : '儲存紀錄'}</button>
     `;
@@ -2049,6 +2057,8 @@ async function viewPartnerHome() {
   const todo = tasks.filter((t) => !t.submission || t.submission.status !== 'pending').length;
   const locked = await CloudDB.partnerLocked();
   const lockedOf = (t) => locked.filter((x) => x.type === t).length;
+  let pending = [];
+  if (CloudDB.isBoundPartner()) { try { pending = (await CloudDB.submissions({ status: 'pending' })).filter((t) => all.some((r) => r.id === t.record_id && isMine(r))); } catch (e) { pending = []; } }
 
   const typeCard = (type) => `<a class="card ${TYPES[type].theme}" href="#/list/${type}">
       <div class="row between"><div class="bold" style="color:var(--accent)">${TYPES[type].label}</div>
@@ -2073,6 +2083,10 @@ async function viewPartnerHome() {
     ${tasks.length ? `<a class="card" href="#/tasks" style="background:var(--lock-bg);border-color:transparent;gap:4px">
       <div class="bold" style="color:var(--lock)">${todo ? `有 ${todo} 個任務可以解鎖` : '任務都送出了'}</div>
       <div class="small" style="color:var(--lock)">${todo ? `完成任務、${esc(ownerName())}確認之後，就能看到上鎖的紀錄。` : `等${esc(ownerName())}確認中。`}</div>
+    </a>` : ''}
+    ${pending.length ? `<a class="card" href="#/view/${esc(pending[0].record_id)}" style="background:var(--lock-bg);border-color:transparent;gap:4px">
+      <div class="bold" style="color:var(--lock)">有 ${pending.length} 個任務等你確認</div>
+      <div class="small" style="color:var(--lock)">${esc(ownerName())}完成了你出的任務，點這裡去看看，確認後那則紀錄就會解鎖給${esc(ownerName())}看。</div>
     </a>` : ''}
     ${CloudDB.isAnonymous() ? `<a class="card" href="#/bind" style="background:var(--fight-bg);border-color:transparent;gap:4px">
       <div class="bold" style="color:var(--fight-dark)">綁定帳號，你也可以寫紀錄</div>
@@ -2104,13 +2118,13 @@ async function viewPartnerTasks() {
       <a class="icon-btn" href="#/" aria-label="返回">${ICON.back}</a>
       <h1>解鎖任務</h1>
     </div>
-    <div class="muted">完成任務、${esc(ownerName())}按「通過」之後，那則紀錄就會出現在你的列表裡。</div>
+    <div class="muted">完成任務、${esc(otherName())}按「通過」之後，那則紀錄就會出現在你的列表裡。</div>
     <div class="list">
       ${tasks.map((t) => {
         const s = t.submission && t.submission.status;
         const sentAgo = t.submission && t.submission.created_at ? daysAgo(new Date(t.submission.created_at).getTime()) : null;
-        const state = s === 'pending' ? `<span class="badge st-progress">已送出${sentAgo == null ? '' : sentAgo === 0 ? '・今天' : `・${sentAgo} 天前`}，等${esc(ownerName())}確認</span>`
-          : s === 'rejected' ? '<span class="badge st-open">被退回了，可以再試一次</span>' : '';
+        const state = s === 'pending' ? `<span class="badge st-progress">已送出${sentAgo == null ? '' : sentAgo === 0 ? '・今天' : `・${sentAgo} 天前`}，等${esc(otherName())}確認</span>`
+          : s === 'rejected' ? `<span class="badge st-open">被退回了，可以再試一次</span>${t.submission.review_note ? `<div class="small" style="color:var(--open-ink, var(--accent))">${esc(otherName())}說：「${esc(t.submission.review_note)}」</div>` : ''}` : '';
         return `<div class="card ${TYPES[t.type].theme}" style="gap:8px">
           <div class="row between"><span class="small bold" style="color:var(--accent)">${ICON.lockSmall} 一則${TYPES[t.type].label}</span>
           <span class="small muted">${t.task.mode === 'photo' ? '要上傳照片' : '按完成就好'}</span></div>
@@ -2145,7 +2159,7 @@ async function viewPartnerTaskForm(id) {
       </div></div>` : ''}
     <div class="field"><label for="task-note">想說的話（可不填）</label>
       <textarea id="task-note" class="textarea" maxlength="500" placeholder="例如：早午餐超好吃！"></textarea></div>
-    <button class="btn" id="task-send">${needPhoto ? '送出給' : '完成了，通知'}${esc(ownerName())}</button>
+    <button class="btn" id="task-send">${needPhoto ? '送出給' : '完成了，通知'}${esc(otherName())}</button>
   `;
   if (needPhoto) {
     document.getElementById('task-photo').addEventListener('change', async (ev) => {
@@ -2165,7 +2179,7 @@ async function viewPartnerTaskForm(id) {
     ev.target.disabled = true;
     try {
       await CloudDB.submitTask(t.id, document.getElementById('task-note').value.trim(), photo);
-      toast(`已送出，等${ownerName()}確認`);
+      toast(`已送出，等${otherName()}確認`);
       go('#/tasks');
     } catch (e) {
       ev.target.disabled = false;
@@ -2738,6 +2752,8 @@ async function route() {
     else if (page === 'stamps') { renderTabbar(null); await viewStamps(); }
     else if (page === 'wishes') { renderTabbar(null); await viewWishes(); }
     else if (page === 'feedback') { renderTabbar(null); viewFeedback(); }
+    else if (page === 'tasks' && usingCloud()) { renderTabbar(null); await viewPartnerTasks(); }
+    else if (page === 'task' && usingCloud()) { renderTabbar(null); await viewPartnerTaskForm(arg); }
     else go('#/');
     if (!page || page === 'view') checkNewStamps().catch(() => {});
   } catch (e) {
