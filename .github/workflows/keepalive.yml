@@ -1,0 +1,25 @@
+# Supabase 免費方案一週沒有請求就會暫停，所有人都會登不進去。
+# 這裡每 3 天打一次很輕的請求，讓專案保持醒著。用的是本來就公開在網頁裡的 publishable key，不需要任何秘密金鑰。
+name: Supabase 保持醒著
+on:
+  schedule:
+    - cron: '17 3 */3 * *'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: 打一次輕量請求
+        run: |
+          URL=$(grep -oP "SUPABASE_URL:\s*'\K[^']+" js/config.js)
+          KEY=$(grep -oP "SUPABASE_ANON_KEY:\s*'\K[^']+" js/config.js)
+          [ -n "$URL" ] && [ -n "$KEY" ] || { echo "config.js 沒有 Supabase 設定，略過"; exit 0; }
+          # ping() 在 schema.sql 裡；舊版資料庫沒有的話，改打登入服務的健康檢查
+          code=$(curl -s -o /dev/null -w '%{http_code}' -X POST "$URL/rest/v1/rpc/ping" -H "apikey: $KEY" -H "Content-Type: application/json" -d '{}')
+          echo "rpc/ping: $code"
+          code2=$(curl -s -o /dev/null -w '%{http_code}' "$URL/auth/v1/health" -H "apikey: $KEY")
+          echo "auth/health: $code2"
+          [ "$code" = "200" ] || [ "$code2" = "200" ]

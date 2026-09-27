@@ -1462,3 +1462,8 @@ language sql stable security definer set search_path = public as $$
 $$;
 revoke all on function public.partner_accounts() from public, anon;
 grant execute on function public.partner_accounts() to authenticated;
+
+-- 讓 GitHub Actions 每幾天打一次，免費方案才不會因為沒人用被暫停（不讀任何資料）
+create or replace function public.ping() returns integer
+language sql stable as $$ select 1 $$;
+grant execute on function public.ping() to anon, authenticated;

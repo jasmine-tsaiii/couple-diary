@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+Disallow: /supabase/
+Sitemap: https://diary.jas-soul.com/sitemap.xml
