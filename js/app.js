@@ -821,6 +821,7 @@ async function viewHome() {
       <div class="bold" style="color:var(--lock)">${esc(joinReqs[0].name)} 想用分享碼加入</div>
       <div class="small" style="color:var(--lock)">點這裡到設定頁按「同意」或「拒絕」。如果不是你認識的人，請拒絕並換新的分享碼。</div>
     </a>` : ''}
+    ${newFromOtherCard(all)}
     ${pending.length ? `<a class="card" href="#/view/${esc(pending[0].record_id)}" style="background:var(--lock-bg);border-color:transparent;gap:4px">
       <div class="bold" style="color:var(--lock)">有 ${pending.length} 個任務等你確認</div>
       <div class="small" style="color:var(--lock)">${esc(pending[0].partner_name)} 完成了任務，點這裡去看看，確認後那則紀錄就會解鎖給對方看。</div>
@@ -870,6 +871,35 @@ async function viewHome() {
   for (const r of recent) box.appendChild(await listItem(r));
 }
 
+// 對方新寫的紀錄：記在這支手機上「看過了沒」，列表加小點、首頁提示。
+// 第一次用這個功能時，現有的都當作看過，免得一次冒出一大堆
+let seenCache = null;
+let seenFor = null;
+const seenKey = () => `seenOthers:${CloudDB.myId()}`;
+function seenSet() {
+  if (seenFor !== seenKey()) { seenCache = null; seenFor = seenKey(); }
+  if (seenCache) return seenCache;
+  try { const raw = localStorage.getItem(seenKey()); seenCache = raw ? new Set(JSON.parse(raw)) : null; } catch (e) { seenCache = null; }
+  return seenCache;
+}
+function saveSeen() { try { localStorage.setItem(seenKey(), JSON.stringify([...seenCache].slice(-3000))); } catch (e) { /* 略過 */ } }
+function initSeen(all) {
+  if (!usingCloud() || seenSet()) return;
+  seenCache = new Set(all.filter((r) => !isMine(r)).map((r) => r.id));
+  saveSeen();
+}
+const isNewFromOther = (r) => usingCloud() && !isMine(r) && !!seenSet() && !seenSet().has(r.id);
+function markSeen(r) { if (!usingCloud() || isMine(r) || !seenSet() || seenCache.has(r.id)) return; seenCache.add(r.id); saveSeen(); }
+function newFromOtherCard(all) {
+  initSeen(all);
+  const fresh = all.filter(isNewFromOther).sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+  if (!fresh.length) return '';
+  return `<a class="card" id="new-from-other" href="#/view/${esc(fresh[0].id)}" style="gap:4px">
+    <div class="row" style="gap:8px"><span class="new-dot" aria-hidden="true"></span><span class="bold">${esc(otherName())}最近寫了 ${fresh.length} 則新的</span></div>
+    <div class="small muted">${fresh.slice(0, 3).map((r) => `${TYPES[r.type].short}「${esc(r.title)}」`).join('、')}${fresh.length > 3 ? '…' : ''}，點這裡從最新的開始看 ›</div>
+  </a>`;
+}
+
 async function listItem(r) {
   const a = document.createElement('a');
   a.className = `card item ${TYPES[r.type].theme}`;
@@ -885,7 +915,7 @@ async function listItem(r) {
       <div style="font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(r.title)}</div>
       <div class="muted small">${shortDate(r.date)} · ${TYPES[r.type].short}${tags ? ' · ' + esc(tags) : ''}</div>
     </div>
-    <div class="item-emoji">${esc((r.emojis || [])[0] || '')}</div>`;
+    <div class="item-emoji">${esc((r.emojis || [])[0] || '')}</div>${isNewFromOther(r) ? '<span class="new-dot" aria-label="新的"></span>' : ''}`;
   return a;
 }
 
@@ -946,7 +976,7 @@ async function viewList(type, tagFilter) {
       : r.visibility === 'locked' ? '上鎖・只有你看得到' : r.visibility === 'task' ? (r.unlocked ? '任務已解鎖' : '任務解鎖') : '';
     a.innerHTML = `${top}
       <div class="tile-body">
-        <div class="bold" style="font-size:14px">${esc(r.title)}</div>
+        <div class="bold" style="font-size:14px">${isNewFromOther(r) ? '<span class="new-dot" aria-label="新的"></span> ' : ''}${esc(r.title)}</div>
         <div class="muted small">${shortDate(r.date)} · ${esc((r.emojis || []).join(''))}</div>
         ${(r.tags || []).length ? `<div class="tile-tags">${esc(r.tags.map((t) => '#' + t).join(' '))}</div>` : ''}
         ${(r.reflections || []).length ? `<div class="small muted">💭 ${r.reflections.length} 則反思</div>` : ''}
@@ -1016,7 +1046,7 @@ async function viewFights(catFilter, statusFilter) {
         const extra = f.status === 'resolved' && f.resolution ? `解法：${esc(f.resolution)}` : `${n} 則後續`;
         return `<a class="card" href="#/view/${esc(f.id)}" style="gap:6px">
           <div class="row between"><span class="small bold" style="color:var(--fight)">${esc(f.category || '未分類')}</span><span class="badge ${s.cls}">${s.label}</span></div>
-          <div class="bold" style="font-size:16px">${esc(f.title)}</div>
+          <div class="bold" style="font-size:16px">${isNewFromOther(f) ? '<span class="new-dot" aria-label="新的"></span> ' : ''}${esc(f.title)}</div>
           <div class="muted small">${shortDate(f.date)} · ${extra} ${esc((f.emojis || []).join(''))}${byOther(f) ? ` · ${esc(f.authorName || (partner ? ownerName() : partnerName()))}新增` : ''}</div>
         </a>`;
       }).join('')}
@@ -1035,6 +1065,7 @@ async function viewDetail(id) {
   const all = await liveRecords();
   const conf = TYPES[r.type];
   const partner = isPartner();
+  markSeen(r);
   const bound = partner && CloudDB.isBoundPartner();
   // 吵架議題兩個人都能改：主人全部都能改；另一半要綁定帳號，而且是分享給他的議題
   const fightEdit = r.type === 'fight' && (!partner || (bound && r.visibility === 'shared'));
@@ -2203,6 +2234,7 @@ async function viewPartnerHome() {
       <div class="bold" style="color:var(--lock)">${todo ? `有 ${todo} 個任務可以解鎖` : '任務都送出了'}</div>
       <div class="small" style="color:var(--lock)">${todo ? `完成任務、${esc(ownerName())}確認之後，就能看到上鎖的紀錄。` : `等${esc(ownerName())}確認中。`}</div>
     </a>` : ''}
+    ${newFromOtherCard(all)}
     ${pending.length ? `<a class="card" href="#/view/${esc(pending[0].record_id)}" style="background:var(--lock-bg);border-color:transparent;gap:4px">
       <div class="bold" style="color:var(--lock)">有 ${pending.length} 個任務等你確認</div>
       <div class="small" style="color:var(--lock)">${esc(ownerName())}完成了你出的任務，點這裡去看看，確認後那則紀錄就會解鎖給${esc(ownerName())}看。</div>
