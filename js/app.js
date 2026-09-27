@@ -141,11 +141,6 @@ function isPartner() { return CLOUD_ENABLED && CloudDB.isPartner(); }
 // 試用中：有雲端設定，但這支手機還沒登入過帳號（登入過一次之後，登出就回到登入畫面）
 function isGuest() { return CLOUD_ENABLED && !CloudDB.isSignedIn(); }
 async function hasAccountHere() { return !!(await LocalDB.getSetting('hasAccount', false)); }
-// 第一次來的人先看到介紹和註冊；按過「先看看」或已經有紀錄，才直接進首頁試用
-async function guestStarted() {
-  try { if (localStorage.getItem('guestStarted')) return true; } catch (e) { /* 略過 */ }
-  try { return (await LocalDB.allRecords()).length > 0; } catch (e) { return true; }
-}
 function ownerName() { return (isPartner() && CloudDB.partnerInfo().owner_name) || '對方'; }
 function newShareCode() {
   const bytes = crypto.getRandomValues(new Uint8Array(8));
@@ -577,9 +572,11 @@ function tourPages(kind) {
     ];
   }
   return [
-    { mood: 'happy', title: '先記一則美好時刻', text: '開心的小事、想謝謝對方的事都可以記。按下面中間的「＋」就能寫。不開心的時候，也可以記在烏雲時刻或吵架議題。' },
+    { mood: 'happy', title: '先記一則美好時刻', text: '開心的小事、想謝謝對方的事都可以記。首頁上方按「記美好」就能寫。不開心的時候，也可以記烏雲或吵架。' },
     { mood: 'celebrate', title: '分享給另一半', text: isGuest() ? '註冊或登入後，到設定頁拿邀請連結傳給另一半。每一則都可以選要給對方看，還是先上鎖。' : '到設定頁拿邀請連結傳給另一半。每一則都可以選要給對方看，還是先上鎖。' },
     { mood: 'clear', title: '一起集印章', text: '記滿 1、5、10 則……就會拿到印章。到印章冊看看，下一個章還差多少。' },
+    // 試用的人看完導覽，最後一頁邀請註冊（也可以先試用）
+    ...(isGuest() ? [{ mood: 'celebrate', title: '註冊，保存你們的紀錄', signup: true, text: `<ul class="benefits">${SIGNUP_BENEFITS.map(([t]) => `<li>${t}</li>`).join('')}</ul>` }] : []),
   ];
 }
 function showTour(kind) {
@@ -598,9 +595,12 @@ function showTour(kind) {
       <h2 style="font-size:20px">${pg.title}</h2>
       <div class="muted">${pg.text}</div>
       <div class="tour-dots" aria-label="第 ${i + 1} 頁，共 ${pages.length} 頁">${pages.map((_, k) => `<span class="${k === i ? 'on' : ''}"></span>`).join('')}</div>
-      <button class="btn" id="tour-next">${last ? '開始使用' : '下一步'}</button>
+      ${pg.signup ? '<a class="btn" href="#/signup" id="tour-signup">免費註冊</a>' : ''}
+      <button class="btn${pg.signup ? ' secondary' : ''}" id="tour-next">${pg.signup ? '先試用看看' : last ? '開始使用' : '下一步'}</button>
       ${last ? '' : '<button class="btn secondary small" id="tour-skip">略過</button>'}
     </div>`;
+    const su = box.querySelector('#tour-signup');
+    if (su) su.addEventListener('click', finish);
     box.querySelector('#tour-next').addEventListener('click', () => { if (last) finish(); else { i += 1; render(); } });
     const sk = box.querySelector('#tour-skip');
     if (sk) sk.addEventListener('click', finish);
@@ -666,20 +666,26 @@ function maybeShowSignupNudge() {
   return true;
 }
 function showSignupNudge() {
+  showSignupSheet('已經寫了 3 則，要不要保存起來？', '現在的紀錄只存在這支手機的瀏覽器，清掉資料或換手機就會不見。');
+}
+// 試用中碰到要註冊才能用的功能（例如分享給另一半），就在原地跳出來，不用離開現在的畫面
+function showSignupSheet(title, text) {
+  if (document.querySelector('.signup-dlg')) return;
   const box = document.createElement('div');
   box.className = 'celebrate signup-dlg';
-  box.innerHTML = `<div class="celebrate-box" role="dialog" aria-modal="true" aria-label="註冊保存紀錄">
+  box.innerHTML = `<div class="celebrate-box" role="dialog" aria-modal="true" aria-label="註冊">
     ${mascotHtml('celebrate', 130)}
-    <h2 style="font-size:20px">已經寫了 3 則，要不要保存起來？</h2>
-    <div class="muted">現在的紀錄只存在這支手機的瀏覽器，清掉資料或換手機就會不見。</div>
+    <h2 style="font-size:20px">${title}</h2>
+    <div class="muted">${text}</div>
     <ul class="benefits">${SIGNUP_BENEFITS.map(([t]) => `<li>${t}</li>`).join('')}</ul>
-    <a class="btn" href="#/signup" id="nudge-signup">免費註冊，保存紀錄</a>
-    <button class="btn secondary" id="nudge-later">之後再說</button>
+    <a class="btn" href="#/signup" id="nudge-signup">免費註冊</a>
+    <a class="btn secondary small" href="#/login" id="nudge-login">已經有帳號？登入</a>
+    <button class="btn secondary" id="nudge-later">繼續試用</button>
   </div>`;
   document.body.appendChild(box);
   const close = () => box.remove();
-  box.querySelector('#nudge-later').addEventListener('click', close);
-  box.querySelector('#nudge-signup').addEventListener('click', close);
+  box.querySelectorAll('#nudge-later, #nudge-signup, #nudge-login').forEach((b) => b.addEventListener('click', close));
+  box.addEventListener('click', (ev) => { if (ev.target === box) close(); });
 }
 const SHARE_ICON = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-3px"><path d="M12 3v12"/><path d="m8 7 4-4 4 4"/><path d="M6 11H5a1 1 0 0 0-1 1v8a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-8a1 1 0 0 0-1-1h-1"/></svg>';
 function a2hsSteps() {
@@ -990,7 +996,7 @@ async function viewHome() {
   const stamps = allStamps(all);
   const gotStamps = stamps.filter((x) => x.got).length;
   const taskSub = pending.length ? `${pending.length} 個等你確認` : myTodo ? `${esc(partnerName())}出了 ${myTodo} 個給你` : '上鎖紀錄的解鎖任務';
-  const shareSub = !usingCloud() ? '登入之後就能分享' : hasPartner ? `${esc(partnerName())}已加入・邀請、暫停分享` : joinReqs.length ? '有人想加入，等你同意' : '還沒邀請・傳邀請連結給對方';
+  const shareSub = !usingCloud() ? '註冊後就能邀請對方一起寫' : hasPartner ? `${esc(partnerName())}已加入・邀請、暫停分享` : joinReqs.length ? '有人想加入，等你同意' : '還沒邀請・傳邀請連結給對方';
   const tilesHtml = [
     homeTile({ href: '#/list/happy', icon: ICON.heart, color: 'var(--happy)', title: '美好時刻', sub: `${nHappy} / ${TYPES.happy.goal}`,
       extra: `${splitLine(nHappy, all.filter((r) => r.type === 'happy' && isMine(r)).length)}${nHappy >= TYPES.happy.goal ? '<span class="small bold" style="color:var(--happy-dark)">集滿 100 個了！</span>' : ''}` }),
@@ -999,7 +1005,7 @@ async function viewHome() {
     wishTile(wishes),
     homeTile({ href: '#/stamps', icon: TILE_ICON.stamp, color: 'var(--cloud)', title: '印章冊', sub: `已集 ${gotStamps} / ${stamps.length}` }),
     usingCloud() ? homeTile({ href: '#/tasks', icon: ICON.lock, color: 'var(--lock)', title: '解鎖任務', sub: taskSub }) : '',
-    homeTile({ href: isGuest() ? '#/login' : '#/settings', icon: TILE_ICON.share, color: 'var(--happy-dark)', title: '分享給另一半', sub: shareSub, id: 'tile-share', cls: 'ftile-wide' }),
+    homeTile({ href: isGuest() ? '#/signup' : '#/settings', icon: TILE_ICON.share, color: 'var(--happy-dark)', title: '分享給另一半', sub: shareSub, id: 'tile-share', cls: 'ftile-wide' }),
   ].join('');
 
   app.innerHTML = `
@@ -1083,6 +1089,8 @@ async function viewHome() {
       document.getElementById('names-card').remove();
     });
   }
+  const ts = document.getElementById('tile-share');
+  if (ts && isGuest()) ts.addEventListener('click', (ev) => { ev.preventDefault(); showSignupSheet('註冊後就能分享給另一半', '傳一個邀請連結給對方，兩個人就能一起看、一起寫。現在試用寫的紀錄，註冊後會自動搬上雲端。'); });
   ['invite-go', 'tile-share'].forEach((id) => {
     const el = document.getElementById(id);
     if (el && el.getAttribute('href') === '#/settings') el.addEventListener('click', () => { try { sessionStorage.setItem('jumpShare', '1'); } catch (e) { /* 略過 */ } });
@@ -3164,7 +3172,6 @@ function viewLogin(mode = 'signin') {
   hasAccountHere().then((has) => { const b = document.getElementById('try-first'); if (b && !has) b.hidden = false; });
   document.getElementById('try-first').addEventListener('click', (ev) => {
     ev.preventDefault();
-    try { localStorage.setItem('guestStarted', '1'); } catch (e) { /* 略過 */ }
     if (location.hash === '#/') route(); else go('#/');
   });
   document.getElementById('switch').addEventListener('click', () => viewLogin(isUp ? 'signin' : 'signup'));
@@ -3236,7 +3243,7 @@ async function route() {
     if (isGuest()) {
       if (page === 'join') { renderTabbar(null); viewJoin('', arg); return; }
       // 登入過的手機登出後回到登入畫面；新使用者可以直接試用（資料先存在手機）
-      if (page === 'login' || page === 'signup' || await hasAccountHere() || !(await guestStarted())) { renderTabbar(null); viewLogin(page === 'signup' || (page !== 'login' && !lastLogin() && !(await hasAccountHere())) ? 'signup' : 'signin'); return; }
+      if (page === 'login' || page === 'signup' || await hasAccountHere()) { renderTabbar(null); viewLogin(page === 'signup' ? 'signup' : 'signin'); return; }
     }
     // 已經送出加入要求、還在等主人同意
     if (CLOUD_ENABLED && CloudDB.pendingJoin() && !isPartner()) { renderTabbar(null); viewWaitingApproval(); return; }
