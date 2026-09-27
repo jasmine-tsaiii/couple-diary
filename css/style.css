@@ -459,3 +459,12 @@ body::before { content: ''; position: fixed; top: 0; left: 0; right: 0; height: 
 .card-preview { display: flex; flex-direction: column; align-items: center; gap: 8px; }
 .card-preview img { width: 100%; max-width: 360px; border-radius: 16px; box-shadow: 0 6px 24px rgba(43,35,32,.14); background: #FBF7F2; }
 .card-preview img:not([src]) { display: none; }
+
+/* 離線提示 */
+.offline-bar {
+  position: fixed; top: 0; left: 0; right: 0; z-index: 30;
+  padding: calc(6px + env(safe-area-inset-top)) 16px 6px; text-align: center; font-size: 13px;
+  background: var(--toast-bg); color: var(--toast-ink);
+}
+.offline-bar[hidden] { display: none; }
+body.is-offline { padding-top: calc(30px + env(safe-area-inset-top)); }

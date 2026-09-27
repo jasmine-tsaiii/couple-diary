@@ -13,8 +13,38 @@ const CloudDB = CLOUD_ENABLED ? (() => {
   let partner = null; // 用分享碼加入的另一半：{ owner, name, owner_name }
   let pendingJoin = null; // 用分享碼加入、還在等主人同意：{ owner, name, owner_name }
 
+  // ---- 離線 ----
+  // 連不上網路時丟出的錯誤會帶 offline 標記，畫面顯示統一的提示
+  const OFFLINE_MSG = '目前離線，連上網路後才能新增或修改';
+  const netDown = (e) => !navigator.onLine || !!(e && e.offline) || /failed to fetch|networkerror|load failed|network request failed/i.test(String((e && e.message) || e || ''));
+  function offlineError() { const e = new Error(OFFLINE_MSG); e.offline = true; return e; }
+  // 最近讀到的資料存一份在手機裡（只存文字，不存照片），離線時拿來唯讀顯示
+  const OFF_PREFIX = 'offline:';
+  const offKey = (k) => `${OFF_PREFIX}${session ? session.user.id : '-'}:${k}`;
+  function remember(k, v) { try { localStorage.setItem(offKey(k), JSON.stringify(v === undefined ? null : v)); } catch (e) { /* 空間不夠就算了 */ } return v; }
+  function recall(k) { try { const s = localStorage.getItem(offKey(k)); return s == null ? undefined : JSON.parse(s); } catch (e) { return undefined; } }
+  let usedOffline = false;
+  async function cached(k, fn) {
+    try { const v = await fn(); remember(k, v); return v; } catch (e) {
+      if (netDown(e)) { const v = recall(k); if (v !== undefined) { usedOffline = true; return v; } throw offlineError(); }
+      throw e;
+    }
+  }
+  function forgetOffline() {
+    try { Object.keys(localStorage).filter((k) => k.startsWith(OFF_PREFIX)).forEach((k) => localStorage.removeItem(k)); } catch (e) { /* 沒關係 */ }
+  }
+  // 沒網路時 getSession 可能因為換不到新憑證而失敗：先用手機裡存的登入資料
+  function storedSession() {
+    try {
+      const ref = new URL(window.APP_CONFIG.SUPABASE_URL).hostname.split('.')[0];
+      const raw = JSON.parse(localStorage.getItem(`sb-${ref}-auth-token`) || 'null');
+      const s = raw && (raw.currentSession || raw);
+      return s && s.user ? s : null;
+    } catch (e) { return null; }
+  }
+
   function check({ data, error }) {
-    if (error) throw new Error(error.message || '雲端連線失敗');
+    if (error) { if (netDown(error)) throw offlineError(); throw new Error(error.message || '雲端連線失敗'); }
     return data;
   }
   function userId() {
@@ -46,7 +76,8 @@ const CloudDB = CLOUD_ENABLED ? (() => {
     if (!session) return;
     // 還沒更新資料表（沒有 partner_info）時就當作自己，App 照常能用
     const { data, error } = await client.rpc('partner_info');
-    const info = !error && data && data.owner ? data : null;
+    let info = !error && data && data.owner ? data : null;
+    if (error && netDown(error)) { const c = recall('partner'); info = c || null; usedOffline = true; } else remember('partner', info);
     // 還在等主人同意的，不算另一半（看不到紀錄）
     if (info && info.approved === false) pendingJoin = info; else partner = info;
   }
@@ -64,6 +95,9 @@ const CloudDB = CLOUD_ENABLED ? (() => {
     client,
     uid: LocalDB.uid,
     sendFeedback,
+    isOfflineError: netDown,
+    // 這次畫面有沒有用到手機裡的舊資料（離線時）
+    usedOfflineCache() { const u = usedOffline; usedOffline = false; return u; },
 
     // ---- 登入 ----
     async loadSession() {
@@ -83,7 +117,9 @@ const CloudDB = CLOUD_ENABLED ? (() => {
       }
       // 從重設密碼信回來時，直接到設定新密碼的畫面；其他情況只把 ?code= 清掉
       if (code || params.get('reset')) history.replaceState(null, '', location.pathname + (params.get('reset') ? '#/reset' : (location.hash || '#/')));
-      session = check(await client.auth.getSession()).session;
+      const got = await client.auth.getSession();
+      if (got.error && netDown(got.error)) session = storedSession(); else session = check(got).session;
+      if (!session && !navigator.onLine) session = storedSession();
       // 臨時帳號可能已經在別的瀏覽器綁定好了（例如從 Google 回來時開在 Safari），手機裡存的還是舊狀態：重新拿一次
       if (session && session.user.is_anonymous) {
         try { const r = await client.auth.refreshSession(); if (r && r.data && r.data.session) session = r.data.session; } catch (e) { /* 沒網路就先用舊的 */ }
@@ -125,7 +161,9 @@ const CloudDB = CLOUD_ENABLED ? (() => {
     // 在別的瀏覽器點了確認信：回到這裡重新拿一次登入狀態
     async refreshUser() {
       try { await client.auth.refreshSession(); } catch (e) { /* 沒關係 */ }
-      session = check(await client.auth.getSession()).session;
+      const got = await client.auth.getSession();
+      if (got.error && netDown(got.error)) session = storedSession(); else session = check(got).session;
+      if (!session && !navigator.onLine) session = storedSession();
       await loadPartner();
       return session;
     },
@@ -143,6 +181,7 @@ const CloudDB = CLOUD_ENABLED ? (() => {
       return session; // 需要到信箱確認時會是 null
     },
     async signOut() {
+      forgetOffline();
       await client.auth.signOut();
       session = null;
       partner = null;
@@ -240,8 +279,11 @@ const CloudDB = CLOUD_ENABLED ? (() => {
     },
     // ---- 一起完成的事（主人直接寫；另一半透過資料庫函式新增、打勾、刪自己加的） ----
     async listWishes() {
-      const { data, error } = await client.from('wishes').select('*').eq('owner', dataOwner()).order('created_at');
-      if (error) { if (/wishes/.test(error.message)) throw new Error('要先到 Supabase 重新執行最新的 schema.sql，才能使用「一起完成的事」'); throw new Error(error.message); }
+      const data = await cached(`wishes:${dataOwner()}`, async () => {
+        const { data: d, error } = await client.from('wishes').select('*').eq('owner', dataOwner()).order('created_at');
+        if (error) { if (netDown(error)) throw offlineError(); if (/wishes/.test(error.message)) throw new Error('要先到 Supabase 重新執行最新的 schema.sql，才能使用「一起完成的事」'); throw new Error(error.message); }
+        return d;
+      });
       // 封存的（上一段關係的）不顯示
       return (data || []).filter((w) => !w.archived);
     },
@@ -294,17 +336,29 @@ const CloudDB = CLOUD_ENABLED ? (() => {
     async allRecords() { return (await this.everyRecord()).filter((r) => !r.archivedAt); },
     async archivedRecords() { return (await this.everyRecord()).filter((r) => r.archivedAt); },
     async everyRecord() {
-      const rows = [];
-      for (let from = 0; ; from += 1000) {
-        const page = check(await client.from('records').select('data').eq('owner', dataOwner()).order('created_at').range(from, from + 999));
-        rows.push(...page);
-        if (page.length < 1000) break;
-      }
-      return rows.map((r) => noteFolders(r.data));
+      const recs = await cached(`records:${dataOwner()}`, async () => {
+        const rows = [];
+        for (let from = 0; ; from += 1000) {
+          const page = check(await client.from('records').select('data').eq('owner', dataOwner()).order('created_at').range(from, from + 999));
+          rows.push(...page);
+          if (page.length < 1000) break;
+        }
+        return rows.map((r) => r.data);
+      });
+      return recs.map((r) => noteFolders(r));
     },
     async getRecord(id) {
-      const row = check(await client.from('records').select('data').eq('owner', dataOwner()).eq('id', id).maybeSingle());
-      return row ? noteFolders(row.data) : undefined;
+      try {
+        const row = check(await client.from('records').select('data').eq('owner', dataOwner()).eq('id', id).maybeSingle());
+        return row ? noteFolders(row.data) : undefined;
+      } catch (e) {
+        if (!netDown(e)) throw e;
+        const all = recall(`records:${dataOwner()}`);
+        if (!all) throw e;
+        usedOffline = true;
+        const r = all.find((x) => x.id === id);
+        return r ? noteFolders(r) : undefined;
+      }
     },
     async putRecord(rec) {
       // 另一半寫在主人的空間裡，透過資料庫函式檢查（只能改自己寫的，和分享的吵架議題）
@@ -401,7 +455,7 @@ const CloudDB = CLOUD_ENABLED ? (() => {
 
     // ---- 設定 ----
     async getSetting(key, fallback) {
-      const row = check(await client.from('settings').select('value').eq('key', key).maybeSingle());
+      const row = await cached(`set:${key}`, async () => check(await client.from('settings').select('value').eq('key', key).maybeSingle()));
       return row ? row.value : fallback;
     },
     async setSetting(key, value) {
@@ -427,6 +481,7 @@ const CloudDB = CLOUD_ENABLED ? (() => {
     // 刪除帳號：資料要先清掉（clearAll），再刪登入帳號本身
     async deleteAccount() {
       check(await client.rpc('delete_account'));
+      forgetOffline();
       await client.auth.signOut();
       session = null;
     },

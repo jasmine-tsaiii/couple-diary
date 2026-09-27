@@ -3614,8 +3614,9 @@ async function route() {
     }
     if (!isGuest() && (page === 'login' || page === 'signup' || page === 'join')) { go('#/'); return; }
     await loadNames();
-    await ensureNumbers();
-    await purgeOldTrash();
+    // 離線時不整理編號、不清垃圾桶（要寫入雲端），先讓人看得到紀錄
+    await ensureNumbers().catch(skipIfOffline);
+    await purgeOldTrash().catch(skipIfOffline);
     if (page === 'reset' && usingCloud() && !CloudDB.isAnonymous()) { renderTabbar(null); viewResetPassword(); return; }
     if (isPartner()) {
       if (!page) { renderTabbar('home'); await viewPartnerHome(); }
@@ -3870,6 +3871,24 @@ document.addEventListener('touchend', (ev) => {
 
 window.addEventListener('hashchange', route);
 requestPersist();
+
+// ---------- 離線 ----------
+// 沒網路也能打開 App（service worker 存了網頁本身）；雲端模式顯示手機裡最近看過的紀錄，只能看、不能改
+function skipIfOffline(e) { if (usingCloud() && CloudDB.isOfflineError(e)) return; throw e; }
+const offlineBar = document.createElement('div');
+offlineBar.className = 'offline-bar';
+offlineBar.setAttribute('role', 'status');
+offlineBar.textContent = '目前離線，只能看之前的紀錄。連上網路後才能新增或修改。';
+offlineBar.hidden = true;
+document.body.appendChild(offlineBar);
+function updateOfflineBar() { offlineBar.hidden = navigator.onLine !== false || !CLOUD_ENABLED || !usingCloud(); document.body.classList.toggle('is-offline', !offlineBar.hidden); }
+window.addEventListener('offline', updateOfflineBar);
+window.addEventListener('online', () => { updateOfflineBar(); if (usingCloud()) { toast('連上網路了'); route(); } });
+window.addEventListener('hashchange', updateOfflineBar);
+// 只在正式網站註冊（本機開發、測試時不註冊，才不會一直拿到快取的舊檔案）
+if ('serviceWorker' in navigator && (location.protocol === 'https:' || localStorage.getItem('swTest'))) {
+  window.addEventListener('load', () => { navigator.serviceWorker.register('sw.js').catch(() => {}); });
+}
 (async () => {
   // 密碼鎖最先蓋上，紀錄內容才不會先閃出來
   showPinLock();
@@ -3890,4 +3909,5 @@ requestPersist();
     else if (urlErr) toast(/identity_already_exists|already/i.test(`${urlErr.code} ${urlErr.message}`) ? '這個 Google 帳號已經被用過了，換一個帳號或改用 Email。' : `Google 登入沒有成功：${urlErr.message || urlErr.code}`);
   }
   route();
+  updateOfflineBar();
 })();
