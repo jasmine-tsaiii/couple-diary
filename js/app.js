@@ -1860,6 +1860,7 @@ async function viewSettings() {
           return `<button class="swatch ${on ? 'on' : ''}" data-mside="${side}" data-mcolor="${esc(n)}" aria-pressed="${on}" title="${esc(n)}"><span style="background:${body}"></span>${esc(n)}</button>`;
         }).join('')}</div></div>`).join('')}
     </div>
+    ${pinCardHtml()}
     ${feedbackCard()}
     ${usingCloud() ? `<div class="card" id="end-card">
       <div class="bold">結束這段關係</div>
@@ -1881,6 +1882,7 @@ async function viewSettings() {
   `;
 
   if (usingCloud()) bindShareCard();
+  bindPinCard(viewSettings);
   app.querySelectorAll('[data-mside]').forEach((b) => b.addEventListener('click', async () => {
     const pick = { ...(MASCOT_PICK || window.Mascot.DEFAULT), [b.dataset.mside]: b.dataset.mcolor };
     MASCOT_PICK = pick;
@@ -2364,6 +2366,7 @@ function viewPartnerSettings() {
       <div class="muted">登出後用綁定的帳號登入就能回來。</div>
       <button class="btn small secondary" id="logout">登出</button>
     </div>` : ''}
+    ${pinCardHtml()}
     ${feedbackCard()}
     <div class="card">
       <div class="bold">離開</div>
@@ -2372,6 +2375,7 @@ function viewPartnerSettings() {
     </div>
   `;
   const logout = document.getElementById('logout');
+  bindPinCard(viewPartnerSettings);
   if (logout) logout.addEventListener('click', async () => { await CloudDB.signOut(); photoUrlCache.clear(); go('#/login'); });
   document.getElementById('leave').addEventListener('click', async () => {
     if (!confirm(`確定要離開嗎？離開後就看不到${ownerName()}的紀錄，要重新用分享碼加入、等${ownerName()}同意。`)) return;
@@ -2882,6 +2886,144 @@ window.addEventListener('unhandledrejection', (ev) => {
   toast(cloudErrorText(ev.reason));
 });
 
+// ---------- App 密碼鎖（可自己開，預設關閉）----------
+// 只存在這支手機：4 位數密碼加鹽雜湊後放 localStorage。打開 App、或離開超過 1 分鐘再回來時要輸入。
+// 這是防「手機借給別人看」的簡單鎖，不是加密；忘記的話雲端版登出再登入就會解除。
+const PIN_KEY = 'appPin';
+const PIN_RELOCK_MS = 60 * 1000;
+function pinSaved() { try { return JSON.parse(localStorage.getItem(PIN_KEY) || 'null'); } catch (e) { return null; } }
+async function pinHash(pin, salt) {
+  const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(`${salt}:${pin}`));
+  return [...new Uint8Array(buf)].map((b) => b.toString(16).padStart(2, '0')).join('');
+}
+async function pinSet(pin) {
+  const salt = DB.uid();
+  localStorage.setItem(PIN_KEY, JSON.stringify({ salt, hash: await pinHash(pin, salt) }));
+}
+async function pinCheck(pin) { const p = pinSaved(); return !!p && (await pinHash(pin, p.salt)) === p.hash; }
+function pinClear() { try { localStorage.removeItem(PIN_KEY); } catch (e) { /* 略過 */ } }
+
+// 輸入 4 位數的鍵盤畫面；onDone(pin) 回傳 true 代表通過（關掉畫面），false 會搖一下重來
+function pinPad({ title, sub, onDone, cancelable = false, forgot = null }) {
+  return new Promise((resolve) => {
+    const el = document.createElement('div');
+    el.className = 'pin-lock';
+    el.setAttribute('role', 'dialog');
+    el.setAttribute('aria-modal', 'true');
+    el.setAttribute('aria-label', title);
+    el.innerHTML = `
+      <div class="pin-box">
+        ${mascotHtml('happy', 90)}
+        <div class="bold" style="font-size:18px">${esc(title)}</div>
+        <div class="small muted" id="pin-sub">${esc(sub || '')}</div>
+        <div class="pin-dots" aria-hidden="true">${'<span></span>'.repeat(4)}</div>
+        <div class="pin-keys">
+          ${[1, 2, 3, 4, 5, 6, 7, 8, 9].map((n) => `<button data-pin="${n}">${n}</button>`).join('')}
+          <button data-pin-cancel ${cancelable ? '' : 'style="visibility:hidden"'}>取消</button>
+          <button data-pin="0">0</button>
+          <button data-pin-back aria-label="刪除一個數字">⌫</button>
+        </div>
+        ${forgot ? '<button class="btn small secondary" id="pin-forgot">忘記密碼？</button>' : ''}
+      </div>`;
+    document.body.appendChild(el);
+    let val = '';
+    const dots = el.querySelectorAll('.pin-dots span');
+    const paint = () => dots.forEach((d, i) => d.classList.toggle('on', i < val.length));
+    const close = (v) => { el.remove(); document.removeEventListener('keydown', onKey); resolve(v); };
+    const push = async (d) => {
+      if (val.length >= 4) return;
+      val += d; paint();
+      if (val.length < 4) return;
+      const ok = await onDone(val);
+      if (ok) { close(val); return; }
+      el.querySelector('.pin-dots').classList.add('shake');
+      setTimeout(() => { val = ''; paint(); const x = el.querySelector('.pin-dots'); if (x) x.classList.remove('shake'); }, 400);
+    };
+    const onKey = (ev) => {
+      if (/^\d$/.test(ev.key)) push(ev.key);
+      else if (ev.key === 'Backspace') { val = val.slice(0, -1); paint(); }
+      else if (ev.key === 'Escape' && cancelable) close(null);
+    };
+    document.addEventListener('keydown', onKey);
+    el.querySelectorAll('[data-pin]').forEach((b) => b.addEventListener('click', () => push(b.dataset.pin)));
+    el.querySelector('[data-pin-back]').addEventListener('click', () => { val = val.slice(0, -1); paint(); });
+    if (cancelable) el.querySelector('[data-pin-cancel]').addEventListener('click', () => close(null));
+    if (forgot) el.querySelector('#pin-forgot').addEventListener('click', () => forgot(close));
+  });
+}
+
+let pinLocked = false;
+async function showPinLock() {
+  if (pinLocked || !pinSaved()) return;
+  pinLocked = true;
+  let tries = 0;
+  await pinPad({
+    title: '輸入密碼',
+    sub: '這支手機設了 App 密碼鎖',
+    onDone: async (pin) => {
+      if (await pinCheck(pin)) return true;
+      tries += 1;
+      const sub = document.getElementById('pin-sub');
+      if (sub) sub.textContent = tries >= 5 ? '密碼不對。忘記的話可以按下面的「忘記密碼？」' : '密碼不對，再試一次';
+      return false;
+    },
+    forgot: (close) => {
+      if (usingCloud() && CloudDB.isSignedIn() && !CloudDB.isAnonymous()) {
+        if (!confirm('忘記密碼的話，要登出再重新登入，登入後密碼鎖會解除。要登出嗎？')) return;
+        pinClear();
+        close(null);
+        CloudDB.signOut().then(() => { go('#/login'); route(); });
+      } else {
+        alert(usingCloud() ? '用分享碼加入的另一半忘記密碼，要清除這個網站的瀏覽器資料，再用分享碼重新加入。' : '手機版的紀錄只存在這支手機，忘記密碼只能清除這個網站的瀏覽器資料，紀錄也會一起不見。有匯出過備份的話，可以之後再匯入。');
+      }
+    },
+  });
+  pinLocked = false;
+}
+let hiddenAt = 0;
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden) hiddenAt = Date.now();
+  else if (hiddenAt && Date.now() - hiddenAt > PIN_RELOCK_MS) showPinLock();
+});
+
+function pinCardHtml() {
+  const on = !!pinSaved();
+  return `<div class="card" id="pin-card">
+    <div class="row between"><div class="bold">App 密碼鎖</div>
+      <button class="btn small ${on ? 'secondary' : ''}" id="pin-toggle">${on ? '關閉' : '開啟'}</button></div>
+    <div class="muted small">${on ? '已開啟：打開 App、或離開超過 1 分鐘再回來時，要輸入 4 位數密碼。只鎖這支手機。' : '開啟後，打開 App 要先輸入 4 位數密碼，手機借別人看也不怕。只鎖這支手機，預設關閉。'}</div>
+    ${on ? '<button class="btn small secondary" id="pin-change">更改密碼</button>' : ''}
+  </div>`;
+}
+function bindPinCard(refresh) {
+  const ask = async (title, sub) => pinPad({ title, sub, cancelable: true, onDone: async () => true });
+  const toggle = document.getElementById('pin-toggle');
+  if (toggle) toggle.addEventListener('click', async () => {
+    if (pinSaved()) {
+      const cur = await pinPad({ title: '輸入目前的密碼', sub: '確認是你本人，才能關閉', cancelable: true, onDone: pinCheck });
+      if (!cur) return;
+      pinClear(); toast('已關閉密碼鎖'); refresh();
+      return;
+    }
+    if (!usingCloud() && !confirm('手機版的紀錄只存在這支手機，忘記密碼的話只能清除瀏覽器資料（紀錄會一起不見）。建議先匯出備份。要繼續設定嗎？')) return;
+    const a = await ask('設定 4 位數密碼', '之後打開 App 要輸入');
+    if (!a) return;
+    const b = await pinPad({ title: '再輸入一次', sub: '確認密碼', cancelable: true, onDone: async (x) => x === a });
+    if (!b) return;
+    await pinSet(a); toast('已開啟密碼鎖'); refresh();
+  });
+  const change = document.getElementById('pin-change');
+  if (change) change.addEventListener('click', async () => {
+    const cur = await pinPad({ title: '輸入目前的密碼', cancelable: true, onDone: pinCheck });
+    if (!cur) return;
+    const a = await ask('新的 4 位數密碼');
+    if (!a) return;
+    const b = await pinPad({ title: '再輸入一次', sub: '確認新密碼', cancelable: true, onDone: async (x) => x === a });
+    if (!b) return;
+    await pinSet(a); toast('密碼已更改'); refresh();
+  });
+}
+
 window.addEventListener('hashchange', route);
 requestPersist();
 (async () => {
@@ -2889,4 +3031,5 @@ requestPersist();
     try { await CloudDB.loadSession(); await afterOwnerLogin(); } catch (e) { toast(cloudErrorText(e)); }
   }
   route();
+  showPinLock();
 })();

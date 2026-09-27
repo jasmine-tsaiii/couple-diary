@@ -279,3 +279,16 @@ a.card:active { transform: scale(0.99); }
 .swatch { display: inline-flex; align-items: center; gap: 6px; padding: 6px 10px; border-radius: 99px; border: 1.5px solid var(--line); background: var(--card); font: inherit; font-size: 13px; color: var(--ink); cursor: pointer; }
 .swatch span { width: 16px; height: 16px; border-radius: 50%; border: 1px solid rgba(74, 53, 48, .3); }
 .swatch.on { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-bg); font-weight: 700; }
+
+/* App 密碼鎖 */
+.pin-lock { position: fixed; inset: 0; z-index: 1000; background: var(--bg, #FBF7F2); display: flex; align-items: center; justify-content: center; padding: 24px 16px; }
+.pin-box { display: flex; flex-direction: column; align-items: center; gap: 12px; width: 100%; max-width: 300px; text-align: center; }
+.pin-dots { display: flex; gap: 14px; margin: 6px 0 4px; }
+.pin-dots span { width: 14px; height: 14px; border-radius: 99px; border: 2px solid var(--accent, #A63D52); }
+.pin-dots span.on { background: var(--accent, #A63D52); }
+.pin-dots.shake { animation: pin-shake .35s; }
+@keyframes pin-shake { 25% { transform: translateX(-8px); } 75% { transform: translateX(8px); } }
+.pin-keys { display: grid; grid-template-columns: repeat(3, 72px); gap: 12px; justify-content: center; }
+.pin-keys button { height: 64px; border-radius: 99px; border: 1px solid var(--line, #E8DDD3); background: var(--card, #fff); font-size: 22px; color: inherit; cursor: pointer; }
+.pin-keys button:active { transform: scale(.95); }
+@media (prefers-reduced-motion: reduce) { .pin-dots.shake { animation: none; } }
