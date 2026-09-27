@@ -624,6 +624,71 @@ function tourCard() {
 }
 document.addEventListener('click', (ev) => { if (ev.target.closest && ev.target.closest('#tour-again')) showTour(isPartner() ? 'partner' : 'owner'); });
 
+// ---------- 引導加到主畫面：寫完紀錄後提醒一次，像 App 一樣從圖示打開 ----------
+let installEvt = null;
+window.addEventListener('beforeinstallprompt', (ev) => { ev.preventDefault(); installEvt = ev; });
+window.addEventListener('appinstalled', () => { installEvt = null; try { localStorage.setItem('a2hsNever', '1'); } catch (e) { /* 略過 */ } });
+const A2HS_GAP_MS = 3 * 86400000;
+function a2hsEligible() {
+  const ua = navigator.userAgent;
+  const mobile = /iphone|ipad|ipod|android/i.test(ua) || (navigator.maxTouchPoints > 1 && /Macintosh/.test(ua));
+  const standalone = window.matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
+  if (!mobile || standalone) return false;
+  try {
+    if (localStorage.getItem('a2hsNever')) return false;
+    const st = JSON.parse(localStorage.getItem('a2hsShown') || '{"n":0,"at":0}');
+    return st.n < 3 && Date.now() - st.at > A2HS_GAP_MS;
+  } catch (e) { return false; }
+}
+function markA2hsPending() { try { sessionStorage.setItem('a2hsPending', '1'); } catch (e) { /* 略過 */ } }
+function maybeShowA2hs() {
+  try { if (!sessionStorage.getItem('a2hsPending')) return; } catch (e) { return; }
+  if (!a2hsEligible()) return;
+  // 等慶祝、印章、導覽這些小視窗關掉再出現，免得疊在一起
+  let tries = 0;
+  const t = setInterval(() => {
+    if (++tries > 120) { clearInterval(t); return; }
+    if (document.querySelector('.celebrate, .pin-lock')) return;
+    clearInterval(t);
+    try { sessionStorage.removeItem('a2hsPending'); } catch (e) { /* 略過 */ }
+    showA2hs();
+  }, 500);
+}
+const SHARE_ICON = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-3px"><path d="M12 3v12"/><path d="m8 7 4-4 4 4"/><path d="M6 11H5a1 1 0 0 0-1 1v8a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-8a1 1 0 0 0-1-1h-1"/></svg>';
+function a2hsSteps() {
+  const ua = navigator.userAgent;
+  if (IN_APP) return ['這個畫面是在聊天 App 裡打開的，沒辦法加到主畫面', '點右上角的「⋯」，選「用瀏覽器開啟」', '在 Safari 或 Chrome 打開後，再照著提示加到主畫面'];
+  if (/iphone|ipad|ipod/i.test(ua) || /Macintosh/.test(ua)) return [`點畫面下方（或網址列旁）的分享按鈕 ${SHARE_ICON}`, '往下滑，選「加入主畫面」', '按右上角的「新增」'];
+  return ['點右上角的「⋮」', '選「加到主畫面」或「安裝應用程式」', '按「新增」或「安裝」'];
+}
+function showA2hs() {
+  if (document.querySelector('.a2hs-dlg')) return;
+  try {
+    const st = JSON.parse(localStorage.getItem('a2hsShown') || '{"n":0,"at":0}');
+    localStorage.setItem('a2hsShown', JSON.stringify({ n: st.n + 1, at: Date.now() }));
+  } catch (e) { /* 略過 */ }
+  const box = document.createElement('div');
+  box.className = 'celebrate a2hs-dlg';
+  const steps = a2hsSteps();
+  box.innerHTML = `<div class="celebrate-box" role="dialog" aria-modal="true" aria-label="加到主畫面">
+    ${mascotHtml('celebrate', 130)}
+    <h2 style="font-size:20px">把啾啾日記放到主畫面</h2>
+    <div class="muted">像 App 一樣，點圖示就能打開，想記的時候不用再找網址。${/iphone|ipad|ipod/i.test(navigator.userAgent) ? '放在主畫面，手機也比較不會自動清掉資料。' : ''}</div>
+    ${installEvt && !IN_APP ? '<button class="btn" id="a2hs-install">加到主畫面</button>' : `<ol class="a2hs-steps">${steps.map((x) => `<li>${x}</li>`).join('')}</ol>`}
+    <button class="btn ${installEvt && !IN_APP ? 'secondary' : ''}" id="a2hs-ok">${installEvt && !IN_APP ? '之後再說' : '知道了'}</button>
+    <button class="btn secondary small" id="a2hs-never">不要再提醒</button>
+  </div>`;
+  document.body.appendChild(box);
+  const close = () => box.remove();
+  box.querySelector('#a2hs-ok').addEventListener('click', close);
+  box.querySelector('#a2hs-never').addEventListener('click', () => { try { localStorage.setItem('a2hsNever', '1'); } catch (e) { /* 略過 */ } close(); });
+  const inst = box.querySelector('#a2hs-install');
+  if (inst) inst.addEventListener('click', async () => {
+    const ev = installEvt; installEvt = null; close();
+    try { ev.prompt(); await ev.userChoice; } catch (e) { /* 使用者取消 */ }
+  });
+}
+
 // ---------- 意見回饋：哪裡有問題、哪裡可以更好 ----------
 const FEEDBACK_KINDS = ['有問題', '建議', '喜歡的地方', '其他'];
 function feedbackCard() {
@@ -1780,6 +1845,7 @@ async function viewForm(mode, arg) {
       if (mode === 'new') clearDraft();
       if (mode === 'new' && rec.wishId) { try { await Wishes.update(rec.wishId, { record_id: rec.id }); } catch (e) { /* 連不到清單也沒關係 */ } }
       toast('已儲存');
+      markA2hsPending();
       go(`#/view/${rec.id}`);
     }));
   }
@@ -3058,6 +3124,7 @@ async function route() {
     else if (page === 'task' && usingCloud()) { renderTabbar(null); await viewPartnerTaskForm(arg); }
     else go('#/');
     if (!page || page === 'view') checkNewStamps().catch(() => {});
+    if (!page || page === 'view') maybeShowA2hs();
   } catch (e) {
     console.error(e);
     app.innerHTML = `<div class="empty no-mascot">${esc(cloudErrorText(e))}<button class="btn small" id="reload">重新整理</button></div>`;

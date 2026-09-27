@@ -305,3 +305,7 @@ a.card:active { transform: scale(0.99); }
 .tour-dots span { width: 8px; height: 8px; border-radius: 99px; background: var(--line, #E8DDD3); }
 .tour-dots span.on { background: var(--accent, #A63D52); width: 20px; }
 .tour-dlg .btn { width: 100%; }
+
+/* 加到主畫面的引導 */
+.a2hs-dlg .btn { width: 100%; }
+.a2hs-steps { text-align: left; margin: 0; padding-left: 22px; display: flex; flex-direction: column; gap: 6px; }
