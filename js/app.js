@@ -1,4 +1,4 @@
-// 我們的紀錄
+// 啾啾日記
 // 畫面用網址後面的 # 切換，例如 #/list/happy、#/new/fight、#/view/<id>。
 // 用分享碼加入的另一半會進入「另一半模式」：只能看、做任務，不能改紀錄。
 
@@ -1799,7 +1799,7 @@ async function dataUrlToBlob(url) {
 // 備份檔裡的 id 只能是英數字，避免被拿來組出奇怪的網址或雲端路徑
 const SAFE_ID = /^[A-Za-z0-9_-]{1,64}$/;
 function checkBackup(data) {
-  if (!data || data.app !== 'couple-diary' || !Array.isArray(data.records)) throw new Error('這不是我們的紀錄的備份檔');
+  if (!data || data.app !== 'couple-diary' || !Array.isArray(data.records)) throw new Error('這不是啾啾日記的備份檔');
   for (const r of data.records) {
     if (!r || !SAFE_ID.test(r.id) || !TYPES[r.type]) throw new Error('備份檔內容不對，沒有匯入');
     if (r.photoIds && (!Array.isArray(r.photoIds) || !r.photoIds.every((x) => SAFE_ID.test(x)))) throw new Error('備份檔內容不對，沒有匯入');
@@ -1869,7 +1869,7 @@ async function buildReadableExport(onlyShared = false) {
   return `<!doctype html>
 <html lang="zh-Hant"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src data:; style-src 'unsafe-inline'">
-<title>我們的紀錄（閱讀版 ${today()}）</title>
+<title>啾啾日記（閱讀版 ${today()}）</title>
 <style>
 body{margin:0;background:#FBF7F2;color:#2B2320;font-family:"Noto Sans TC",-apple-system,"PingFang TC","Microsoft JhengHei",sans-serif;line-height:1.7}
 main{max-width:720px;margin:0 auto;padding:32px 20px 64px}
@@ -2728,7 +2728,7 @@ function bindShareCard() {
   });
   if ($('s-copy')) $('s-copy').addEventListener('click', async () => {
     const code = document.querySelector('.share-code').textContent;
-    const text = `點這個連結加入我們的紀錄：${location.origin + location.pathname}#/join/${code}（密碼我另外告訴你）`;
+    const text = `點這個連結，一起用啾啾日記：${location.origin + location.pathname}#/join/${code}（密碼我另外告訴你）`;
     try { await navigator.clipboard.writeText(text); toast('已複製'); } catch (e) { prompt('複製下面這段文字', text); }
   });
   if ($('s-save-name')) $('s-save-name').addEventListener('click', async () => {
@@ -2908,8 +2908,8 @@ function viewLogin(mode = 'signin') {
   const isUp = mode === 'signup';
   app.innerHTML = `
     <div style="display:flex;flex-direction:column;align-items:center;gap:10px;text-align:center;margin-top:40px">
-      <div class="thumb" style="width:72px;height:72px;border-radius:99px">${ICON.heart}</div>
-      <h1 class="title-xl">我們的紀錄</h1>
+      ${mascotHtml('happy', 140)}
+      <h1 class="title-xl">啾啾日記</h1>
       <div class="muted">${isUp ? '建立帳號，紀錄就會存在雲端' : '記下你們的美好時刻、烏雲時刻和吵架議題'}</div>
     </div>
     ${inAppNotice()}

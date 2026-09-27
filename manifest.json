@@ -1,6 +1,6 @@
 {
-  "name": "我們的紀錄",
-  "short_name": "我們的紀錄",
+  "name": "啾啾日記",
+  "short_name": "啾啾日記",
   "description": "給情侶的紀錄 App：記下美好時刻、烏雲時刻和吵架議題，一起完成想做的事、集印章",
   "lang": "zh-Hant",
   "start_url": "./",
