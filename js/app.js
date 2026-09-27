@@ -141,6 +141,11 @@ function isPartner() { return CLOUD_ENABLED && CloudDB.isPartner(); }
 // 試用中：有雲端設定，但這支手機還沒登入過帳號（登入過一次之後，登出就回到登入畫面）
 function isGuest() { return CLOUD_ENABLED && !CloudDB.isSignedIn(); }
 async function hasAccountHere() { return !!(await LocalDB.getSetting('hasAccount', false)); }
+// 第一次來的人先看到介紹和註冊；按過「先看看」或已經有紀錄，才直接進首頁試用
+async function guestStarted() {
+  try { if (localStorage.getItem('guestStarted')) return true; } catch (e) { /* 略過 */ }
+  try { return (await LocalDB.allRecords()).length > 0; } catch (e) { return true; }
+}
 function ownerName() { return (isPartner() && CloudDB.partnerInfo().owner_name) || '對方'; }
 function newShareCode() {
   const bytes = crypto.getRandomValues(new Uint8Array(8));
@@ -643,6 +648,39 @@ function maybeShowA2hs() {
     showA2hs();
   }, 500);
 }
+// 試用的人寫到第 3 則：提醒一次註冊，紀錄才會保存在雲端
+function maybeShowSignupNudge() {
+  try {
+    if (!sessionStorage.getItem('signupNudge')) return false;
+    sessionStorage.removeItem('signupNudge');
+    if (!isGuest() || localStorage.getItem('signupNudgeShown')) return false;
+    localStorage.setItem('signupNudgeShown', '1');
+  } catch (e) { return false; }
+  let tries = 0;
+  const t = setInterval(() => {
+    if (++tries > 120) { clearInterval(t); return; }
+    if (document.querySelector('.celebrate, .pin-lock')) return;
+    clearInterval(t);
+    showSignupNudge();
+  }, 500);
+  return true;
+}
+function showSignupNudge() {
+  const box = document.createElement('div');
+  box.className = 'celebrate signup-dlg';
+  box.innerHTML = `<div class="celebrate-box" role="dialog" aria-modal="true" aria-label="註冊保存紀錄">
+    ${mascotHtml('celebrate', 130)}
+    <h2 style="font-size:20px">已經寫了 3 則，要不要保存起來？</h2>
+    <div class="muted">現在的紀錄只存在這支手機的瀏覽器，清掉資料或換手機就會不見。</div>
+    <ul class="benefits">${SIGNUP_BENEFITS.map(([t]) => `<li>${t}</li>`).join('')}</ul>
+    <a class="btn" href="#/signup" id="nudge-signup">免費註冊，保存紀錄</a>
+    <button class="btn secondary" id="nudge-later">之後再說</button>
+  </div>`;
+  document.body.appendChild(box);
+  const close = () => box.remove();
+  box.querySelector('#nudge-later').addEventListener('click', close);
+  box.querySelector('#nudge-signup').addEventListener('click', close);
+}
 const SHARE_ICON = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-3px"><path d="M12 3v12"/><path d="m8 7 4-4 4 4"/><path d="M6 11H5a1 1 0 0 0-1 1v8a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-8a1 1 0 0 0-1-1h-1"/></svg>';
 function a2hsSteps() {
   const ua = navigator.userAgent;
@@ -999,8 +1037,8 @@ async function viewHome() {
     </a>` : ''}
     ${isGuest() ? inAppNotice() : ''}
     ${isGuest() ? `<a class="card" href="#/login" style="background:var(--happy-bg);border-color:transparent;gap:4px">
-      <div class="bold" style="color:var(--happy-dark)">${all.length ? '註冊，把紀錄存到雲端' : '歡迎！直接開始記錄吧'}</div>
-      <div class="small" style="color:var(--happy-dark)">${all.length ? `目前 ${all.length} 則紀錄只存在這支手機。` : '不用註冊就能先用，紀錄會先存在這支手機。'}在這支手機註冊或登入後會自動搬上雲端，換手機不會不見，也能分享給另一半。</div>
+      <div class="bold" style="color:var(--happy-dark)">${all.length ? '註冊，把紀錄存到雲端' : '免費註冊，保存你們的紀錄'}</div>
+      <div class="small" style="color:var(--happy-dark)">${all.length ? `目前 ${all.length} 則紀錄只存在這支手機。` : '現在是試用，紀錄只存在這支手機。'}在這支手機註冊或登入後會自動搬上雲端，換手機不會不見，也能分享給另一半 ›</div>
       ${isIOS && standalone && !all.length ? '<div class="small" style="color:var(--happy-dark)">之前在 Safari 寫過的話：從主畫面打開的和 Safari 是分開存的。請回 Safari 打開網址、註冊或登入，紀錄就會搬上雲端，再回來這裡登入同一個帳號就看得到。</div>' : ''}
     </a>` : ''}
     ${partnerLeft ? `<div class="card" id="partner-left" style="background:var(--lock-bg);border-color:transparent;gap:6px">
@@ -1893,6 +1931,7 @@ async function viewForm(mode, arg) {
       if (mode === 'new' && rec.wishId) { try { await Wishes.update(rec.wishId, { record_id: rec.id }); } catch (e) { /* 連不到清單也沒關係 */ } }
       toast('已儲存');
       markA2hsPending();
+      if (mode === 'new' && isGuest()) { try { if ((await liveRecords()).length >= 3) sessionStorage.setItem('signupNudge', '1'); } catch (e) { /* 略過 */ } }
       go(`#/view/${rec.id}`);
     }));
   }
@@ -3056,11 +3095,18 @@ const INTRO = [
   ['🔒', '上鎖與任務', '想給對方看的可以分享，也可以上鎖，出一個任務讓對方完成才解鎖。'],
   ['🏅', '印章冊', '美好時刻、和好、放晴達到里程碑就蓋一個章，像集點卡一樣。'],
 ];
+// 註冊的好處（登入頁、試用提醒共用）
+const SIGNUP_BENEFITS = [
+  ['紀錄存在雲端，換手機、清掉瀏覽器也不會不見'],
+  ['分享給另一半，兩個人一起寫'],
+  ['出任務解鎖紀錄、一起完成的待辦清單'],
+  ['照片跟著帳號走，在哪支手機都看得到'],
+];
 function introFeatures() {
   return `<section class="card" style="gap:12px;margin-top:8px" aria-labelledby="intro-h">
     <h2 id="intro-h" class="bold" style="font-size:17px;font-family:inherit;margin:0">這個 App 可以做什麼</h2>
     ${INTRO.map(([icon, t, d]) => `<div class="row" style="align-items:flex-start;gap:12px"><div style="font-size:22px;line-height:1.2" aria-hidden="true">${icon}</div><div style="display:flex;flex-direction:column;gap:2px"><div class="bold">${t}</div><div class="small muted">${d}</div></div></div>`).join('')}
-    <div class="small muted">不用註冊就能先用，紀錄只存在這支手機；登入後存到雲端，換手機也不會不見，還能用分享碼給另一半看。紀錄只有你和你分享的人看得到。</div>
+    <div class="small muted">紀錄只有你和你分享的人看得到。</div>
   </section>`;
 }
 // 記住上次用哪種方式登入，避免 Google 和 Email 各註冊一個帳號、以為資料不見
@@ -3075,16 +3121,22 @@ function lastLogin() { try { return localStorage.getItem('lastLogin'); } catch (
 function viewLogin(mode = 'signin') {
   app.className = '';
   const isUp = mode === 'signup';
+  const last = lastLogin();
   app.innerHTML = `
     <div style="display:flex;flex-direction:column;align-items:center;gap:10px;text-align:center;margin-top:40px">
       ${mascotHtml('happy', 140)}
       <h1 class="title-xl">啾啾日記</h1>
-      <div class="muted">${isUp ? '建立帳號，紀錄就會存在雲端' : '記下你們的美好時刻、烏雲時刻和吵架議題'}</div>
+      <div class="bold" style="font-size:17px">兩個人一起記下 100 個美好時刻</div>
+      <div class="muted">也記下烏雲、整理吵架，讓感情越來越好</div>
     </div>
+    ${last ? '' : `<section class="card benefits-card" aria-labelledby="ben-h">
+      <div id="ben-h" class="bold">免費註冊，你們就可以：</div>
+      <ul class="benefits">${SIGNUP_BENEFITS.map(([t]) => `<li>${t}</li>`).join('')}</ul>
+    </section>`}
     ${inAppNotice()}
     <button class="btn secondary" id="google-btn" style="gap:10px"${IN_APP ? ' hidden' : ''}>
       <svg width="20" height="20" viewBox="0 0 48 48" aria-hidden="true"><path fill="#EA4335" d="M24 9.5c3.5 0 6.6 1.2 9.1 3.6l6.8-6.8C35.8 2.4 30.3 0 24 0 14.6 0 6.6 5.4 2.7 13.3l7.9 6.1C12.5 13.6 17.8 9.5 24 9.5z"/><path fill="#4285F4" d="M46.5 24.5c0-1.6-.1-3.1-.4-4.5H24v9h12.7c-.6 3-2.3 5.5-4.8 7.2l7.7 6c4.5-4.2 6.9-10.3 6.9-17.7z"/><path fill="#FBBC05" d="M10.6 28.6c-.5-1.4-.8-3-.8-4.6s.3-3.2.8-4.6l-7.9-6.1C1 16.6 0 20.2 0 24s1 7.4 2.7 10.7l7.9-6.1z"/><path fill="#34A853" d="M24 48c6.5 0 11.9-2.1 15.9-5.8l-7.7-6c-2.1 1.4-4.9 2.3-8.2 2.3-6.2 0-11.5-4.1-13.4-9.9l-7.9 6.1C6.6 42.6 14.6 48 24 48z"/></svg>
-      用 Google 登入
+      ${isUp ? '用 Google 註冊／登入' : '用 Google 登入'}
     </button>
     <div class="muted" style="text-align:center">或用 Email</div>
     <form id="login-form" style="display:flex;flex-direction:column;gap:14px">
@@ -3092,16 +3144,15 @@ function viewLogin(mode = 'signin') {
         <input id="email" class="input" type="email" autocomplete="email" required></div>
       <div class="field"><label for="password">密碼${isUp ? '（至少 8 個字）' : ''}</label>
         <input id="password" class="input" type="password" autocomplete="${isUp ? 'new-password' : 'current-password'}" minlength="${isUp ? 8 : 6}" maxlength="72" required></div>
-      <button class="btn" type="submit" id="login-btn">${isUp ? '建立帳號' : '登入'}</button>
+      <button class="btn" type="submit" id="login-btn">${isUp ? '免費註冊，開始我們的日記' : '登入'}</button>
     </form>
     <div id="login-msg" class="muted" style="text-align:center"></div>
     ${isUp ? '' : '<button class="btn secondary small" id="forgot">忘記密碼？</button>'}
-    <button class="btn secondary small" id="switch">${isUp ? '已經有帳號？登入' : '第一次使用？建立帳號'}</button>
+    <button class="btn ${isUp ? 'secondary small' : 'secondary'}" id="switch">${isUp ? '已經有帳號？登入' : '第一次使用？免費註冊'}</button>
     <a class="btn secondary small" href="#/join">我是另一半，用分享碼加入</a>
-    <a class="btn secondary small" href="#/" id="try-first" hidden>先不登入，直接開始用</a>
-    ${isUp ? '' : introFeatures()}
+    <a class="text-link small" href="#/" id="try-first" hidden>先看看，之後再註冊</a>
+    ${isUp || !last ? introFeatures() : ''}
   `;
-  const last = lastLogin();
   if (!isUp && last) {
     const hint = document.createElement('div');
     hint.className = 'small muted'; hint.style.textAlign = 'center'; hint.id = 'last-login';
@@ -3111,6 +3162,11 @@ function viewLogin(mode = 'signin') {
     if (last === 'email') { try { const em = localStorage.getItem('lastLoginEmail'); if (em) document.getElementById('email').value = em; } catch (e) { /* 略過 */ } }
   }
   hasAccountHere().then((has) => { const b = document.getElementById('try-first'); if (b && !has) b.hidden = false; });
+  document.getElementById('try-first').addEventListener('click', (ev) => {
+    ev.preventDefault();
+    try { localStorage.setItem('guestStarted', '1'); } catch (e) { /* 略過 */ }
+    if (location.hash === '#/') route(); else go('#/');
+  });
   document.getElementById('switch').addEventListener('click', () => viewLogin(isUp ? 'signin' : 'signup'));
   const forgot = document.getElementById('forgot');
   if (forgot) forgot.addEventListener('click', () => {
@@ -3180,7 +3236,7 @@ async function route() {
     if (isGuest()) {
       if (page === 'join') { renderTabbar(null); viewJoin('', arg); return; }
       // 登入過的手機登出後回到登入畫面；新使用者可以直接試用（資料先存在手機）
-      if (page === 'login' || await hasAccountHere()) { renderTabbar(null); viewLogin(); return; }
+      if (page === 'login' || page === 'signup' || await hasAccountHere() || !(await guestStarted())) { renderTabbar(null); viewLogin(page === 'signup' || (page !== 'login' && !lastLogin() && !(await hasAccountHere())) ? 'signup' : 'signin'); return; }
     }
     // 已經送出加入要求、還在等主人同意
     if (CLOUD_ENABLED && CloudDB.pendingJoin() && !isPartner()) { renderTabbar(null); viewWaitingApproval(); return; }
@@ -3190,7 +3246,7 @@ async function route() {
       viewJoin(page === 'join' ? '' : '這段分享已經結束了，或這支手機的加入資料不見了。如果還要一起用，請對方給你分享碼和密碼，再加入一次。', page === 'join' ? arg : '');
       return;
     }
-    if (!isGuest() && (page === 'login' || page === 'join')) { go('#/'); return; }
+    if (!isGuest() && (page === 'login' || page === 'signup' || page === 'join')) { go('#/'); return; }
     await loadNames();
     await ensureNumbers();
     await purgeOldTrash();
@@ -3227,7 +3283,7 @@ async function route() {
     else if (page === 'task' && usingCloud()) { renderTabbar(null); await viewPartnerTaskForm(arg); }
     else go('#/');
     if (!page || page === 'view') checkNewStamps().catch(() => {});
-    if (!page || page === 'view') maybeShowA2hs();
+    if (!page || page === 'view') { if (!maybeShowSignupNudge()) maybeShowA2hs(); }
   } catch (e) {
     console.error(e);
     app.innerHTML = `<div class="empty no-mascot">${esc(cloudErrorText(e))}<button class="btn small" id="reload">重新整理</button></div>`;

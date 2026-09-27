@@ -377,3 +377,10 @@ body::before { content: ''; position: fixed; top: 0; left: 0; right: 0; height: 
 .ftile-wide, .ftile:last-child:nth-child(odd) { grid-column: span 2; }
 .ftile-wide { flex-direction: row; align-items: center; gap: 12px; background: var(--happy-bg); border-color: transparent; color: var(--happy-dark); }
 .ftile-wide .muted { color: var(--happy-dark); }
+
+/* 登入頁：註冊的好處 */
+.benefits-card { gap: 8px; background: var(--happy-bg); border-color: transparent; color: var(--happy-dark); }
+.benefits { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 6px; text-align: left; }
+.benefits li { position: relative; padding-left: 24px; font-size: 14px; line-height: 1.5; }
+.benefits li::before { content: "✓"; position: absolute; left: 2px; top: 0; font-weight: 700; color: var(--happy); }
+.text-link { align-self: center; color: var(--muted); text-decoration: underline; padding: 10px; }
