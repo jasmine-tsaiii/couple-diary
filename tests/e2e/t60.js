@@ -9,7 +9,7 @@ const fs = require('fs');
   await p.goto((process.env.U || 'http://localhost:8770/') + '#/signup'); await p.waitForTimeout(700);
   console.log('signup legal', (await p.textContent('.legal-links')).includes('註冊就代表你同意'));
   await p.goto((process.env.U || 'http://localhost:8770/') + '#/settings'); await p.waitForTimeout(700);
-  console.log('settings legal', await p.locator('.legal-links a[href="privacy.html"]').count() > 0);
+  console.log('settings legal', await p.locator('.legal-card a[href="privacy.html"]').count() > 0);
   await p.goto((process.env.U || 'http://localhost:8770/') + 'privacy.html'); await p.waitForTimeout(500);
   console.log('privacy h1', await p.textContent('h1'));
   await p.screenshot({ path: (process.env.SHOT_DIR || '.') + '/privacy.png' });

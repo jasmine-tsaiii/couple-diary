@@ -446,7 +446,12 @@ function feedbackCard() {
   return `<a class="card" href="#/feedback" style="gap:4px">
     <div class="row between"><div class="bold">意見回饋</div><div class="muted">›</div></div>
     <div class="small muted">哪裡怪怪的、哪裡可以更好，都歡迎告訴我們</div>
-  </a>${legalLinks()}`;
+  </a>
+  <div class="card legal-card" style="gap:0">
+    <div class="bold" style="margin-bottom:6px">隱私與條款</div>
+    <a class="row between legal-row" href="privacy.html" target="_blank" rel="noopener"><span>隱私權政策</span><span class="muted">›</span></a>
+    <a class="row between legal-row" href="terms.html" target="_blank" rel="noopener"><span>使用條款</span><span class="muted">›</span></a>
+  </div>`;
 }
 // 隱私權政策、使用條款（Google 登入正式版需要公開的隱私權政策網址）
 function legalLinks() {
