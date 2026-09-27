@@ -6,4 +6,6 @@
 window.APP_CONFIG = {
   SUPABASE_URL: 'https://bihepkbxeqvufbbnokuw.supabase.co',
   SUPABASE_ANON_KEY: 'sb_publishable__V15eMn36oW3aJ-vYR3XRw_5x8QnBaG',
+  // Google Analytics 4 的評估 ID（G- 開頭）。留空就完全不追蹤、也不會載入 Google 的程式。
+  GA_MEASUREMENT_ID: 'G-GNF8K7HB29',
 };

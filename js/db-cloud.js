@@ -9,6 +9,7 @@ const CloudDB = CLOUD_ENABLED ? (() => {
   });
   const BUCKET = 'photos';
   let session = null;
+  let urlError = null;
   let partner = null; // 用分享碼加入的另一半：{ owner, name, owner_name }
   let pendingJoin = null; // 用分享碼加入、還在等主人同意：{ owner, name, owner_name }
 
@@ -68,6 +69,14 @@ const CloudDB = CLOUD_ENABLED ? (() => {
     async loadSession() {
       // 從 Google 登入回來時網址會帶 ?code=，先換成登入狀態再把網址清乾淨
       const params = new URLSearchParams(location.search);
+      // 從 Google 回來但失敗時（例如這個 Google 帳號已經被別的帳號用了），錯誤會放在網址裡：先記下來再清掉
+      const hashParams = new URLSearchParams(location.hash.replace(/^#\/?/, '').includes('=') ? location.hash.replace(/^#\/?/, '') : '');
+      const errDesc = params.get('error_description') || hashParams.get('error_description');
+      const errCode = params.get('error_code') || hashParams.get('error_code') || params.get('error') || hashParams.get('error');
+      if (errDesc || errCode) {
+        urlError = { code: errCode || '', message: (errDesc || '').replace(/\+/g, ' ') };
+        history.replaceState(null, '', location.pathname + '#/');
+      }
       const code = params.get('code');
       if (code) {
         try { await client.auth.exchangeCodeForSession(code); } catch (e) { /* 可能已經自動換過了 */ }
@@ -91,10 +100,14 @@ const CloudDB = CLOUD_ENABLED ? (() => {
       check(await client.auth.updateUser({ password }));
     },
     currentEmail: () => (session ? session.user.email : null),
+    // 拿一次從網址帶回來的錯誤（拿過就清掉）
+    takeUrlError: () => { const e = urlError; urlError = null; return e; },
     isSignedIn: () => !!session,
     isAnonymous: () => !!(session && session.user.is_anonymous),
     isPartner: () => !!partner,
     myId: () => (session ? session.user.id : null),
+    // 帳號建立的時間（毫秒），用來分辨剛註冊還是舊帳號登入
+    createdAtMs: () => (session && session.user.created_at ? Date.parse(session.user.created_at) : 0),
     // 另一半綁定 Email / Google 之後就不是臨時帳號，可以一起寫吵架議題
     isBoundPartner: () => !!(partner && session && !session.user.is_anonymous),
     // 臨時帳號綁定 Email：先寄確認信，點信裡的連結後才算綁定

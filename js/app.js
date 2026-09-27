@@ -59,6 +59,8 @@ const ICON = {
   gear: '<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1Z"/></svg>',
 };
 
+// 匿名使用統計：只送事件名稱和固定選項（見 js/analytics.js），不送任何內容
+function track(name, params) { try { if (window.Analytics) window.Analytics.track(name, params); } catch (e) { /* 統計失敗不影響使用 */ } }
 const SHARE_CODE_CHARS = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // 去掉容易看錯的 0 O 1 I
 
 const app = document.getElementById('app');
@@ -377,6 +379,7 @@ function showPaywall(q) {
   box.querySelector('#pw-no').addEventListener('click', close);
   box.addEventListener('click', (ev) => { if (ev.target === box) close(); });
   box.querySelector('#pw-yes').addEventListener('click', async () => {
+    track('upgrade_interest', { feature: 'photos' });
     try { await CloudDB.noteUpgradeInterest(); } catch (e) { /* 記不到也沒關係 */ }
     close();
     toast('謝謝！已經記下你有興趣');
@@ -526,15 +529,17 @@ async function viewWishes(show = 'todo') {
   app.querySelectorAll('[data-wshow]').forEach((b) => b.addEventListener('click', () => viewWishes(b.dataset.wshow)));
   document.getElementById('w-add').addEventListener('click', () => {
     if (list.length >= WISH_MAX) { toast(`最多 ${WISH_MAX} 件`); return; }
-    wishDialog(null, async (w) => { await Wishes.add({ ...w, created_by_name: partner ? '' : myName() }); toast('已加入清單'); refresh(); });
+    wishDialog(null, async (w) => { await Wishes.add({ ...w, created_by_name: partner ? '' : myName() }); track('wish_create'); toast('已加入清單'); refresh(); });
   });
   app.querySelectorAll('[data-widea]').forEach((b) => b.addEventListener('click', () => withBusy(b, '', async () => {
     await Wishes.add({ title: b.dataset.widea, note: '', category: '', created_by_name: partner ? '' : myName() });
+    track('wish_create');
     refresh();
   })));
   app.querySelectorAll('[data-wdone]').forEach((b) => b.addEventListener('click', () => withBusy(b, '', async () => {
     const w = list.find((x) => x.id === b.dataset.wdone);
     await Wishes.setDone(w.id, !w.done);
+    if (!w.done) track('wish_done');
     if (!w.done) {
       toast(partner ? `完成了！${ownerName()}會看到` : '完成了！');
       checkNewStamps().catch(() => {});
@@ -600,8 +605,8 @@ function showTour(kind) {
       ${last ? '' : '<button class="btn secondary small" id="tour-skip">略過</button>'}
     </div>`;
     const su = box.querySelector('#tour-signup');
-    if (su) su.addEventListener('click', finish);
-    box.querySelector('#tour-next').addEventListener('click', () => { if (last) finish(); else { i += 1; render(); } });
+    if (su) su.addEventListener('click', () => { track('tutorial_complete'); track('signup_prompt', { where: 'tour' }); finish(); });
+    box.querySelector('#tour-next').addEventListener('click', () => { if (last) { track('tutorial_complete'); finish(); } else { i += 1; render(); } });
     const sk = box.querySelector('#tour-skip');
     if (sk) sk.addEventListener('click', finish);
     box.querySelector('#tour-next').focus();
@@ -617,6 +622,27 @@ function tourCard() {
   </button>`;
 }
 document.addEventListener('click', (ev) => { if (ev.target.closest && ev.target.closest('#tour-again')) showTour(isPartner() ? 'partner' : 'owner'); });
+// 設定頁「匿名使用統計」開關（config.js 沒填 GA 評估 ID 時不顯示）
+const ANALYTICS_NOTE = '我們用 Google Analytics 了解有多少人在用、哪些功能有人用。只會記「新增了一則美好」這類次數，不會傳送你寫的標題、內容、名字或照片。';
+function analyticsCard() {
+  if (!window.Analytics || !window.Analytics.configured()) return '';
+  const on = window.Analytics.enabled();
+  return `<div class="card" style="gap:8px">
+    <div class="row between" style="gap:12px"><div class="bold">匿名使用統計</div>
+      <button class="btn small ${on ? '' : 'secondary'}" id="analytics-toggle" aria-pressed="${on}">${on ? '開啟中' : '已關閉'}</button></div>
+    <div class="small muted">${ANALYTICS_NOTE}關掉之後，這支手機就不會再送出任何統計。</div>
+  </div>`;
+}
+document.addEventListener('click', (ev) => {
+  const b = ev.target.closest && ev.target.closest('#analytics-toggle');
+  if (!b) return;
+  const next = b.getAttribute('aria-pressed') !== 'true';
+  window.Analytics.setEnabled(next);
+  b.setAttribute('aria-pressed', String(next));
+  b.textContent = next ? '開啟中' : '已關閉';
+  b.classList.toggle('secondary', !next);
+  toast(next ? '已開啟匿名使用統計' : '已關閉匿名使用統計');
+});
 
 // ---------- 引導加到主畫面：寫完紀錄後提醒一次，像 App 一樣從圖示打開 ----------
 let installEvt = null;
@@ -666,6 +692,7 @@ function maybeShowSignupNudge() {
   return true;
 }
 function showSignupNudge() {
+  track('signup_prompt', { where: 'third_record' });
   showSignupSheet('已經寫了 3 則，要不要保存起來？', '現在的紀錄只存在這支手機的瀏覽器，清掉資料或換手機就會不見。');
 }
 // 試用中碰到要註冊才能用的功能（例如分享給另一半），就在原地跳出來，不用離開現在的畫面
@@ -716,13 +743,14 @@ function showA2hs() {
   </div>`;
   document.body.appendChild(box);
   const close = () => box.remove();
-  box.querySelector('#a2hs-ok').addEventListener('click', close);
+  box.querySelector('#a2hs-ok').addEventListener('click', () => { if (!installEvt || IN_APP) track('add_to_home', { how: 'steps' }); close(); });
   const lg = box.querySelector('#a2hs-login');
   if (lg) lg.addEventListener('click', close);
   box.querySelector('#a2hs-never').addEventListener('click', () => { try { localStorage.setItem('a2hsNever', '1'); } catch (e) { /* 略過 */ } close(); });
   const inst = box.querySelector('#a2hs-install');
   if (inst) inst.addEventListener('click', async () => {
     const ev = installEvt; installEvt = null; close();
+    track('add_to_home', { how: 'prompt' });
     try { ev.prompt(); await ev.userChoice; } catch (e) { /* 使用者取消 */ }
   });
 }
@@ -790,6 +818,7 @@ function viewFeedback() {
     if (!CLOUD_ENABLED) { toast('目前沒有連上雲端，送不出去'); return; }
     withBusy(document.getElementById('fb-send'), '送出中…', async () => {
       try {
+        track('feedback_send');
         await CloudDB.sendFeedback({ kind, message: text.slice(0, 1000), contact: document.getElementById('fb-contact').value.trim().slice(0, 100), page: from.slice(0, 60), mode: isPartner() ? 'partner' : usingCloud() ? 'cloud' : 'phone', agent: navigator.userAgent.slice(0, 200) });
       } catch (e) { toast(cloudErrorText(e)); return; }
       try { localStorage.removeItem('fbDraft'); } catch (e) { /* 沒關係 */ }
@@ -855,6 +884,7 @@ async function showNewStamps() {
   const fresh = got.filter((s) => !seen[s.id]);
   if (!fresh.length) return;
   await DB.setSetting('stamps', { ...seen, ...Object.fromEntries(fresh.map((s) => [s.id, Date.now()])) });
+  fresh.forEach((x) => track('stamp_earned', { stamp: x.id }));
   const s = fresh[fresh.length - 1];
   const box = document.createElement('div');
   box.className = 'celebrate';
@@ -1090,7 +1120,7 @@ async function viewHome() {
     });
   }
   const ts = document.getElementById('tile-share');
-  if (ts && isGuest()) ts.addEventListener('click', (ev) => { ev.preventDefault(); showSignupSheet('註冊後就能分享給另一半', '傳一個邀請連結給對方，兩個人就能一起看、一起寫。現在試用寫的紀錄，註冊後會自動搬上雲端。'); });
+  if (ts && isGuest()) ts.addEventListener('click', (ev) => { ev.preventDefault(); track('signup_prompt', { where: 'share' }); showSignupSheet('註冊後就能分享給另一半', '傳一個邀請連結給對方，兩個人就能一起看、一起寫。現在試用寫的紀錄，註冊後會自動搬上雲端。'); });
   ['invite-go', 'tile-share'].forEach((id) => {
     const el = document.getElementById(id);
     if (el && el.getAttribute('href') === '#/settings') el.addEventListener('click', () => { try { sessionStorage.setItem('jumpShare', '1'); } catch (e) { /* 略過 */ } });
@@ -1498,6 +1528,7 @@ async function viewDetail(id) {
   if (fightEdit) {
     app.querySelectorAll('[data-status]').forEach((b) => b.addEventListener('click', () => withBusy(b, '', async () => {
       await updateRecord(r.id, (x) => { x.status = b.dataset.status; });
+      track('fight_status_change', { status: b.dataset.status });
       viewDetail(r.id);
     })));
     const res = document.getElementById('resolution');
@@ -1537,6 +1568,7 @@ async function viewDetail(id) {
       if (!confirm(r.type === 'fight' ? `要刪除這個議題嗎？${ownerName()}那邊也會看不到。` : '要刪除這則嗎？刪除後就救不回來了。')) return;
       withBusy(delBtn, '', async () => {
         await CloudDB.partnerDeleteRecord(r.id);
+        track('record_delete', { type: r.type });
         // 美好、烏雲是直接刪掉，照片也一起清掉（吵架議題會先放到最近刪除，照片先留著）
         if (r.type !== 'fight') for (const pid of r.photoIds || []) { try { await DB.deletePhoto(pid); } catch (e) { /* 之後再清 */ } }
         toast('已刪除'); go(backHref);
@@ -1551,12 +1583,14 @@ async function viewDetail(id) {
   if (delBtn) delBtn.addEventListener('click', async () => {
     if (!confirm(`要刪除這則嗎？會先移到設定頁的「最近刪除」，${TRASH_DAYS} 天內都可以救回來${usingCloud() ? '，這段時間對方也看不到' : ''}。`)) return;
     await updateRecord(r.id, (x) => { x.deletedAt = Date.now(); });
+    track('record_delete', { type: r.type });
     toast(`已移到最近刪除，${TRASH_DAYS} 天內可以救回來`);
     go(backHref);
   });
 
   app.querySelectorAll('[data-approve]').forEach((b) => b.addEventListener('click', () => withBusy(b, '解鎖中…', async () => {
     await CloudDB.reviewSubmission(b.dataset.approve, true);
+    track('task_approve');
     toast('已解鎖，對方看得到這則了');
     checkNewStamps().catch(() => {});
     viewDetail(r.id);
@@ -1566,6 +1600,7 @@ async function viewDetail(id) {
     if (why === null) return;
     withBusy(b, '', async () => {
       await CloudDB.reviewSubmission(b.dataset.reject, false, why.trim().slice(0, 200) || null);
+      track('task_reject');
       // 退回的任務照片用不到了，順便刪掉
       if (b.dataset.photo) { try { await CloudDB.removeTaskPhoto(b.dataset.photo); } catch (e) { /* 刪不掉沒關係 */ } }
       viewDetail(r.id);
@@ -1585,7 +1620,9 @@ async function viewDetail(id) {
     clearBtn.addEventListener('click', () => withBusy(clearBtn, '', async () => {
       // 另一半的紀錄透過資料庫函式改，要明確送出「取消放晴」
       const wasCleared = !!r.clearedAt;
+      const clearing = !r.clearedAt;
       await updateRecord(r.id, (x) => { if (x.clearedAt) { if (partner) x.clearedAt = null; else delete x.clearedAt; } else x.clearedAt = Date.now(); });
+      if (clearing) track('cloud_cleared');
       if (!wasCleared) showClearMascot();
       viewDetail(r.id);
     }));
@@ -1938,6 +1975,11 @@ async function viewForm(mode, arg) {
       if (mode === 'new') clearDraft();
       if (mode === 'new' && rec.wishId) { try { await Wishes.update(rec.wishId, { record_id: rec.id }); } catch (e) { /* 連不到清單也沒關係 */ } }
       toast('已儲存');
+      if (mode === 'new') {
+        const before = (await liveRecords()).length;
+        if (before === 1) track('first_record', { type: rec.type });
+        track('record_create', { type: rec.type, visibility: rec.visibility || 'shared', has_photo: (rec.photoIds || []).length > 0, author: partner ? 'partner' : 'me' });
+      } else track('record_edit', { type: rec.type });
       markA2hsPending();
       if (mode === 'new' && isGuest()) { try { if ((await liveRecords()).length >= 3) sessionStorage.setItem('signupNudge', '1'); } catch (e) { /* 略過 */ } }
       go(`#/view/${rec.id}`);
@@ -2209,6 +2251,7 @@ async function viewSettings() {
     </div>
     <h2 class="section-title set-sec" id="set-other">其他</h2>
     ${tourCard()}
+    ${analyticsCard()}
     ${feedbackCard()}
   `;
 
@@ -2268,6 +2311,7 @@ async function viewSettings() {
     };
     const file = new Blob([JSON.stringify(data)], { type: 'application/json' });
     downloadFile(file, `our-records-RESTORE-backup-${today()}.json`);
+    track('export_backup', { format: 'json' });
     await DB.setSetting('lastBackupAt', Date.now());
     toast(`備份好了：${data.records.length} 則紀錄、${data.photos.length} 張照片，檔案約 ${Math.max(1, Math.round(file.size / 1048576))} MB`);
     setTimeout(viewSettings, 500);
@@ -2276,6 +2320,7 @@ async function viewSettings() {
   document.getElementById('export-read').addEventListener('click', async () => {
     toast('製作閱讀版中…');
     showReadView(await buildReadableExport(document.getElementById('read-shared-only').checked));
+    track('export_backup', { format: 'pdf' });
   });
 
   document.getElementById('import').addEventListener('change', async (ev) => {
@@ -2456,6 +2501,7 @@ async function viewEnd(keepUid = '') {
     if (!confirm(`封存目前的 ${all.length} 則紀錄，並移除${other}？封存的紀錄只有你看得到。`)) return;
     withBusy(archiveBtn, '封存中…', async () => {
       await CloudDB.endRelationship('archive', keepUid || null);
+      track('end_relationship', { mode: 'archive' });
       await done('已封存，這段回憶收在設定頁的「封存的回憶」');
     });
   });
@@ -2470,6 +2516,7 @@ async function viewEnd(keepUid = '') {
       }
       try { for (const sub of await CloudDB.submissions()) if (sub.photo_path) await CloudDB.removeTaskPhoto(sub.photo_path); } catch (e) { /* 略過 */ }
       await CloudDB.endRelationship('delete', keepUid || null);
+      track('end_relationship', { mode: 'delete' });
       await done('已刪除這段關係的紀錄');
     });
   });
@@ -2632,6 +2679,7 @@ async function viewPartnerTaskForm(id) {
     ev.target.disabled = true;
     try {
       await CloudDB.submitTask(t.id, document.getElementById('task-note').value.trim(), photo);
+      track('task_submit');
       toast(`已送出，等${otherName()}確認`);
       go('#/tasks');
     } catch (e) {
@@ -2642,6 +2690,17 @@ async function viewPartnerTaskForm(id) {
 }
 
 // 另一半綁定 Email / Google：臨時帳號變成正式帳號（同一個身分，不用重新加入）
+// Google 綁定失敗的原因，換成看得懂的說明
+let bindError = '';
+function googleBindErrorText(err) {
+  const o = esc(ownerName());
+  const t = `${(err && err.code) || ''} ${(err && err.message) || ''}`;
+  if (/identity_already_exists|already linked|already (been )?registered|already exists|already in use/i.test(t)) return '這個 Google 帳號已經在啾啾日記註冊過了（可能之前用它登入過），不能再綁到這裡。請換另一個 Google 帳號，或改用下面的 Email 綁定。';
+  if (/manual_linking_disabled|manual linking|linking is disabled/i.test(t)) return `Google 綁定還沒開通。請${o}到 Supabase 後台的 Authentication → Sign In / Providers，打開「Allow manual linking」。現在可以先用下面的 Email 綁定。`;
+  if (/access_denied|not.*test user|unverified|blocked/i.test(t)) return `Google 擋下了這次登入。如果 Google 畫面寫「存取遭封鎖」或「應用程式未經驗證」，是 Google Cloud 的 OAuth 同意畫面還在「測試」模式：請${o}到 Google Cloud Console → OAuth 同意畫面按「發布應用程式」，或把這個 Gmail 加進「測試使用者」。現在可以先用下面的 Email 綁定。`;
+  if (!err) return `從 Google 回來了，但綁定沒有完成。可能是網址設定還沒更新：請${o}到 Supabase 的 Authentication → URL Configuration，確認 Redirect URLs 有 https://diary.jas-soul.com/**。現在可以先用下面的 Email 綁定。`;
+  return `Google 綁定沒有成功：${esc(err.message || err.code || '不知道的錯誤')}。可以改用下面的 Email 綁定。`;
+}
 function viewBind(sentTo = '') {
   app.className = 'theme-fight';
   const bound = CloudDB.isBoundPartner();
@@ -2671,6 +2730,10 @@ function viewBind(sentTo = '') {
       <div class="small">到信箱點信裡的連結就完成了。如果是在別的 App 或瀏覽器打開連結，回到這裡按下面的按鈕。</div>
       <button class="btn small secondary" id="b-check" style="align-self:flex-start">我已經點了連結</button>
     </div>` : ''}
+    ${bindError ? `<div class="card" id="bind-error" role="alert" style="background:var(--open-bg);border-color:transparent;gap:4px">
+      <div class="bold" style="color:var(--open-ink)">Google 綁定沒有成功</div>
+      <div class="small" style="color:var(--open-ink)">${bindError}</div>
+    </div>` : ''}
     <button class="btn secondary" id="b-google"${IN_APP ? ' hidden' : ''}>用 Google 綁定</button>
     <form class="card" id="b-form" style="gap:10px">
       <label for="b-email" class="bold">用 Email 綁定</label>
@@ -2687,7 +2750,16 @@ function viewBind(sentTo = '') {
   });
   if (bound) return;
   const g = document.getElementById('b-google');
-  g.addEventListener('click', () => withBusy(g, '前往 Google…', async () => { await CloudDB.linkGoogle(); await CloudDB.refreshUser(); viewBind(); }));
+  g.addEventListener('click', () => withBusy(g, '前往 Google…', async () => {
+    try { sessionStorage.setItem('linkPending', '1'); } catch (e) { /* 略過 */ }
+    try { await CloudDB.linkGoogle(); } catch (e) {
+      try { sessionStorage.removeItem('linkPending'); } catch (x) { /* 略過 */ }
+      bindError = googleBindErrorText({ code: '', message: e.message });
+      viewBind();
+      return;
+    }
+    await CloudDB.refreshUser(); viewBind();
+  }));
   document.getElementById('b-form').addEventListener('submit', (ev) => {
     ev.preventDefault();
     const email = document.getElementById('b-email').value.trim();
@@ -2729,6 +2801,7 @@ function viewPartnerSettings() {
       <button class="btn small secondary" id="export-mine">匯出我寫的紀錄</button>
     </div>` : ''}
     ${tourCard()}
+    ${analyticsCard()}
     ${feedbackCard()}
     <div class="card">
       <div class="bold">離開</div>
@@ -2811,6 +2884,7 @@ function viewJoin(notice, code = '') {
         document.getElementById('j-pass').value,
         document.getElementById('j-name').value.trim(),
       )]);
+      track('partner_join_request');
       if (CloudDB.pendingJoin()) toast('已送出，等對方同意');
       go('#/');
       route();
@@ -2930,12 +3004,13 @@ function bindShareCard() {
   });
   if ($('s-copy')) $('s-copy').addEventListener('click', async () => {
     const code = document.querySelector('.share-code').textContent;
-    const url = `${location.origin + location.pathname}#/join/${code}`;
+    const url = `${location.origin + location.pathname}?utm_source=invite&utm_medium=share#/join/${code}`;
     const text = `點這個連結，一起用啾啾日記：${url}（密碼我另外告訴你）`;
     // 手機會跳出分享畫面（LINE、訊息…）。要在按下的當下馬上叫出來，先做別的事 iPhone 會擋掉；不支援或失敗時改成複製
     if (navigator.share) {
-      try { await navigator.share({ title: '一起用啾啾日記', text }); return; } catch (e) { if (e && e.name === 'AbortError') return; }
+      try { await navigator.share({ title: '一起用啾啾日記', text }); track('share_invite', { how: 'share' }); return; } catch (e) { if (e && e.name === 'AbortError') return; }
     }
+    track('share_invite', { how: 'copy' });
     try { await navigator.clipboard.writeText(text); toast('已複製，貼給另一半就可以了'); } catch (e) { prompt('複製下面這段文字', text); }
   });
   if ($('s-save-name')) $('s-save-name').addEventListener('click', async () => {
@@ -2962,6 +3037,7 @@ function bindShareCard() {
     const next = $('s-pause').getAttribute('aria-pressed') !== 'true';
     if (next && !confirm('暫停分享？對方會暫時看不到你寫的紀錄、照片和任務，你隨時可以恢復。')) return;
     await DB.setSetting('sharePaused', next);
+    if (next) track('pause_share');
     toast(next ? '已暫停分享' : '已恢復分享');
     viewSettings();
   }));
@@ -3004,6 +3080,7 @@ async function approveJoin(btn, uid, name) {
   let ok = false;
   await withBusy(btn, '', async () => {
     await CloudDB.approvePartner(uid);
+    track('partner_approved');
     toast(`已同意 ${name} 加入，現在可以一起用了`);
     ok = true;
   });
@@ -3056,6 +3133,13 @@ async function migrateLocalToCloud(progress = () => {}, since = 0) {
 // 自己的帳號登入後：記住這支手機登入過，第一次登入時自動把試用的紀錄搬上雲端
 async function afterOwnerLogin() {
   if (!usingCloud() || CloudDB.isAnonymous() || isPartner()) return;
+  // Google 登入回來時記一次：帳號 10 分鐘內建立的算註冊，其他算登入
+  try {
+    if (sessionStorage.getItem('googlePending')) {
+      sessionStorage.removeItem('googlePending');
+      track(Date.now() - CloudDB.createdAtMs() < 600000 ? 'sign_up' : 'login', { method: 'google' });
+    }
+  } catch (e) { /* 略過 */ }
   await LocalDB.setSetting('hasAccount', true);
   numbersChecked = false; // 換成雲端資料後重新檢查舊紀錄的編號
   // 第一次登入搬全部；之後登出時在手機裡寫的新紀錄，下次登入也會自動補搬
@@ -3114,7 +3198,7 @@ function introFeatures() {
   return `<section class="card" style="gap:12px;margin-top:8px" aria-labelledby="intro-h">
     <h2 id="intro-h" class="bold" style="font-size:17px;font-family:inherit;margin:0">這個 App 可以做什麼</h2>
     ${INTRO.map(([icon, t, d]) => `<div class="row" style="align-items:flex-start;gap:12px"><div style="font-size:22px;line-height:1.2" aria-hidden="true">${icon}</div><div style="display:flex;flex-direction:column;gap:2px"><div class="bold">${t}</div><div class="small muted">${d}</div></div></div>`).join('')}
-    <div class="small muted">紀錄只有你和你分享的人看得到。</div>
+    <div class="small muted">紀錄只有你和你分享的人看得到。${window.Analytics && window.Analytics.configured() ? ANALYTICS_NOTE : ''}</div>
   </section>`;
 }
 // 記住上次用哪種方式登入，避免 Google 和 Email 各註冊一個帳號、以為資料不見
@@ -3187,6 +3271,7 @@ function viewLogin(mode = 'signin') {
   });
   document.getElementById('google-btn').addEventListener('click', async () => {
     rememberLogin('google');
+    try { sessionStorage.setItem('googlePending', '1'); } catch (e) { /* 略過 */ }
     try { await CloudDB.signInWithGoogle(); } catch (e) {
       document.getElementById('login-msg').textContent = /provider is not enabled|Unsupported provider/i.test(e.message)
         ? 'Google 登入還沒在 Supabase 開啟，先用 Email 登入吧。' : '沒辦法用 Google 登入：' + e.message;
@@ -3203,6 +3288,7 @@ function viewLogin(mode = 'signin') {
     try {
       if (isUp) {
         const session = await CloudDB.signUp(email, password);
+        track('sign_up', { method: 'email' });
         if (!session) {
           msg.textContent = '帳號建立好了！請到信箱點確認連結，確認後回到這裡登入。';
           btn.disabled = false;
@@ -3211,6 +3297,7 @@ function viewLogin(mode = 'signin') {
         }
       } else {
         await CloudDB.signIn(email, password);
+        track('login', { method: 'email' });
       }
       rememberLogin('email');
       await afterOwnerLogin();
@@ -3239,6 +3326,7 @@ async function route() {
   app.className = '';
   app.oninput = null;
   window.scrollTo(0, 0);
+  try { if (window.Analytics) window.Analytics.pageView(); } catch (e) { /* 略過 */ }
   try {
     if (isGuest()) {
       if (page === 'join') { renderTabbar(null); viewJoin('', arg); return; }
@@ -3463,7 +3551,7 @@ function bindPinCard(refresh) {
     if (!a) return;
     const b = await pinPad({ title: '再輸入一次', sub: '確認密碼', cancelable: true, onDone: async (x) => x === a });
     if (!b) return;
-    await pinSet(a); toast('已開啟密碼鎖'); refresh();
+    await pinSet(a); track('pin_enable'); toast('已開啟密碼鎖'); refresh();
   });
   const change = document.getElementById('pin-change');
   if (change) change.addEventListener('click', async () => {
@@ -3512,6 +3600,13 @@ requestPersist();
   showPinLock();
   if (CLOUD_ENABLED) {
     try { await CloudDB.loadSession(); await afterOwnerLogin(); } catch (e) { toast(cloudErrorText(e)); }
+    // 從 Google 回來：另一半綁定成功就說一聲；失敗就回到綁定頁、寫清楚原因（不然會一直繞回同一個畫面）
+    let linking = false;
+    try { linking = !!sessionStorage.getItem('linkPending'); sessionStorage.removeItem('linkPending'); } catch (e) { /* 略過 */ }
+    const urlErr = CloudDB.takeUrlError();
+    if (linking && CloudDB.isBoundPartner()) { bindError = ''; toast('Google 綁定完成！'); }
+    else if (linking && isPartner()) { bindError = googleBindErrorText(urlErr); go('#/bind'); }
+    else if (urlErr) toast(/identity_already_exists|already/i.test(`${urlErr.code} ${urlErr.message}`) ? '這個 Google 帳號已經被用過了，換一個帳號或改用 Email。' : `Google 登入沒有成功：${urlErr.message || urlErr.code}`);
   }
   route();
 })();
