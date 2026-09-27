@@ -1212,13 +1212,15 @@ async function viewDetail(id) {
       const date = document.getElementById('fu-date').value || today();
       if (!dateOk(date)) { toast('日期要在今天以前'); return; }
       withBusy(fuAdd, '加入中…', async () => {
+        let movedToProgress = false;
         await updateRecord(r.id, (x) => {
           const list = x.followUps || [];
           if (list.length >= LIMITS.followUpsPerFight) throw new Error(`每個議題最多 ${LIMITS.followUpsPerFight} 則後續`);
           x.followUps = list.concat({ id: DB.uid(), date, text, by: partner ? CloudDB.partnerInfo().name : myName() }).sort((a, b) => a.date.localeCompare(b.date));
           // 第一次加後續時，自動從「未解決」變成「處理中」
-          if ((x.status || 'open') === 'open') x.status = 'progress';
+          if ((x.status || 'open') === 'open') { x.status = 'progress'; movedToProgress = true; }
         });
+        if (movedToProgress) toast('已加入後續，狀態改成「處理中」');
         viewDetail(r.id);
       });
     });
@@ -1353,6 +1355,7 @@ async function viewForm(mode, arg) {
   if (partner && mode === 'edit' && rec.type === 'fight' && rec.visibility !== 'shared') { go('#/fights'); return; }
   const fightAlwaysShared = () => rec.type === 'fight' && (mode === 'new' || originalVisibility === 'shared' || originalType !== 'fight');
   const originalVisibility = rec.visibility;
+  const originalUnlocked = !!rec.unlocked;
   const loadedUpdatedAt = rec.updatedAt || 0;
   const contentKey = (x) => JSON.stringify({ ...x, updatedAt: 0, editedAt: 0, v: 0 });
   const loadedContent = contentKey(rec);
@@ -1423,7 +1426,7 @@ async function viewForm(mode, arg) {
         <div class="photos">
           ${photoCells.join('')}
           <label class="photo-add">${ICON.camera}上傳<input type="file" accept="image/*" multiple class="visually-hidden" id="f-photos"></label>
-        </div></div>`}
+        </div>${rec.type === 'fight' ? '<div class="small muted">上傳對話截圖前看一下：截圖裡可能有其他人的名字或訊息，需要的話先裁掉。</div>' : ''}</div>`}
       <div class="field"><div class="label">心情（最多 ${MAX_EMOJIS} 個）</div>
         <div class="emoji-row">
           ${emojiList.map((e) => `<button class="emoji ${rec.emojis.includes(e) ? 'on' : ''}" data-emoji="${esc(e)}">${esc(e)}</button>`).join('')}
@@ -1447,7 +1450,8 @@ async function viewForm(mode, arg) {
           <div class="opts cols-2">
             <button class="opt ${rec.task.mode !== 'photo' ? 'on' : ''}" data-taskmode="confirm">按「完成」就好</button>
             <button class="opt ${rec.task.mode === 'photo' ? 'on' : ''}" data-taskmode="photo">要上傳照片</button>
-          </div>` : ''}
+          </div>
+          ${mode === 'edit' && originalUnlocked && originalVisibility === 'task' ? `<div class="small muted">這則已經解鎖了，改任務內容不會重新上鎖，${esc(otherName())}還是看得到。想收回的話，改成「上鎖」。</div>` : ''}` : ''}
         <div class="muted small">${partner ? `給${esc(ownerName())}看：${esc(ownerName())}看得到。上鎖：只有你看得到，${esc(ownerName())}只會看到「有一則上鎖」。` : usingCloud() ? '給對方看：對方用分享碼就看得到。上鎖：只有你看得到。任務解鎖：對方完成任務、你按通過後才看得到。' : (CLOUD_ENABLED ? '這個設定會先記下來；註冊登入並開啟分享碼後，對方就會依這個設定看到內容。' : '現在是單人版，這個設定會先記下來；換成雲端版並開啟分享碼後，對方就會依這個設定看到內容。') + '目前「上鎖」只是標記，拿到這支手機的人還是看得到。'}</div>
       </div>`}
       <button class="btn" id="save">${partner ? '儲存' : usingCloud() && (rec.visibility === 'shared' || fightAlwaysShared()) && rec.type !== 'happy' ? `儲存並給${esc(partnerName())}看` : '儲存紀錄'}</button>
@@ -1462,6 +1466,7 @@ async function viewForm(mode, arg) {
       collect();
       if (b.dataset.type === rec.type) return;
       if (mode === 'edit' && b.dataset.type !== originalType && !confirm('換成別的類型後，這則會拿到新類型的新編號。確定要換嗎？')) return;
+      if (mode === 'new' && (rec.emojis.length || rec.tags.length) && !confirm('換類型後，已經選的心情和標籤會清掉（標題、描述會保留）。確定要換嗎？')) return;
       rec.type = b.dataset.type;
       if (mode === 'new') { rec.emojis = []; rec.tags = []; customEmojis = []; extraTags = []; }
       if (!visTouched) rec.visibility = defaultVisibility(rec.type);
@@ -1582,6 +1587,8 @@ async function viewForm(mode, arg) {
       if (!dateOk(rec.date)) { toast('日期要在 1970 年到今天之間'); return; }
       if (fightAlwaysShared()) rec.visibility = 'shared';
       if (rec.visibility === 'task' && !rec.task.text.trim()) { toast('請填寫解鎖任務'); return; }
+      if (mode === 'edit' && usingCloud() && rec.type !== 'fight' && (originalVisibility === 'shared' || (originalVisibility === 'task' && originalUnlocked)) && rec.visibility !== 'shared'
+        && !confirm(`這則之前${otherName()}看得到，改成不給看之後就看不到了，但${otherName()}可能已經看過內容。確定要改嗎？`)) return;
       if (mode === 'edit') {
         const latest = await DB.getRecord(rec.id);
         if (latest && (latest.updatedAt || 0) !== loadedUpdatedAt
@@ -1910,6 +1917,7 @@ async function viewSettings() {
   document.getElementById('import').addEventListener('change', async (ev) => {
     const file = ev.target.files[0];
     if (!file) return;
+    if (file.size > 50 * 1048576 && !confirm(`這個備份檔約 ${Math.round(file.size / 1048576)} MB，比較大，匯入可能要一段時間，手機空間也要夠。匯入時先不要關掉畫面。要繼續嗎？`)) { ev.target.value = ''; return; }
     try {
       const data = JSON.parse(await file.text());
       checkBackup(data);
@@ -2096,7 +2104,8 @@ async function viewPartnerTasks() {
     <div class="list">
       ${tasks.map((t) => {
         const s = t.submission && t.submission.status;
-        const state = s === 'pending' ? `<span class="badge st-progress">等${esc(ownerName())}確認</span>`
+        const sentAgo = t.submission && t.submission.created_at ? daysAgo(new Date(t.submission.created_at).getTime()) : null;
+        const state = s === 'pending' ? `<span class="badge st-progress">已送出${sentAgo == null ? '' : sentAgo === 0 ? '・今天' : `・${sentAgo} 天前`}，等${esc(ownerName())}確認</span>`
           : s === 'rejected' ? '<span class="badge st-open">被退回了，可以再試一次</span>' : '';
         return `<div class="card ${TYPES[t.type].theme}" style="gap:8px">
           <div class="row between"><span class="small bold" style="color:var(--accent)">${ICON.lockSmall} 一則${TYPES[t.type].label}</span>
@@ -2553,6 +2562,15 @@ function introFeatures() {
     <div class="small muted">不用註冊就能先用，紀錄只存在這支手機；登入後存到雲端，換手機也不會不見，還能用分享碼給另一半看。紀錄只有你和你分享的人看得到。</div>
   </section>`;
 }
+// 記住上次用哪種方式登入，避免 Google 和 Email 各註冊一個帳號、以為資料不見
+function rememberLogin(kind) {
+  try {
+    localStorage.setItem('lastLogin', kind);
+    const em = kind === 'email' && document.getElementById('email');
+    if (em && em.value) localStorage.setItem('lastLoginEmail', em.value.trim());
+  } catch (e) { /* 不能存就算了 */ }
+}
+function lastLogin() { try { return localStorage.getItem('lastLogin'); } catch (e) { return null; } }
 function viewLogin(mode = 'signin') {
   app.className = '';
   const isUp = mode === 'signup';
@@ -2582,6 +2600,15 @@ function viewLogin(mode = 'signin') {
     <a class="btn secondary small" href="#/" id="try-first" hidden>先不登入，直接開始用</a>
     ${isUp ? '' : introFeatures()}
   `;
+  const last = lastLogin();
+  if (!isUp && last) {
+    const hint = document.createElement('div');
+    hint.className = 'small muted'; hint.style.textAlign = 'center'; hint.id = 'last-login';
+    hint.textContent = last === 'google' ? '你上次是用 Google 登入的' : '你上次是用 Email 登入的';
+    const anchor = document.getElementById(last === 'google' && !IN_APP ? 'google-btn' : 'login-form');
+    anchor.parentNode.insertBefore(hint, anchor);
+    if (last === 'email') { try { const em = localStorage.getItem('lastLoginEmail'); if (em) document.getElementById('email').value = em; } catch (e) { /* 略過 */ } }
+  }
   hasAccountHere().then((has) => { const b = document.getElementById('try-first'); if (b && !has) b.hidden = false; });
   document.getElementById('switch').addEventListener('click', () => viewLogin(isUp ? 'signin' : 'signup'));
   const forgot = document.getElementById('forgot');
@@ -2595,6 +2622,7 @@ function viewLogin(mode = 'signin') {
     });
   });
   document.getElementById('google-btn').addEventListener('click', async () => {
+    rememberLogin('google');
     try { await CloudDB.signInWithGoogle(); } catch (e) {
       document.getElementById('login-msg').textContent = /provider is not enabled|Unsupported provider/i.test(e.message)
         ? 'Google 登入還沒在 Supabase 開啟，先用 Email 登入吧。' : '沒辦法用 Google 登入：' + e.message;
@@ -2620,6 +2648,7 @@ function viewLogin(mode = 'signin') {
       } else {
         await CloudDB.signIn(email, password);
       }
+      rememberLogin('email');
       await afterOwnerLogin();
       go('#/');
       route();
@@ -2713,6 +2742,7 @@ async function requestPersist() {
 // 連不上雲端時說清楚：資料沒有不見，可能是網路或雲端暫停（免費方案一週沒人用會暫停）
 function cloudErrorText(e) {
   const m = (e && e.message) || '';
+  if ((e && e.name === 'QuotaExceededError') || /quota|storage.*full|No space/i.test(m)) return '手機的儲存空間可能滿了，存不進去。先刪掉一些照片或 App，或先匯出備份，再試一次。';
   if (/fetch|network|load failed|timeout/i.test(m)) return navigator.onLine === false ? '現在沒有網路，連上網路後再試一次。' : '連不上雲端。資料沒有不見，可能是網路不穩，或雲端太久沒人用被暫停了（到 Supabase 後台按 Restore 就會恢復）。';
   return m || '出了一點問題，請再試一次';
 }
