@@ -803,7 +803,11 @@ function feedbackCard() {
   return `<a class="card" href="#/feedback" style="gap:4px">
     <div class="row between"><div class="bold">意見回饋</div><div class="muted">›</div></div>
     <div class="small muted">哪裡怪怪的、哪裡可以更好，都歡迎告訴我們</div>
-  </a>`;
+  </a>${legalLinks()}`;
+}
+// 隱私權政策、使用條款（Google 登入正式版需要公開的隱私權政策網址）
+function legalLinks() {
+  return '<div class="small muted legal-links"><a href="privacy.html" target="_blank" rel="noopener">隱私權政策</a>・<a href="terms.html" target="_blank" rel="noopener">使用條款</a></div>';
 }
 function viewFeedback() {
   const from = sessionStorage.getItem('fbFrom') || '';
@@ -3395,6 +3399,7 @@ function viewLogin(mode = 'signin') {
     <a class="btn secondary small" href="#/join">我是另一半，用分享碼加入</a>
     <a class="text-link small" href="#/" id="try-first" hidden>先看看，之後再註冊</a>
     ${isUp || !last ? introFeatures() : ''}
+    <div class="small muted legal-links">${isUp ? '註冊就代表你同意' : ''}<a href="terms.html" target="_blank" rel="noopener">使用條款</a>${isUp ? '和' : '・'}<a href="privacy.html" target="_blank" rel="noopener">隱私權政策</a></div>
   `;
   if (!isUp && last) {
     const hint = document.createElement('div');

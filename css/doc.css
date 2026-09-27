@@ -1,0 +1,11 @@
+/* 隱私權政策、使用條款這類說明頁 */
+body { background: var(--bg); }
+.doc { max-width: 680px; margin: 0 auto; padding: 24px 20px 64px; line-height: 1.8; font-size: 16px; }
+.doc h1 { font-family: 'Noto Serif TC', serif; font-size: 28px; margin: 12px 0 4px; }
+.doc h2 { font-size: 18px; margin: 28px 0 8px; color: var(--accent-dark); }
+.doc p, .doc ul { margin: 0 0 12px; }
+.doc ul { padding-left: 22px; }
+.doc li { margin: 4px 0; }
+.doc-meta { color: var(--muted); font-size: 14px; }
+.doc-back { color: var(--muted); text-decoration: none; font-size: 14px; }
+.doc a { color: var(--accent); }

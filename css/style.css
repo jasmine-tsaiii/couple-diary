@@ -400,3 +400,6 @@ body::before { content: ''; position: fixed; top: 0; left: 0; right: 0; height: 
 .example-card { gap: 6px; border-style: dashed; background: transparent; }
 .example-badge { background: var(--accent-bg); color: var(--accent-dark); }
 .example-note { padding: 0 4px; }
+
+.legal-links { text-align: center; }
+.legal-links a { color: var(--muted); }
