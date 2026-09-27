@@ -991,6 +991,8 @@ async function viewDetail(id) {
   const fightEdit = r.type === 'fight' && (!partner || (bound && r.visibility === 'shared'));
   // 誰新增的（舊紀錄沒有記，就是主人）
   const mine = isMine(r);
+  // 分類被刪掉的舊議題：標示出來（另一半沒有你的分類清單，不標）
+  const catDeleted = r.type === 'fight' && r.category && !partner && mine && !(await getCategories()).includes(r.category);
   const authorText = usingCloud() && r.author ? `${authorLabel(r)}新增的` : '';
   const canDelete = partner ? bound && mine : mine;
   const backHref = r.type === 'fight' ? '#/fights' : `#/list/${r.type}`;
@@ -1128,7 +1130,7 @@ async function viewDetail(id) {
     </div>
     <div class="field" style="gap:6px">
       <div class="row" style="gap:8px">
-        <span class="badge" style="background:var(--accent-bg);color:var(--accent-dark)">${r.type === 'fight' ? esc(r.category || '未分類') : conf.label}</span>
+        <span class="badge" style="background:var(--accent-bg);color:var(--accent-dark)">${r.type === 'fight' ? esc(r.category || '未分類') + (catDeleted ? '（已刪除的分類）' : '') : conf.label}</span>
         <span class="muted small">${longDate(r.date)}</span>
         ${authorText ? `<span class="muted small">・${authorText}</span>` : ''}
         ${r.editedAt ? `<span class="muted small">・${shortDate(new Date(r.editedAt - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 10))} 編輯過</span>` : ''}
@@ -1560,13 +1562,18 @@ async function viewForm(mode, arg) {
         // 解鎖狀態以最新的為準（對方可能剛剛才完成任務）
         if (latest && latest.visibility === 'task' && rec.visibility === 'task') { rec.unlocked = latest.unlocked; rec.unlockedAt = latest.unlockedAt; }
       }
+      // 照片先傳；傳到一半或存紀錄失敗時，把這次已經傳上去的照片刪掉，免得佔空間
+      const uploaded = [];
+      const cleanup = async () => { for (const id of uploaded) { try { await DB.deletePhoto(id); } catch (e) { /* 刪不掉就算了 */ } } };
       let up = 0;
-      for (const [id, p] of newPhotos) {
-        saveBtn.textContent = `上傳照片 ${++up} / ${newPhotos.size}…`;
-        await DB.putPhoto({ id, blob: p.blob, recordId: rec.id, createdAt: Date.now() });
-        if (usingCloud()) { try { await CloudDB.putThumb(id, await compressImage(p.blob, THUMB_SIDE, 0.75)); } catch (e) { /* 之後列表會自動補 */ } }
-      }
-      for (const id of removedPhotos) { await DB.deletePhoto(id); photoUrlCache.delete(id); thumbUrlCache.delete(id); }
+      try {
+        for (const [id, p] of newPhotos) {
+          saveBtn.textContent = `上傳照片 ${++up} / ${newPhotos.size}…`;
+          await DB.putPhoto({ id, blob: p.blob, recordId: rec.id, createdAt: Date.now() });
+          uploaded.push(id);
+          if (usingCloud()) { try { await CloudDB.putThumb(id, await compressImage(p.blob, THUMB_SIDE, 0.75)); } catch (e) { /* 之後列表會自動補 */ } }
+        }
+      } catch (e) { await cleanup(); throw e; }
       const now = Date.now();
       // 另一半新增的議題由資料庫編號
       if (!partner && (!rec.no || rec.type !== originalType)) rec.no = await nextNumber(rec.type);
@@ -1576,7 +1583,9 @@ async function viewForm(mode, arg) {
       if (rec.visibility !== 'task') rec.unlocked = false;
       rec.createdAt = rec.createdAt || now;
       rec.updatedAt = now;
-      await DB.putRecord(rec);
+      try { await DB.putRecord(rec); } catch (e) { await cleanup(); throw e; }
+      // 紀錄存好之後，才刪掉這次移除的舊照片
+      for (const id of removedPhotos) { try { await DB.deletePhoto(id); } catch (e) { /* 之後再清 */ } photoUrlCache.delete(id); thumbUrlCache.delete(id); }
       dirty = false;
       clearTimeout(draftTimer);
       if (mode === 'new') clearDraft();
@@ -1777,7 +1786,8 @@ async function viewSettings() {
     </div>` : ''}
     <div class="card">
       <div class="bold">吵架議題分類</div>
-      <div class="chips">${cats.map((c) => `<span class="chip" style="display:inline-flex;align-items:center;gap:6px">${esc(c)}<button data-rm-cat="${esc(c)}" aria-label="刪除 ${esc(c)}" style="border:none;background:none;padding:0;display:flex">${ICON.x}</button></span>`).join('')}</div>
+      <div class="small muted">點分類名字可以改名，用這個分類的議題會一起改。</div>
+      <div class="chips">${cats.map((c) => `<span class="chip" style="display:inline-flex;align-items:center;gap:6px"><button data-edit-cat="${esc(c)}" aria-label="改名 ${esc(c)}" style="border:none;background:none;padding:0;font:inherit;color:inherit">${esc(c)}</button><button data-rm-cat="${esc(c)}" aria-label="刪除 ${esc(c)}" style="border:none;background:none;padding:0;display:flex">${ICON.x}</button></span>`).join('')}</div>
       <div class="row"><input id="new-cat" class="input grow" maxlength="${LIMITS.category}" placeholder="新增分類"><button class="btn small" id="add-cat">加入</button></div>
     </div>
     ${usedTags.length ? `<div class="card">
@@ -1858,12 +1868,18 @@ async function viewSettings() {
       checkBackup(data);
       if (!confirm(`要匯入 ${data.records.length} 則紀錄嗎？同一則紀錄會被備份裡的版本取代。`)) return;
       for (const p of data.photos || []) await DB.putPhoto({ id: p.id, recordId: p.recordId, blob: await dataUrlToBlob(p.data), createdAt: Date.now() });
-      for (const r of data.records) await DB.putRecord(r);
+      // 另一半寫的紀錄屬於他自己，雲端版匯入時略過（他那邊還在）
+      let skippedOthers = 0;
+      for (const r of data.records) {
+        if (usingCloud() && r.author && r.author !== CloudDB.myId()) { skippedOthers++; continue; }
+        await putImportedRecord(r);
+      }
+      if (skippedOthers) toast(`另外 ${skippedOthers} 則是對方寫的，沒有匯入`);
       if (Array.isArray(data.categories)) {
         const merged = [...new Set([...(await getCategories()), ...data.categories])];
         await DB.setSetting('categories', merged);
       }
-      toast('匯入完成');
+      if (!skippedOthers) toast('匯入完成');
       viewSettings();
     } catch (e) {
       toast(e.message || '匯入失敗');
@@ -1888,7 +1904,8 @@ async function viewSettings() {
     if (name === old) return;
     if (!name && !confirm(`要從所有紀錄拿掉「#${old}」嗎？`)) return;
     let n = 0;
-    for (const r of everything.filter((x) => (x.tags || []).includes(old))) {
+    // 另一半寫的美好、烏雲不能改，只改自己的和吵架議題
+    for (const r of everything.filter((x) => (x.tags || []).includes(old) && (isMine(x) || x.type === 'fight'))) {
       await updateRecord(r.id, (x) => {
         const tags = (x.tags || []).map((t) => (t === old ? name : t)).filter(Boolean);
         x.tags = [...new Set(tags)];
@@ -1898,8 +1915,22 @@ async function viewSettings() {
     toast(name ? `已把 ${n} 則紀錄的標籤改成 #${name}` : `已從 ${n} 則紀錄拿掉這個標籤`);
     viewSettings();
   }));
+  app.querySelectorAll('[data-edit-cat]').forEach((b) => b.addEventListener('click', async () => {
+    const old = b.dataset.editCat;
+    const input = prompt(`把分類「${old}」改成什麼？（最多 ${LIMITS.category} 個字）`, old);
+    if (input === null) return;
+    const name = input.trim().slice(0, LIMITS.category);
+    if (!name || name === old) return;
+    const used = everything.filter((x) => x.type === 'fight' && x.category === old);
+    if (!confirm(`改成「${name}」？${used.length ? `用這個分類的 ${used.length} 個議題也會一起改。` : ''}`)) return;
+    await DB.setSetting('categories', [...new Set(cats.map((c) => (c === old ? name : c)))]);
+    let failed = 0;
+    for (const r of used) { try { await updateRecord(r.id, (x) => { if (x.category === old) x.category = name; }); } catch (e) { failed += 1; } }
+    toast(failed ? `已改名，但有 ${failed} 個議題沒改到，請再試一次` : `已改成「${name}」${used.length ? `，${used.length} 個議題一起更新了` : ''}`);
+    viewSettings();
+  }));
   app.querySelectorAll('[data-rm-cat]').forEach((b) => b.addEventListener('click', async () => {
-    if (!confirm(`刪除分類「${b.dataset.rmCat}」？已經用這個分類的議題不會受影響。`)) return;
+    if (!confirm(`刪除分類「${b.dataset.rmCat}」？已經用這個分類的議題會保留原本的分類，並標示「已刪除的分類」。`)) return;
     await DB.setSetting('categories', cats.filter((c) => c !== b.dataset.rmCat));
     viewSettings();
   }));
@@ -2378,6 +2409,18 @@ function bindShareCard() {
 }
 
 // 把手機裡（試用時）的紀錄和照片搬上雲端；同一則紀錄重搬只會覆蓋，不會重複
+// 匯入、搬上雲端時存一則紀錄：紀錄 id 在雲端是全部帳號共用的，
+// 同一份備份匯入第二個帳號時 id 會撞到，就換一個新的 id 再存
+async function putImportedRecord(r) {
+  if (!usingCloud()) { await DB.putRecord(r); return r.id; }
+  try { await CloudDB.putRecord(r); return r.id; } catch (e) {
+    if (!/row-level security|duplicate|violates/i.test(e.message)) throw e;
+    const copy = { ...r, id: DB.uid() };
+    await CloudDB.putRecord(copy);
+    return copy.id;
+  }
+}
+
 async function migrateLocalToCloud(progress = () => {}) {
   const records = await LocalDB.allRecords();
   const photos = await LocalDB.allPhotos();
@@ -2395,7 +2438,7 @@ async function migrateLocalToCloud(progress = () => {}) {
   }
   done = 0;
   for (const r of records) {
-    await CloudDB.putRecord(r);
+    await putImportedRecord(r);
     progress(`搬紀錄中… ${++done} / ${records.length}`);
   }
   const localNames = await LocalDB.getSetting('names', null);
