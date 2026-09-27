@@ -694,6 +694,28 @@ function showA2hs() {
   });
 }
 
+// ---------- 6 位數字的分享密碼：一個輸入框疊在 6 個格子上（可以貼上、自動填入） ----------
+const SHARE_PASS_RE = /^\d{6}$/;
+function digitBoxes(id, label) {
+  return `<div class="field"><label for="${id}">${label}</label>
+    <div class="digits"><input id="${id}" class="digits-input" inputmode="numeric" pattern="[0-9]*" maxlength="6" autocomplete="off" aria-describedby="${id}-hint">
+      <div class="digit-cells" aria-hidden="true">${'<span></span>'.repeat(6)}</div></div>
+    <div class="small muted" id="${id}-hint">6 位數字</div></div>`;
+}
+function bindDigitBoxes(root = document) {
+  root.querySelectorAll('.digits-input').forEach((inp) => {
+    if (inp.dataset.bound) return;
+    inp.dataset.bound = '1';
+    const cells = inp.parentElement.querySelectorAll('.digit-cells span');
+    const paint = () => {
+      inp.value = inp.value.replace(/\D/g, '').slice(0, 6);
+      cells.forEach((c, i) => { c.textContent = inp.value[i] || ''; c.classList.toggle('on', i === Math.min(inp.value.length, 5) && document.activeElement === inp); });
+    };
+    ['input', 'focus', 'blur'].forEach((e) => inp.addEventListener(e, paint));
+    paint();
+  });
+}
+
 // ---------- 意見回饋：哪裡有問題、哪裡可以更好 ----------
 const FEEDBACK_KINDS = ['有問題', '建議', '喜歡的地方', '其他'];
 function feedbackCard() {
@@ -885,7 +907,13 @@ async function viewHome() {
     try { endedWith = localStorage.getItem(`endedWith:${CloudDB.myId()}`); } catch (e) { endedWith = null; }
   }
   let joinReqs = [];
-  if (usingCloud()) { try { joinReqs = (await CloudDB.listPartners()).filter((p) => p.approved === false); } catch (e) { joinReqs = []; } }
+  let hasPartner = true;
+  if (usingCloud()) {
+    try { const ps = await CloudDB.listPartners(); joinReqs = ps.filter((p) => p.approved === false); hasPartner = ps.some((p) => p.approved !== false); } catch (e) { joinReqs = []; }
+  }
+  let inviteHidden = false;
+  try { inviteHidden = !!localStorage.getItem('inviteCardHidden'); } catch (e) { /* 略過 */ }
+  const showInvite = usingCloud() && !hasPartner && !joinReqs.length && !inviteHidden;
   // 「一年前的今天」只挑美好時刻，免得一打開就看到舊的烏雲
   const memory = all.filter((r) => r.type === 'happy' && DATE_RE.test(r.date || '') && r.date.slice(5) === today().slice(5) && r.date < today()).sort(byDateDesc)[0];
   const isIOS = /iphone|ipad|ipod/i.test(navigator.userAgent);
@@ -937,9 +965,19 @@ async function viewHome() {
         <h1 class="title-xl">${esc(diaryTitle())}</h1>
         ${togetherDays() ? `<div class="small muted">在一起第 ${togetherDays()} 天</div>` : ''}
       </div>
-      <a class="icon-btn" href="#/settings" aria-label="設定">${ICON.gear}</a>
+      <a class="icon-btn gear-btn" href="#/settings" aria-label="設定">${ICON.gear}<span>設定</span></a>
     </div>
     <div class="mascot-hello">${mascotHtml('happy', 110)}<div class="small muted">今天有想記下的小事嗎？</div></div>
+    ${joinReqs.map((j) => `<div class="card join-req" style="background:var(--lock-bg);border-color:transparent;gap:8px">
+      <div class="bold" style="color:var(--lock)">${esc(j.name)} 想加入你們的日記</div>
+      <div class="small" style="color:var(--lock)">是你的另一半就按「同意」，同意後對方就能看到分享的紀錄、一起寫。不認識的人請按「拒絕」。</div>
+      <div class="btn-row"><button class="btn small" data-home-approve="${esc(j.uid)}" data-name="${esc(j.name)}">同意</button><button class="btn small secondary" data-home-reject="${esc(j.uid)}" data-name="${esc(j.name)}">拒絕</button></div>
+    </div>`).join('')}
+    ${showInvite ? `<div class="card" id="invite-card" style="background:var(--happy-bg);border-color:transparent;gap:8px">
+      <div class="bold" style="color:var(--happy-dark)">邀請另一半一起寫</div>
+      <div class="small" style="color:var(--happy-dark)">傳邀請連結給另一半，對方加入後就能看你分享的紀錄，也能寫自己的美好時刻。</div>
+      <div class="btn-row"><a class="btn small" href="#/settings" id="invite-go">去邀請</a><button class="btn small secondary" id="invite-hide">之後再說</button></div>
+    </div>` : ''}
     ${askNames ? `<div class="card" id="names-card" style="gap:10px">
       <div class="bold">先認識一下你們</div>
       <div class="small muted">填上名字，紀錄裡就會用你們的名字，例如「${'小美'}的想法」。之後也可以在設定頁改。</div>
@@ -969,10 +1007,6 @@ async function viewHome() {
       <div class="small muted">這裡是你自己的空間，可以開始記自己的紀錄，也可以匯入之前匯出的備份。</div>
       <button class="btn small secondary" id="ended-with-ok" style="align-self:flex-start">知道了</button>
     </div>` : ''}
-    ${joinReqs.length ? `<a class="card" href="#/settings" style="background:var(--lock-bg);border-color:transparent;gap:4px">
-      <div class="bold" style="color:var(--lock)">${esc(joinReqs[0].name)} 想用分享碼加入</div>
-      <div class="small" style="color:var(--lock)">點這裡到設定頁按「同意」或「拒絕」。如果不是你認識的人，請拒絕並換新的分享碼。</div>
-    </a>` : ''}
     ${newFromOtherCard(all)}
     ${pending.length ? `<a class="card" href="#/view/${esc(pending[0].record_id)}" style="background:var(--lock-bg);border-color:transparent;gap:4px">
       <div class="bold" style="color:var(--lock)">有 ${pending.length} 個任務等你確認</div>
@@ -1019,6 +1053,19 @@ async function viewHome() {
       document.getElementById('names-card').remove();
     });
   }
+  const ig = document.getElementById('invite-go');
+  if (ig) ig.addEventListener('click', () => { try { sessionStorage.setItem('jumpShare', '1'); } catch (e) { /* 略過 */ } });
+  const ih = document.getElementById('invite-hide');
+  if (ih) ih.addEventListener('click', () => { try { localStorage.setItem('inviteCardHidden', '1'); } catch (e) { /* 略過 */ } document.getElementById('invite-card').remove(); });
+  app.querySelectorAll('[data-home-approve]').forEach((b) => b.addEventListener('click', async () => {
+    if (await approveJoin(b, b.dataset.homeApprove, b.dataset.name)) viewHome();
+  }));
+  app.querySelectorAll('[data-home-reject]').forEach((b) => b.addEventListener('click', async () => {
+    if (!confirm(`拒絕「${b.dataset.name}」加入？`)) return;
+    await CloudDB.removePartner(b.dataset.homeReject);
+    toast('已拒絕');
+    viewHome();
+  }));
   const plOk = document.getElementById('partner-left-ok');
   if (plOk) plOk.addEventListener('click', () => withBusy(plOk, '', async () => { await DB.setSetting('partnerLeft', null); document.getElementById('partner-left').remove(); }));
   const ewOk = document.getElementById('ended-with-ok');
@@ -1896,6 +1943,30 @@ function downloadFile(blob, name) {
   setTimeout(() => URL.revokeObjectURL(a.href), 10000);
 }
 
+// 閱讀版在 App 裡打開，按「存成 PDF」用手機的列印功能存檔（iPhone、Android 都內建）
+function showReadView(html) {
+  const doc = new DOMParser().parseFromString(html, 'text/html');
+  const css = [...doc.querySelectorAll('style')].map((x) => x.textContent).join('\n').replace(/(^|\})\s*body\s*\{/g, '$1:host{display:block;');
+  const view = document.createElement('div');
+  view.className = 'read-view';
+  const isIOS = /iphone|ipad|ipod|Macintosh/i.test(navigator.userAgent);
+  view.innerHTML = `<div class="read-toolbar">
+      <button class="btn small secondary" id="read-close">關閉</button>
+      <button class="btn small" id="read-print">存成 PDF</button>
+    </div>
+    <div class="read-hint small muted">${isIOS ? '按「存成 PDF」後，在列印畫面點右上角的分享按鈕，選「儲存到檔案」或直接傳給對方。' : '按「存成 PDF」後，印表機選「另存為 PDF」再按下載。'}</div>
+    <div class="read-body"></div>`;
+  const root = view.querySelector('.read-body').attachShadow({ mode: 'open' });
+  root.innerHTML = `<style>${css}</style>${doc.body.innerHTML}`;
+  document.body.appendChild(view);
+  document.body.classList.add('reading');
+  const close = () => { view.remove(); document.body.classList.remove('reading'); document.title = oldTitle; };
+  const oldTitle = document.title;
+  document.title = doc.title || oldTitle; // 存 PDF 時的檔名
+  view.querySelector('#read-close').addEventListener('click', close);
+  view.querySelector('#read-print').addEventListener('click', () => window.print());
+}
+
 // 閱讀版：一個自己就能打開的網頁檔，照片直接包在裡面
 async function buildReadableExport(onlyShared = false) {
   const all = (await liveRecords()).filter((r) => !onlyShared || r.visibility === 'shared' || (r.visibility === 'task' && r.unlocked)).sort((a, b) => (a.date || '').localeCompare(b.date || '') || (a.createdAt || 0) - (b.createdAt || 0));
@@ -1966,6 +2037,8 @@ ${all.length ? '' : '<p>還沒有任何紀錄。</p>'}
 </main></body></html>`;
 }
 
+// 設定頁分成幾區，上方有捷徑可以直接跳過去
+const SETTING_SECTIONS = [['share', '分享'], ['us', '我們'], ['records', '整理紀錄'], ['backup', '備份'], ['account', '帳號與安全'], ['other', '其他']];
 async function viewSettings() {
   const cats = await getCategories();
   const everything = await DB.allRecords();
@@ -1990,25 +2063,16 @@ async function viewSettings() {
       <a class="icon-btn" href="#/" aria-label="返回">${ICON.back}</a>
       <h1>設定</h1>
     </div>
+    <nav class="set-nav" aria-label="設定分類">${SETTING_SECTIONS.map(([id, label]) => `<button class="chip" data-jump="set-${id}">${label}</button>`).join('')}</nav>
+    <h2 class="section-title set-sec" id="set-share">分享給另一半</h2>
     ${isGuest() ? `<div class="card" style="background:var(--happy-bg);border-color:transparent">
       <div class="bold" style="color:var(--happy-dark)">註冊或登入</div>
       <div class="small" style="color:var(--happy-dark)">現在的紀錄只存在這支手機。在這支手機註冊或登入後會自動搬上雲端，換手機不會不見，也能產生分享碼給另一半。</div>
       <a class="btn small" href="#/login">註冊／登入</a>
     </div>` : ''}
-    ${usingCloud() ? `<div class="card">
-      <div class="bold">雲端帳號</div>
-      <div class="muted">已登入 ${esc(CloudDB.currentEmail())}，紀錄和照片都存在雲端，換手機只要登入同一個帳號就能看到。目前共 ${all.length} 則紀錄。</div>
-      ${quota ? `<div class="small">雲端照片：${quota.used}${quota.limit != null ? ` / ${quota.limit} 張（免費帳號，兩個人共用）` : ' 張（不限張數）'}${quota.mine != null && quota.used > quota.mine ? `・你 ${quota.mine} 張、${esc(partnerName())} ${quota.used - quota.mine} 張` : ''}</div>
-        ${quota.limit != null ? `<div class="progress" style="height:6px"><div style="width:${Math.min(100, (quota.used / quota.limit) * 100)}%"></div></div>
-        <button class="btn small secondary" id="more-photos">${ICON.lockSmall} 想放更多照片？</button>` : ''}` : ''}
-      <button class="btn small secondary" id="logout">登出</button>
-    </div>
-    ${localCount ? `<div class="card" style="background:var(--progress-bg);border-color:transparent">
-      <div class="bold" style="color:var(--progress-ink)">把這支手機裡的紀錄搬上雲端</div>
-      <div class="small" style="color:var(--progress-ink)">這支手機裡還有 ${localCount} 則以前存的紀錄。${migratedAt ? `上次搬的時間是 ${daysAgo(migratedAt) === 0 ? '今天' : daysAgo(migratedAt) + ' 天前'}，再搬一次也不會重複。` : '搬上去之後，手機裡的也會留著當備份。'}</div>
-      <button class="btn small" id="migrate">搬上雲端</button>
-    </div>` : ''}` : ''}
     ${shareCard}
+    ${!usingCloud() && !isGuest() ? '<div class="card small muted">分享給另一半要用雲端帳號。</div>' : ''}
+    <h2 class="section-title set-sec" id="set-us">我們</h2>
     <div class="card">
       <div class="bold">我們的名字</div>
       <div class="grid2">
@@ -2018,6 +2082,44 @@ async function viewSettings() {
       <div class="field"><label for="set-since">在一起的日期（可不填，首頁會顯示在一起第幾天）</label><input id="set-since" class="input" type="date" min="1970-01-01" max="${today()}" value="${esc(NAMES.since || '')}"></div>
       <button class="btn small" id="save-names">儲存</button>
     </div>
+    <div class="card" style="gap:10px">
+      <div class="bold">吉祥物顏色</div>
+      <div class="small muted">啾啾和啵啵的顏色可以自己挑${usingCloud() ? `，${esc(partnerName())}看到的也是這個顏色` : ''}。</div>
+      <div id="mascot-preview" style="align-self:center">${mascotHtml('happy', 150)}</div>
+      ${[['left', '左邊（啾啾）'], ['right', '右邊（啵啵）']].map(([side, label]) => `<div class="field" style="gap:6px"><div class="label">${label}</div>
+        <div class="swatches">${(window.Mascot ? window.Mascot.COLORS : []).map(([n, body]) => {
+          const on = ((MASCOT_PICK || (window.Mascot && window.Mascot.DEFAULT) || {})[side]) === n;
+          return `<button class="swatch ${on ? 'on' : ''}" data-mside="${side}" data-mcolor="${esc(n)}" aria-pressed="${on}" title="${esc(n)}"><span style="background:${body}"></span>${esc(n)}</button>`;
+        }).join('')}</div></div>`).join('')}
+    </div>
+    <h2 class="section-title set-sec" id="set-records">整理紀錄</h2>
+    <div class="card">
+      <div class="bold">吵架議題分類</div>
+      <div class="small muted">點分類名字可以改名，用這個分類的議題會一起改。</div>
+      <div class="chips">${cats.map((c) => `<span class="chip" style="display:inline-flex;align-items:center;gap:6px"><button data-edit-cat="${esc(c)}" aria-label="改名 ${esc(c)}" style="border:none;background:none;padding:0;font:inherit;color:inherit">${esc(c)}</button><button data-rm-cat="${esc(c)}" aria-label="刪除 ${esc(c)}" style="border:none;background:none;padding:0;display:flex">${ICON.x}</button></span>`).join('')}</div>
+      <div class="row"><input id="new-cat" class="input grow" maxlength="${LIMITS.category}" placeholder="新增分類"><button class="btn small" id="add-cat">加入</button></div>
+    </div>
+    ${usedTags.length ? `<div class="card">
+      <div class="bold">管理標籤</div>
+      <div class="muted small">點一個標籤可以改名或刪除，所有用到它的紀錄會一起改。</div>
+      <div class="chips">${usedTags.map(([t, n]) => `<button class="chip" data-edit-tag="${esc(t)}">#${esc(t)} <span class="muted">${n}</span></button>`).join('')}</div>
+    </div>` : ''}
+    ${trash.length ? `<div class="card">
+      <div class="bold">最近刪除（${trash.length}）</div>
+      <div class="muted">刪除的紀錄會在這裡放 ${TRASH_DAYS} 天，之後連照片一起自動清掉。</div>
+      ${trash.map((r) => `<div class="row between" style="gap:8px">
+        <div class="grow" style="min-width:0"><div class="bold" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(r.title || '（沒有標題）')}</div>
+          <div class="small muted">${esc(TYPES[r.type].label)}・還剩 ${Math.max(0, TRASH_DAYS - daysAgo(r.deletedAt))} 天</div></div>
+        <button class="btn small secondary" data-restore="${esc(r.id)}">救回來</button>
+        <button class="btn small danger" data-purge="${esc(r.id)}">永久刪除</button>
+      </div>`).join('')}
+    </div>` : ''}
+    <div class="card">
+      <div class="bold">重新編號</div>
+      <div class="muted">每則紀錄的 No. 在新增時就固定，刪除後會留下空號。想讓號碼重新連續的話，可以依日期從 1 重新排一次${usingCloud() ? '，另一半看到的號碼也會一起更新' : ''}。</div>
+      <button class="btn small secondary" id="renumber">依日期重新編號</button>
+    </div>
+    <h2 class="section-title set-sec" id="set-backup">備份與匯出</h2>
     <div class="card">
       <div class="bold">備份</div>
       ${usingCloud()
@@ -2033,44 +2135,25 @@ async function viewSettings() {
     </div>
     <div class="card">
       <div class="bold">匯出閱讀版</div>
-      <div class="muted">產生一個網頁檔，點開就能像相簿一樣瀏覽所有紀錄和照片，也可以列印或存成 PDF。閱讀版不能用來還原。</div>
+      <div class="muted">把所有紀錄和照片排成一本小冊子，可以存成 PDF 或列印，傳給對方也很方便。閱讀版不能用來還原。</div>
       <label class="row small" style="gap:8px"><input type="checkbox" id="read-shared-only"> 只匯出「給對方看」和已解鎖的紀錄（適合直接傳給對方）</label>
-      <button class="btn small secondary" id="export-read">匯出閱讀版</button>
+      <button class="btn small secondary" id="export-read">製作閱讀版（PDF）</button>
     </div>
-    ${trash.length ? `<div class="card">
-      <div class="bold">最近刪除（${trash.length}）</div>
-      <div class="muted">刪除的紀錄會在這裡放 ${TRASH_DAYS} 天，之後連照片一起自動清掉。</div>
-      ${trash.map((r) => `<div class="row between" style="gap:8px">
-        <div class="grow" style="min-width:0"><div class="bold" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(r.title || '（沒有標題）')}</div>
-          <div class="small muted">${esc(TYPES[r.type].label)}・還剩 ${Math.max(0, TRASH_DAYS - daysAgo(r.deletedAt))} 天</div></div>
-        <button class="btn small secondary" data-restore="${esc(r.id)}">救回來</button>
-        <button class="btn small danger" data-purge="${esc(r.id)}">永久刪除</button>
-      </div>`).join('')}
-    </div>` : ''}
-    <div class="card">
-      <div class="bold">吵架議題分類</div>
-      <div class="small muted">點分類名字可以改名，用這個分類的議題會一起改。</div>
-      <div class="chips">${cats.map((c) => `<span class="chip" style="display:inline-flex;align-items:center;gap:6px"><button data-edit-cat="${esc(c)}" aria-label="改名 ${esc(c)}" style="border:none;background:none;padding:0;font:inherit;color:inherit">${esc(c)}</button><button data-rm-cat="${esc(c)}" aria-label="刪除 ${esc(c)}" style="border:none;background:none;padding:0;display:flex">${ICON.x}</button></span>`).join('')}</div>
-      <div class="row"><input id="new-cat" class="input grow" maxlength="${LIMITS.category}" placeholder="新增分類"><button class="btn small" id="add-cat">加入</button></div>
+    <h2 class="section-title set-sec" id="set-account">帳號與安全</h2>
+    ${usingCloud() ? `<div class="card">
+      <div class="bold">雲端帳號</div>
+      <div class="muted">已登入 ${esc(CloudDB.currentEmail())}，紀錄和照片都存在雲端，換手機只要登入同一個帳號就能看到。目前共 ${all.length} 則紀錄。</div>
+      ${quota ? `<div class="small">雲端照片：${quota.used}${quota.limit != null ? ` / ${quota.limit} 張（免費帳號，兩個人共用）` : ' 張（不限張數）'}${quota.mine != null && quota.used > quota.mine ? `・你 ${quota.mine} 張、${esc(partnerName())} ${quota.used - quota.mine} 張` : ''}</div>
+        ${quota.limit != null ? `<div class="progress" style="height:6px"><div style="width:${Math.min(100, (quota.used / quota.limit) * 100)}%"></div></div>
+        <button class="btn small secondary" id="more-photos">${ICON.lockSmall} 想放更多照片？</button>` : ''}` : ''}
+      <button class="btn small secondary" id="logout">登出</button>
     </div>
-    ${usedTags.length ? `<div class="card">
-      <div class="bold">管理標籤</div>
-      <div class="muted small">點一個標籤可以改名或刪除，所有用到它的紀錄會一起改。</div>
-      <div class="chips">${usedTags.map(([t, n]) => `<button class="chip" data-edit-tag="${esc(t)}">#${esc(t)} <span class="muted">${n}</span></button>`).join('')}</div>
-    </div>` : ''}
-    <div class="card" style="gap:10px">
-      <div class="bold">吉祥物顏色</div>
-      <div class="small muted">啾啾和啵啵的顏色可以自己挑${usingCloud() ? `，${esc(partnerName())}看到的也是這個顏色` : ''}。</div>
-      <div id="mascot-preview" style="align-self:center">${mascotHtml('happy', 150)}</div>
-      ${[['left', '左邊（啾啾）'], ['right', '右邊（啵啵）']].map(([side, label]) => `<div class="field" style="gap:6px"><div class="label">${label}</div>
-        <div class="swatches">${(window.Mascot ? window.Mascot.COLORS : []).map(([n, body]) => {
-          const on = ((MASCOT_PICK || (window.Mascot && window.Mascot.DEFAULT) || {})[side]) === n;
-          return `<button class="swatch ${on ? 'on' : ''}" data-mside="${side}" data-mcolor="${esc(n)}" aria-pressed="${on}" title="${esc(n)}"><span style="background:${body}"></span>${esc(n)}</button>`;
-        }).join('')}</div></div>`).join('')}
-    </div>
+    ${localCount ? `<div class="card" style="background:var(--progress-bg);border-color:transparent">
+      <div class="bold" style="color:var(--progress-ink)">把這支手機裡的紀錄搬上雲端</div>
+      <div class="small" style="color:var(--progress-ink)">這支手機裡還有 ${localCount} 則以前存的紀錄。${migratedAt ? `上次搬的時間是 ${daysAgo(migratedAt) === 0 ? '今天' : daysAgo(migratedAt) + ' 天前'}，再搬一次也不會重複。` : '搬上去之後，手機裡的也會留著當備份。'}</div>
+      <button class="btn small" id="migrate">搬上雲端</button>
+    </div>` : ''}` : ''}
     ${pinCardHtml()}
-    ${tourCard()}
-    ${feedbackCard()}
     ${usingCloud() ? `<div class="card" id="end-card">
       <div class="bold">結束這段關係</div>
       <div class="muted">分開了、或要和新的對象開始，可以把目前的紀錄封存（收起來，只有你看得到）或刪除。另一半會被移除，分享碼也會作廢。</div>
@@ -2078,18 +2161,24 @@ async function viewSettings() {
       ${archivedCount ? `<a class="btn small secondary" href="#/archive">封存的回憶（${archivedCount} 則）</a>` : ''}
     </div>` : ''}
     <div class="card">
-      <div class="bold">重新編號</div>
-      <div class="muted">每則紀錄的 No. 在新增時就固定，刪除後會留下空號。想讓號碼重新連續的話，可以依日期從 1 重新排一次${usingCloud() ? '，另一半看到的號碼也會一起更新' : ''}。</div>
-      <button class="btn small secondary" id="renumber">依日期重新編號</button>
-    </div>
-    <div class="card">
       <div class="bold" style="color:#9B2C1F">清除所有資料</div>
       <div class="muted">${usingCloud() ? '會刪掉雲端上你所有的紀錄和照片，也會停止分享、移除另一半，沒辦法復原。' : '會刪掉這支手機上所有紀錄和照片，沒辦法復原。'}</div>
       <button class="btn small danger" id="wipe">全部清除</button>
       ${usingCloud() ? '<button class="btn small secondary" id="delete-account">刪除帳號</button>' : ''}
     </div>
+    <h2 class="section-title set-sec" id="set-other">其他</h2>
+    ${tourCard()}
+    ${feedbackCard()}
   `;
 
+  app.querySelectorAll('[data-jump]').forEach((b) => b.addEventListener('click', () => {
+    const el = document.getElementById(b.dataset.jump);
+    if (el) window.scrollTo({ top: el.getBoundingClientRect().top + window.scrollY - 64, behavior: 'smooth' });
+  }));
+  if (location.hash.includes('#share') || sessionStorage.getItem('jumpShare')) {
+    try { sessionStorage.removeItem('jumpShare'); } catch (e) { /* 略過 */ }
+    const el = document.getElementById('set-share'); if (el) el.scrollIntoView();
+  }
   if (usingCloud()) bindShareCard();
   bindPinCard(viewSettings);
   app.querySelectorAll('[data-mside]').forEach((b) => b.addEventListener('click', async () => {
@@ -2145,8 +2234,7 @@ async function viewSettings() {
 
   document.getElementById('export-read').addEventListener('click', async () => {
     toast('製作閱讀版中…');
-    const html = await buildReadableExport(document.getElementById('read-shared-only').checked);
-    downloadFile(new Blob([html], { type: 'text/html' }), `our-records-READ-${today()}.html`);
+    showReadView(await buildReadableExport(document.getElementById('read-shared-only').checked));
   });
 
   document.getElementById('import').addEventListener('change', async (ev) => {
@@ -2402,7 +2490,7 @@ async function viewPartnerHome() {
         <div class="hello">嗨，${esc(info.name)}</div>
         <h1 class="title-xl">${bound ? `${esc(ownerName())}和${esc(info.name)}的紀錄` : `${esc(ownerName())}的紀錄`}</h1>
       </div>
-      <a class="icon-btn" href="#/settings" aria-label="設定">${ICON.gear}</a>
+      <a class="icon-btn gear-btn" href="#/settings" aria-label="設定">${ICON.gear}<span>設定</span></a>
     </div>
     <div class="mascot-hello">${mascotHtml('happy', 110)}<div class="small muted">${bound ? '今天有想記下的小事嗎？' : `看看${esc(ownerName())}分享了什麼`}</div></div>
     ${info.paused ? `<div class="card" id="paused-note" style="background:var(--lock-bg);border-color:transparent;gap:4px">
@@ -2658,8 +2746,7 @@ function viewJoin(notice, code = '') {
     <form id="join-form" style="display:flex;flex-direction:column;gap:14px">
       <div class="field"><label for="j-code">分享碼</label>
         <input id="j-code" class="input" autocapitalize="characters" autocomplete="off" required value="${esc(/^[A-Za-z0-9]{6,12}$/.test(code) ? code.toUpperCase() : '')}" style="letter-spacing:4px;text-transform:uppercase"></div>
-      <div class="field"><label for="j-pass">密碼</label>
-        <input id="j-pass" class="input" type="password" autocomplete="off" required></div>
+      ${digitBoxes('j-pass', '密碼')}
       <div class="field"><label for="j-name">你的名字</label>
         <input id="j-name" class="input" maxlength="20" required placeholder="對方會看到這個名字"></div>
       <button class="btn" type="submit" id="join-btn">加入</button>
@@ -2667,6 +2754,7 @@ function viewJoin(notice, code = '') {
     <div id="join-msg" class="muted" style="text-align:center"></div>
     <a class="btn secondary small" href="#/login" id="to-login">我是紀錄的主人，去登入</a>
   `;
+  bindDigitBoxes(app);
   document.getElementById('to-login').addEventListener('click', async (ev) => {
     // 臨時帳號登出，才會回到登入畫面
     if (CloudDB.isSignedIn() && CloudDB.isAnonymous()) { ev.preventDefault(); await CloudDB.signOut(); go('#/login'); route(); }
@@ -2675,22 +2763,30 @@ function viewJoin(notice, code = '') {
     ev.preventDefault();
     const btn = document.getElementById('join-btn');
     const msg = document.getElementById('join-msg');
+    // 錯誤訊息放在按鈕旁邊也用小提示跳出來，手機鍵盤擋住時也看得到
+    const fail = (t) => { msg.textContent = t; toast(t); msg.scrollIntoView({ block: 'center' }); };
+    if (!SHARE_PASS_RE.test(document.getElementById('j-pass').value)) { fail('密碼是 6 位數字，再檢查一下'); return; }
+    if (document.activeElement) document.activeElement.blur();
     btn.disabled = true;
+    btn.textContent = '加入中…';
     msg.textContent = '';
     try {
-      await CloudDB.joinWithCode(
+      const slow = new Promise((_, rej) => setTimeout(() => rej(new Error('連線太久沒有回應，請確認網路後再按一次「加入」')), 20000));
+      await Promise.race([slow, CloudDB.joinWithCode(
         document.getElementById('j-code').value.trim().toUpperCase(),
         document.getElementById('j-pass').value,
         document.getElementById('j-name').value.trim(),
-      );
+      )]);
       if (CloudDB.pendingJoin()) toast('已送出，等對方同意');
       go('#/');
       route();
     } catch (e) {
       btn.disabled = false;
-      msg.textContent = /anonymous sign-ins are disabled|signups not allowed/i.test(e.message)
+      btn.textContent = '加入';
+      fail(/anonymous sign-ins are disabled|signups not allowed/i.test(e.message)
         ? '對方的 App 還沒開放分享碼加入，請對方到 Supabase 開啟「Allow anonymous sign-ins」。'
-        : e.message;
+        : /captcha/i.test(e.message) ? '加入時被安全驗證擋住了，請把這個畫面截圖給對方。'
+        : cloudErrorText(e));
     }
   });
 }
@@ -2739,7 +2835,7 @@ async function shareCardHtml() {
       <div class="bold">分享給另一半</div>
       <div class="muted">產生分享碼和密碼給對方，對方就能看你「給對方看」和任務解鎖後的紀錄，也能做任務，但不能修改任何東西。</div>
       <div class="field"><label for="s-name">你的名字（對方會看到）</label><input id="s-name" class="input" maxlength="${LIMITS.name}" value="${esc(NAMES.me)}"></div>
-      <div class="field"><label for="s-pass">分享密碼（至少 6 個字，不要用你的登入密碼）</label><input id="s-pass" class="input" type="password" autocomplete="new-password" minlength="6" maxlength="72"></div>
+      ${digitBoxes('s-pass', '分享密碼（自己設 6 位數字，再告訴對方）')}
       <button class="btn small" id="s-create">產生分享碼</button>
     </div>`;
   }
@@ -2752,8 +2848,8 @@ async function shareCardHtml() {
     <button class="btn small secondary" id="s-copy">分享邀請連結（不含密碼）</button>
     <div class="field"><label for="s-name">你的名字（對方會看到）</label>
       <div class="row"><input id="s-name" class="input grow" maxlength="20" value="${esc(share.owner_name)}"><button class="btn small" id="s-save-name">儲存</button></div></div>
-    <div class="field"><label for="s-pass">改分享密碼</label>
-      <div class="row"><input id="s-pass" class="input grow" type="password" autocomplete="new-password" minlength="6" maxlength="72" placeholder="新密碼"><button class="btn small" id="s-save-pass">更改</button></div></div>
+    ${digitBoxes('s-pass', '改分享密碼')}
+    <button class="btn small secondary" id="s-save-pass">更改密碼</button>
     ${waiting.length ? `<div class="field" id="join-requests"><div class="label">想加入的人（要你同意）</div>
       <div class="muted small">換手機或清掉瀏覽器重新加入的，也會出現在這裡。同意後會取代目前的另一半。</div>
       ${waiting.map((p) => `<div class="row between"><span>${esc(p.name)}<span class="muted small">・${shortDate(p.joined_at.slice(0, 10))} 送出</span></span>
@@ -2791,7 +2887,7 @@ function bindShareCard() {
     const name = $('s-name').value.trim();
     const pass = $('s-pass').value;
     if (!name) { toast('請填你的名字'); return; }
-    if (pass.length < 6) { toast('密碼至少 6 個字'); return; }
+    if (!SHARE_PASS_RE.test(pass)) { toast('分享密碼要 6 位數字'); return; }
     const visible = (await DB.allRecords()).filter((r) => !r.deletedAt && (r.visibility === 'shared' || (r.visibility === 'task' && r.unlocked))).length;
     if (visible && !confirm(`對方加入後，會看到 ${visible} 則「給對方看」的紀錄（包含以前寫的）。不想給這個人看的，請先改成上鎖。要繼續產生分享碼嗎？`)) return;
     await saveWithNewCode(pass, name);
@@ -2802,10 +2898,9 @@ function bindShareCard() {
     const code = document.querySelector('.share-code').textContent;
     const url = `${location.origin + location.pathname}#/join/${code}`;
     const text = `點這個連結，一起用啾啾日記：${url}（密碼我另外告訴你）`;
-    // 手機會跳出分享畫面（LINE、訊息…）；不支援或按取消時改成複製
-    try { await navigator.clipboard.writeText(text); } catch (e) { /* 有些瀏覽器不給複製 */ }
+    // 手機會跳出分享畫面（LINE、訊息…）。要在按下的當下馬上叫出來，先做別的事 iPhone 會擋掉；不支援或失敗時改成複製
     if (navigator.share) {
-      try { await navigator.share({ title: '一起用啾啾日記', text }); return; } catch (e) { if (e && e.name === 'AbortError') { toast('邀請連結已複製'); return; } }
+      try { await navigator.share({ title: '一起用啾啾日記', text }); return; } catch (e) { if (e && e.name === 'AbortError') return; }
     }
     try { await navigator.clipboard.writeText(text); toast('已複製，貼給另一半就可以了'); } catch (e) { prompt('複製下面這段文字', text); }
   });
@@ -2817,9 +2912,9 @@ function bindShareCard() {
   });
   if ($('s-save-pass')) $('s-save-pass').addEventListener('click', async () => {
     const pass = $('s-pass').value;
-    if (pass.length < 6) { toast('密碼至少 6 個字'); return; }
+    if (!SHARE_PASS_RE.test(pass)) { toast('分享密碼要 6 位數字'); return; }
     await CloudDB.saveShare(document.querySelector('.share-code').textContent, pass, $('s-name').value.trim());
-    $('s-pass').value = '';
+    $('s-pass').value = ''; $('s-pass').dispatchEvent(new Event('input'));
     const joined = document.querySelectorAll('[data-rm-partner]');
     if (joined.length && confirm('密碼已更改。要不要順便移除目前已加入的人？\n（如果是擔心密碼外流就按「確定」；按「取消」對方會照常看得到）')) {
       for (const b of joined) await CloudDB.removePartner(b.dataset.rmPartner);
@@ -2848,31 +2943,37 @@ function bindShareCard() {
     viewSettings();
   });
   document.querySelectorAll('[data-approve-partner]').forEach((b) => b.addEventListener('click', async () => {
-    const currentEl = document.querySelector('[data-rm-partner]:not([data-pending])');
-    const hasRecords = (await liveRecords()).length > 0;
-    // 已經有另一半、或已經有紀錄時，先分清楚是「同一個人換手機」還是「新的對象」：
-    // 新的對象要先結束上一段（封存或刪除），不然他會看到之前所有分享的紀錄
-    if (currentEl || hasRecords) {
-      const before = currentEl ? currentEl.dataset.name : (NAMES.partner || '');
-      const same = before && before === b.dataset.name;
-      const pick = await choose(`${b.dataset.name} 想加入`, currentEl ? `目前的另一半是「${before}」。同意後會取代「${before}」。` : '你已經有一些紀錄了。', [
-        { key: 'same', label: `是${before || '同一個人'}換手機或重新加入`, hint: '照舊看得到之前分享的紀錄', primary: same },
-        { key: 'new', label: '是新的對象', hint: '先把之前的紀錄封存或刪除，新的人才看不到', primary: !same },
-      ]);
-      if (!pick) return;
-      if (pick === 'new') { go(`#/end/${encodeURIComponent(b.dataset.approvePartner)}`); return; }
-    }
-    withBusy(b, '', async () => {
-      await CloudDB.approvePartner(b.dataset.approvePartner);
-      toast(`已同意 ${b.dataset.name} 加入`);
-      viewSettings();
-    });
+    if (await approveJoin(b, b.dataset.approvePartner, b.dataset.name)) viewSettings();
   }));
   document.querySelectorAll('[data-rm-partner]').forEach((b) => b.addEventListener('click', async () => {
     if (!confirm(b.dataset.pending ? `拒絕「${b.dataset.name}」加入？` : `移除「${b.dataset.name}」？對方會馬上看不到你的紀錄。`)) return;
     await CloudDB.removePartner(b.dataset.rmPartner);
     viewSettings();
   }));
+}
+
+// 同意有人用分享碼加入（首頁和設定頁共用）。已經有另一半、或已經有紀錄時，
+// 先分清楚是「同一個人換手機」還是「新的對象」：新的對象要先結束上一段（封存或刪除），不然他會看到之前所有分享的紀錄
+async function approveJoin(btn, uid, name) {
+  const current = (await CloudDB.listPartners()).find((p) => p.approved !== false && p.uid !== uid);
+  const hasRecords = (await liveRecords()).length > 0;
+  if (current || hasRecords) {
+    const before = current ? current.name : (NAMES.partner || '');
+    const same = before && before === name;
+    const pick = await choose(`${name} 想加入`, current ? `目前的另一半是「${before}」。同意後會取代「${before}」。` : '你已經有一些紀錄了。', [
+      { key: 'same', label: `是${before || '同一個人'}換手機或重新加入`, hint: '照舊看得到之前分享的紀錄', primary: same },
+      { key: 'new', label: '是新的對象', hint: '先把之前的紀錄封存或刪除，新的人才看不到', primary: !same },
+    ]);
+    if (!pick) return false;
+    if (pick === 'new') { go(`#/end/${encodeURIComponent(uid)}`); return false; }
+  }
+  let ok = false;
+  await withBusy(btn, '', async () => {
+    await CloudDB.approvePartner(uid);
+    toast(`已同意 ${name} 加入，現在可以一起用了`);
+    ok = true;
+  });
+  return ok;
 }
 
 // 把手機裡（試用時）的紀錄和照片搬上雲端；同一則紀錄重搬只會覆蓋，不會重複

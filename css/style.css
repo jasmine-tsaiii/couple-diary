@@ -41,7 +41,7 @@ h1, h2 { font-family: "Noto Serif TC", serif; margin: 0; }
 #app {
   max-width: 520px;
   margin: 0 auto;
-  padding: 20px 20px calc(110px + env(safe-area-inset-bottom));
+  padding: calc(20px + env(safe-area-inset-top)) calc(20px + env(safe-area-inset-right)) calc(110px + env(safe-area-inset-bottom)) calc(20px + env(safe-area-inset-left));
   display: flex;
   flex-direction: column;
   gap: 16px;
@@ -247,7 +247,7 @@ a.card:active { transform: scale(0.99); }
 /* 解鎖印章的慶祝畫面 */
 .celebrate {
   position: fixed; inset: 0; z-index: 30; background: rgba(43, 35, 32, .55);
-  display: flex; align-items: center; justify-content: center; padding: 24px;
+  display: flex; align-items: center; justify-content: center; padding: calc(24px + env(safe-area-inset-top)) 24px calc(24px + env(safe-area-inset-bottom));
 }
 .celebrate-box {
   background: var(--card); border-radius: 24px; padding: 28px 24px; max-width: 320px; width: 100%;
@@ -281,7 +281,7 @@ a.card:active { transform: scale(0.99); }
 .swatch.on { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-bg); font-weight: 700; }
 
 /* App 密碼鎖 */
-.pin-lock { position: fixed; inset: 0; z-index: 1000; background: var(--bg, #FBF7F2); display: flex; align-items: center; justify-content: center; padding: 24px 16px; }
+.pin-lock { position: fixed; inset: 0; z-index: 1000; background: var(--bg, #FBF7F2); display: flex; align-items: center; justify-content: center; padding: calc(24px + env(safe-area-inset-top)) 16px calc(24px + env(safe-area-inset-bottom)); }
 .pin-box { display: flex; flex-direction: column; align-items: center; gap: 12px; width: 100%; max-width: 300px; text-align: center; }
 .pin-dots { display: flex; gap: 14px; margin: 6px 0 4px; }
 .pin-dots span { width: 14px; height: 14px; border-radius: 99px; border: 2px solid var(--accent, #A63D52); }
@@ -322,3 +322,32 @@ button, .btn, .chip, .pin-keys, .pin-lock { touch-action: manipulation; }
 }
 .to-top[hidden] { display: none; }
 body.no-tabbar .to-top { bottom: calc(20px + env(safe-area-inset-bottom)); }
+
+/* 閱讀版（存成 PDF） */
+.read-view { position: fixed; inset: 0; z-index: 900; background: #FBF7F2; overflow-y: auto; -webkit-overflow-scrolling: touch; }
+.read-toolbar { position: sticky; top: 0; z-index: 1; display: flex; justify-content: space-between; gap: 8px; padding: calc(10px + env(safe-area-inset-top)) 16px 10px; background: rgba(251, 247, 242, .95); border-bottom: 1px solid var(--line); }
+.read-hint { padding: 8px 16px 0; max-width: 720px; margin: 0 auto; }
+body.reading { overflow: hidden; }
+@media print {
+  body.reading > *:not(.read-view) { display: none !important; }
+  body.reading { overflow: visible; background: #fff; }
+  body.reading .read-view { position: static; overflow: visible; background: #fff; }
+  body.reading .read-toolbar, body.reading .read-hint { display: none; }
+}
+
+/* 設定頁分區捷徑 */
+.set-nav { position: sticky; top: env(safe-area-inset-top); z-index: 5; display: flex; gap: 6px; overflow-x: auto; padding: 8px 0; margin: -4px 0 0; background: var(--bg); scrollbar-width: none; }
+.set-nav::-webkit-scrollbar { display: none; }
+.set-nav .chip { flex: none; }
+.set-sec { scroll-margin-top: 64px; }
+
+/* iPhone 最上面的時間、電量那一條：放一塊底色，捲動時文字不會跑到它下面 */
+body::before { content: ''; position: fixed; top: 0; left: 0; right: 0; height: env(safe-area-inset-top); background: var(--bg); z-index: 20; pointer-events: none; }
+
+/* 6 格數字密碼 */
+.digits { position: relative; width: 100%; max-width: 330px; height: 52px; }
+.digit-cells { position: absolute; inset: 0; display: grid; grid-template-columns: repeat(6, 1fr); gap: 8px; pointer-events: none; }
+.digit-cells span { border: 1.5px solid var(--field); border-radius: 12px; background: var(--card); display: flex; align-items: center; justify-content: center; font-size: 22px; font-weight: 700; color: var(--ink); }
+.digit-cells span.on { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-bg); }
+.digits-input { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; font-size: 16px; border: 0; padding: 0; caret-color: transparent; }
+.gear-btn { flex-direction: column; width: auto; min-width: 44px; height: auto; gap: 0; font-size: 11px; color: var(--soft); }
