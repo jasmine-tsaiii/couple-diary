@@ -516,6 +516,56 @@ async function viewWishes(show = 'todo') {
   }));
 }
 
+// ---------- 意見回饋：哪裡有問題、哪裡可以更好 ----------
+const FEEDBACK_KINDS = ['有問題', '建議', '喜歡的地方', '其他'];
+function feedbackCard() {
+  return `<a class="card" href="#/feedback" style="gap:4px">
+    <div class="row between"><div class="bold">意見回饋</div><div class="muted">›</div></div>
+    <div class="small muted">哪裡怪怪的、哪裡可以更好，都歡迎告訴我們</div>
+  </a>`;
+}
+function viewFeedback() {
+  const from = sessionStorage.getItem('fbFrom') || '';
+  let kind = '有問題';
+  let draft = '';
+  try { draft = localStorage.getItem('fbDraft') || ''; } catch (e) { /* 沒關係 */ }
+  app.className = '';
+  app.innerHTML = `
+    <div class="topbar">
+      <a class="icon-btn" href="#/settings" aria-label="返回">${ICON.back}</a>
+      <h1>意見回饋</h1>
+    </div>
+    <div class="muted">遇到問題或有想法都可以寫在這裡，我們會一則一則看，用來把 App 改得更好。紀錄內容和照片不會一起送出。</div>
+    <form class="card" id="fb-form" style="gap:12px">
+      <div class="field"><div class="label">是關於</div><div class="chips">${FEEDBACK_KINDS.map((k) => `<button type="button" class="chip ${k === kind ? 'on' : ''}" data-fbkind="${k}">${k}</button>`).join('')}</div></div>
+      <div class="field"><label for="fb-msg">想說的話</label><textarea id="fb-msg" class="textarea" maxlength="1000" required placeholder="例如：在哪個畫面、做了什麼、發生什麼事">${esc(draft)}</textarea><div class="small muted" id="fb-count"></div></div>
+      <div class="field"><label for="fb-contact">聯絡方式（可不填）</label><input id="fb-contact" class="input" maxlength="100" placeholder="Email 或 IG，想收到回覆再填"></div>
+      <button class="btn" type="submit" id="fb-send">送出</button>
+    </form>
+  `;
+  const msg = document.getElementById('fb-msg');
+  const count = () => { document.getElementById('fb-count').textContent = `${msg.value.length} / 1000`; try { localStorage.setItem('fbDraft', msg.value); } catch (e) { /* 沒關係 */ } };
+  msg.addEventListener('input', count); count();
+  app.querySelectorAll('[data-fbkind]').forEach((b) => b.addEventListener('click', () => {
+    kind = b.dataset.fbkind;
+    app.querySelectorAll('[data-fbkind]').forEach((x) => x.classList.toggle('on', x.dataset.fbkind === kind));
+  }));
+  document.getElementById('fb-form').addEventListener('submit', (ev) => {
+    ev.preventDefault();
+    const text = msg.value.trim();
+    if (!text) { toast('請寫下想說的話'); return; }
+    if (!CLOUD_ENABLED) { toast('目前沒有連上雲端，送不出去'); return; }
+    withBusy(document.getElementById('fb-send'), '送出中…', async () => {
+      try {
+        await CloudDB.sendFeedback({ kind, message: text.slice(0, 1000), contact: document.getElementById('fb-contact').value.trim().slice(0, 100), page: from.slice(0, 60), mode: isPartner() ? 'partner' : usingCloud() ? 'cloud' : 'phone', agent: navigator.userAgent.slice(0, 200) });
+      } catch (e) { toast(cloudErrorText(e)); return; }
+      try { localStorage.removeItem('fbDraft'); } catch (e) { /* 沒關係 */ }
+      app.innerHTML = `<div class="topbar"><a class="icon-btn" href="#/" aria-label="返回">${ICON.back}</a><h1>意見回饋</h1></div>
+        <div class="card" style="align-items:center;text-align:center;gap:10px"><div style="font-size:40px">💌</div><div class="bold">謝謝你！已經收到了</div><div class="muted">你的回饋會幫助我們把 App 變得更好。</div><a class="btn small secondary" href="#/">回首頁</a></div>`;
+    });
+  });
+}
+
 // ---------- 印章冊：像集點卡一樣，達到里程碑就蓋一個章 ----------
 // 每一組：怎麼算數量、各階段的門檻、每個章的圖案和名字
 const STAMP_GROUPS = [
@@ -1672,6 +1722,7 @@ async function viewSettings() {
       <div class="muted small">點一個標籤可以改名或刪除，所有用到它的紀錄會一起改。</div>
       <div class="chips">${usedTags.map(([t, n]) => `<button class="chip" data-edit-tag="${esc(t)}">#${esc(t)} <span class="muted">${n}</span></button>`).join('')}</div>
     </div>` : ''}
+    ${feedbackCard()}
     <div class="card">
       <div class="bold">重新編號</div>
       <div class="muted">每則紀錄的 No. 在新增時就固定，刪除後會留下空號。想讓號碼重新連續的話，可以依日期從 1 重新排一次${usingCloud() ? '，另一半看到的號碼也會一起更新' : ''}。</div>
@@ -1975,6 +2026,7 @@ function viewPartnerSettings() {
       <div class="bold">你的身分</div>
       <div class="muted">你用「${esc(info.name)}」這個名字加入，可以看${esc(ownerName())}分享給你的紀錄和做任務，但不能修改紀錄。</div>
     </div>
+    ${feedbackCard()}
     <div class="card">
       <div class="bold">離開</div>
       <div class="muted">離開後這支手機就看不到了，之後要再輸入分享碼和密碼才能回來。</div>
@@ -2342,6 +2394,8 @@ function viewLoginAfterSignup(email) {
 async function route() {
   const parts = (location.hash.replace(/^#\/?/, '') || '').split('/');
   const [page, arg] = parts;
+  // 意見回饋會附上是從哪一頁來的（只有頁面名稱，不含紀錄內容）
+  if (page !== 'feedback') { try { sessionStorage.setItem('fbFrom', page || 'home'); } catch (e) { /* 沒關係 */ } }
   app.className = '';
   app.oninput = null;
   window.scrollTo(0, 0);
@@ -2371,6 +2425,7 @@ async function route() {
       else if (page === 'view') { renderTabbar(null); await viewDetail(arg); }
       else if (page === 'tasks') { renderTabbar('tasks'); await viewPartnerTasks(); }
       else if (page === 'wishes') { renderTabbar(null); await viewWishes(); }
+      else if (page === 'feedback') { renderTabbar(null); viewFeedback(); }
       else if (page === 'task') { renderTabbar(null); await viewPartnerTaskForm(arg); }
       else if (page === 'settings') { renderTabbar(null); viewPartnerSettings(); }
       else go('#/');
@@ -2385,6 +2440,7 @@ async function route() {
     else if (page === 'settings') { renderTabbar(null); await viewSettings(); }
     else if (page === 'stamps') { renderTabbar(null); await viewStamps(); }
     else if (page === 'wishes') { renderTabbar(null); await viewWishes(); }
+    else if (page === 'feedback') { renderTabbar(null); viewFeedback(); }
     else go('#/');
     if (!page || page === 'view') checkNewStamps().catch(() => {});
   } catch (e) {

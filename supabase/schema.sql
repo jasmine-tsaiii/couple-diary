@@ -536,6 +536,37 @@ grant execute on function public.partner_set_wish_done(uuid, boolean) to authent
 grant execute on function public.partner_delete_wish(uuid) to authenticated;
 
 -- ============================================================
+-- 意見回饋：訪客、主人、另一半都能送出；只有你在 Supabase 後台看得到（沒有讀取權限）
+create table if not exists public.feedback (
+  id bigint generated always as identity primary key,
+  created_at timestamptz not null default now(),
+  user_id uuid default auth.uid(),
+  kind text not null default '其他' check (char_length(kind) <= 12),
+  message text not null check (char_length(message) between 1 and 1000),
+  contact text not null default '' check (char_length(contact) <= 100),
+  page text not null default '' check (char_length(page) <= 60),
+  mode text not null default '' check (char_length(mode) <= 12),
+  agent text not null default '' check (char_length(agent) <= 200)
+);
+alter table public.feedback enable row level security;
+drop policy if exists "feedback: anyone insert" on public.feedback;
+create policy "feedback: anyone insert" on public.feedback for insert to anon, authenticated
+  with check (user_id is not distinct from auth.uid());
+grant insert on public.feedback to anon, authenticated;
+-- 防洗版：同一個帳號一天 10 則，全部加起來一天 500 則
+create or replace function public.feedback_limit() returns trigger language plpgsql security definer set search_path = public as $$
+begin
+  if (select count(*) from public.feedback where created_at > now() - interval '1 day') >= 500 then
+    raise exception '今天的回饋太多了，請明天再試';
+  end if;
+  if new.user_id is not null and (select count(*) from public.feedback where user_id = new.user_id and created_at > now() - interval '1 day') >= 10 then
+    raise exception '今天已經送出很多則了，謝謝你！請明天再寫';
+  end if;
+  return new;
+end $$;
+drop trigger if exists feedback_limit on public.feedback;
+create trigger feedback_limit before insert on public.feedback for each row execute function public.feedback_limit();
+
 -- 3. 照片：放在不公開的 photos 儲存空間，路徑是「使用者 id/照片 id.jpg」
 -- ============================================================
 insert into storage.buckets (id, name, public)

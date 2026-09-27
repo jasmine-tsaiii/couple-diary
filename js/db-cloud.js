@@ -28,6 +28,13 @@ const CloudDB = CLOUD_ENABLED ? (() => {
   // 列表用的小圖放在 t/ 資料夾，檔名和原圖一樣，另一半的讀取權限也就跟著原圖
   const thumbPath = (id) => `${dataOwner()}/t/${id}.jpg`;
 
+  // 意見回饋：不用登入也能送（沒有讀取權限，送出後只有後台看得到）
+  async function sendFeedback(f) {
+    const uid = session ? session.user.id : null;
+    const { error } = await client.from('feedback').insert({ ...f, user_id: uid });
+    if (error) throw new Error(/feedback|relation/i.test(error.message) ? '回饋功能還沒開通（要先更新 schema.sql）' : error.message);
+  }
+
   async function loadPartner() {
     partner = null;
     pendingJoin = null;
@@ -51,6 +58,7 @@ const CloudDB = CLOUD_ENABLED ? (() => {
   return {
     client,
     uid: LocalDB.uid,
+    sendFeedback,
 
     // ---- 登入 ----
     async loadSession() {
