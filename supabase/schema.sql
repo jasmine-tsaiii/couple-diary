@@ -81,6 +81,9 @@ create table if not exists public.partners (
   joined_at  timestamptz not null default now()
 );
 create index if not exists partners_owner_idx on public.partners (owner);
+-- 新加入（包括換手機重新加入）要你按同意才生效；以前已經加入的人維持有效
+alter table public.partners add column if not exists approved boolean not null default true;
+alter table public.partners alter column approved set default false;
 
 -- 對方送出的任務
 create table if not exists public.task_submissions (
@@ -139,7 +142,7 @@ create policy "tasks: owner delete" on public.task_submissions
 -- 目前登入的人是誰的另一半（不是另一半就是 null）
 create or replace function public.my_owner() returns uuid
 language sql stable security definer set search_path = public as $$
-  select owner from public.partners where uid = auth.uid()
+  select owner from public.partners where uid = auth.uid() and approved
 $$;
 
 -- 對方可以讀的紀錄：「給對方看」，或「任務解鎖」而且已經解鎖
@@ -206,19 +209,44 @@ begin
   end if;
 
   update public.shares set failed_attempts = 0, locked_until = null where owner = s.owner;
-  -- 一個分享碼只給一個人：已經有別人加入時，要主人先移除舊的
-  if exists (select 1 from public.partners where owner = s.owner and uid <> auth.uid()) then
-    return jsonb_build_object('ok', false, 'error', '這個分享已經有人加入了。請紀錄的主人先在設定頁移除舊的，再加入一次');
+  -- 同一個瀏覽器已經被同意過：只更新名字
+  if exists (select 1 from public.partners where uid = auth.uid() and owner = s.owner and approved) then
+    update public.partners set name = v_name where uid = auth.uid();
+    return jsonb_build_object('ok', true, 'pending', false);
   end if;
-  insert into public.partners (uid, owner, name) values (auth.uid(), s.owner, v_name)
-  on conflict (uid) do update set owner = excluded.owner, name = excluded.name, joined_at = now();
-  return jsonb_build_object('ok', true);
+  -- 其他情況（第一次加入、換手機、換人）都先等主人同意；同時最多 3 個人在等，避免被灌
+  if (select count(*) from public.partners where owner = s.owner and not approved and uid <> auth.uid()) >= 3 then
+    return jsonb_build_object('ok', false, 'error', '目前等待同意的人太多了，請紀錄的主人先處理');
+  end if;
+  insert into public.partners (uid, owner, name, approved) values (auth.uid(), s.owner, v_name, false)
+  on conflict (uid) do update set owner = excluded.owner, name = excluded.name, joined_at = now(), approved = false;
+  return jsonb_build_object('ok', true, 'pending', true);
 end $$;
+
+-- 你同意某個人加入：一組分享碼只有一位另一半，同意新的人就會取代舊的（包括舊手機的身分）
+create or replace function public.approve_partner(p_uid uuid) returns void
+language plpgsql security definer set search_path = public as $$
+begin
+  if not public.is_real_user() then raise exception '請先登入'; end if;
+  if not exists (select 1 from public.partners where uid = p_uid and owner = auth.uid() and not approved) then
+    raise exception '找不到這個加入要求，可能對方已經離開了';
+  end if;
+  delete from public.partners where owner = auth.uid() and uid <> p_uid;
+  update public.partners set approved = true, joined_at = now() where uid = p_uid;
+end $$;
+
+-- 對方看得到自己「有幾則上鎖的紀錄」：只給類型和編號，不給任何內容
+create or replace function public.partner_locked() returns jsonb
+language sql stable security definer set search_path = public as $$
+  select coalesce(jsonb_agg(jsonb_build_object('id', r.id, 'type', r.type, 'no', r.data -> 'no') order by r.created_at desc), '[]'::jsonb)
+  from public.records r
+  where r.owner = public.my_owner() and r.visibility = 'locked' and (r.data ->> 'deletedAt') is null
+$$;
 
 -- 對方看自己的身分：名字、對方的名字
 create or replace function public.partner_info() returns jsonb
 language sql stable security definer set search_path = public as $$
-  select jsonb_build_object('owner', p.owner, 'name', p.name, 'owner_name', s.owner_name)
+  select jsonb_build_object('owner', p.owner, 'name', p.name, 'owner_name', s.owner_name, 'approved', p.approved)
   from public.partners p join public.shares s on s.owner = p.owner
   where p.uid = auth.uid()
 $$;
@@ -248,8 +276,8 @@ declare
   p public.partners;
   r public.records;
 begin
-  select * into p from public.partners where uid = auth.uid();
-  if not found then raise exception '你還沒有用分享碼加入'; end if;
+  select * into p from public.partners where uid = auth.uid() and approved;
+  if not found then raise exception '你還沒有用分享碼加入，或還在等對方同意'; end if;
   select * into r from public.records
   where id = p_record_id and owner = p.owner and visibility = 'task' and not unlocked and (data ->> 'deletedAt') is null;
   if not found then raise exception '找不到這個任務，可能已經解鎖了'; end if;
@@ -260,6 +288,11 @@ begin
   if r.data -> 'task' ->> 'mode' = 'photo' and p_photo_path is null then raise exception '這個任務要上傳照片'; end if;
   if exists (select 1 from public.task_submissions where record_id = r.id and partner = auth.uid() and status = 'pending') then
     raise exception '已經送出了，等對方確認';
+  end if;
+  -- 同一個任務一天最多送 5 次
+  if (select count(*) from public.task_submissions
+      where record_id = r.id and partner = auth.uid() and created_at > now() - interval '1 day') >= 5 then
+    raise exception '這個任務今天已經送出 5 次了，明天再試';
   end if;
   insert into public.task_submissions (owner, record_id, partner, partner_name, note, photo_path)
   values (p.owner, r.id, auth.uid(), p.name, coalesce(p_note, ''), p_photo_path);
@@ -313,6 +346,10 @@ create trigger records_visibility_changed before update on public.records
   for each row execute function public.records_visibility_changed();
 
 -- 函式只給登入的人用
+revoke all on function public.approve_partner(uuid) from public, anon;
+grant execute on function public.approve_partner(uuid) to authenticated;
+revoke all on function public.partner_locked() from public, anon;
+grant execute on function public.partner_locked() to authenticated;
 revoke all on function public.delete_account() from public, anon;
 grant execute on function public.delete_account() to authenticated;
 revoke all on function public.review_task(uuid, boolean) from public, anon;

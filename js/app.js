@@ -333,6 +333,8 @@ async function viewHome() {
   const askNames = !NAMES.me && !NAMES.partner && !(await DB.getSetting('namesSkipped', false));
   let pending = [];
   if (usingCloud()) { try { pending = (await CloudDB.submissions({ status: 'pending' })).filter((t) => all.some((r) => r.id === t.record_id)); } catch (e) { pending = []; } }
+  let joinReqs = [];
+  if (usingCloud()) { try { joinReqs = (await CloudDB.listPartners()).filter((p) => p.approved === false); } catch (e) { joinReqs = []; } }
   // 「一年前的今天」只挑美好時刻，免得一打開就看到舊的烏雲
   const memory = all.filter((r) => r.type === 'happy' && DATE_RE.test(r.date || '') && r.date.slice(5) === today().slice(5) && r.date < today()).sort(byDateDesc)[0];
   const isIOS = /iphone|ipad|ipod/i.test(navigator.userAgent);
@@ -376,6 +378,10 @@ async function viewHome() {
     ${isGuest() ? `<a class="card" href="#/login" style="background:var(--happy-bg);border-color:transparent;gap:4px">
       <div class="bold" style="color:var(--happy-dark)">${all.length ? '註冊，把紀錄存到雲端' : '歡迎！直接開始記錄吧'}</div>
       <div class="small" style="color:var(--happy-dark)">${all.length ? `目前 ${all.length} 則紀錄只存在這支手機。` : '不用註冊就能先用，紀錄會先存在這支手機。'}在這支手機註冊或登入後會自動搬上雲端，換手機不會不見，也能分享給另一半。</div>
+    </a>` : ''}
+    ${joinReqs.length ? `<a class="card" href="#/settings" style="background:var(--lock-bg);border-color:transparent;gap:4px">
+      <div class="bold" style="color:var(--lock)">${esc(joinReqs[0].name)} 想用分享碼加入</div>
+      <div class="small" style="color:var(--lock)">點這裡到設定頁按「同意」或「拒絕」。如果不是你認識的人，請拒絕並換新的分享碼。</div>
     </a>` : ''}
     ${pending.length ? `<a class="card" href="#/view/${esc(pending[0].record_id)}" style="background:var(--lock-bg);border-color:transparent;gap:4px">
       <div class="bold" style="color:var(--lock)">有 ${pending.length} 個任務等你確認</div>
@@ -490,6 +496,16 @@ async function viewList(type, tagFilter) {
       </div>`;
     grid.appendChild(a);
   }
+  // 另一半：上鎖的紀錄只顯示「這一則上鎖了」，看不到內容
+  if (isPartner() && !tagFilter) {
+    for (const l of (await CloudDB.partnerLocked()).filter((x) => x.type === type)) {
+      const d = document.createElement('div');
+      d.className = 'card tile';
+      d.innerHTML = `<div class="tile-default tile-lock">${ICON.lock}<div class="no">${l.no ? `No. ${Number(l.no)}` : ''}</div></div>
+        <div class="tile-body"><div class="bold small" style="color:var(--lock)">上鎖的紀錄</div><div class="muted small">${esc(ownerName())}還沒有打開這一則</div></div>`;
+      grid.appendChild(d);
+    }
+  }
 }
 
 // ---------- 吵架議題列表 ----------
@@ -506,6 +522,7 @@ async function viewFights(catFilter, statusFilter) {
   const max = Math.max(1, ...counts.map((x) => x.n));
   const shown = fights.filter((f) => (!catFilter || f.category === catFilter) && (!statusFilter || (f.status || 'open') === statusFilter));
 
+  const lockedFights = isPartner() && !catFilter && !statusFilter ? (await CloudDB.partnerLocked()).filter((x) => x.type === 'fight').length : 0;
   app.className = 'theme-fight';
   app.innerHTML = `
     <div class="topbar">
@@ -536,7 +553,8 @@ async function viewFights(catFilter, statusFilter) {
         </a>`;
       }).join('')}
     </div>
-    ${fights.length ? (shown.length ? '' : '<div class="empty">這個條件下沒有議題</div>') : isPartner() ? '<div class="empty">沒有分享的吵架議題</div>' : `<div class="empty">還沒有吵架議題，很棒！<a class="btn small" href="#/new/fight">新增一個議題</a></div>`}
+    ${lockedFights ? `<div class="card" style="background:var(--lock-bg);border-color:transparent;gap:4px;flex-direction:row;align-items:center">${ICON.lockSmall}<span class="small" style="color:var(--lock)">另外還有 ${lockedFights} 則上鎖的吵架議題</span></div>` : ''}
+    ${fights.length ? (shown.length ? '' : '<div class="empty">這個條件下沒有議題</div>') : isPartner() ? (lockedFights ? '' : '<div class="empty">沒有分享的吵架議題</div>') : `<div class="empty">還沒有吵架議題，很棒！<a class="btn small" href="#/new/fight">新增一個議題</a></div>`}
   `;
   app.querySelectorAll('[data-cat]').forEach((b) => b.addEventListener('click', () => viewFights(b.dataset.cat || null, statusFilter)));
   app.querySelectorAll('[data-st]').forEach((b) => b.addEventListener('click', () => viewFights(catFilter, b.dataset.st || null)));
@@ -1413,10 +1431,13 @@ async function viewPartnerHome() {
   const recent = all.slice().sort(byDateDesc).slice(0, 5);
   const tasks = await CloudDB.partnerTasks();
   const todo = tasks.filter((t) => !t.submission || t.submission.status !== 'pending').length;
+  const locked = await CloudDB.partnerLocked();
+  const lockedOf = (t) => locked.filter((x) => x.type === t).length;
 
   const typeCard = (type) => `<a class="card ${TYPES[type].theme}" href="#/list/${type}">
       <div class="row between"><div class="bold" style="color:var(--accent)">${TYPES[type].label}</div>
       <div class="count"><b>${count(type)}</b> 則</div></div>
+      ${lockedOf(type) ? `<div class="small row" style="color:var(--lock);gap:4px">${ICON.lockSmall}另外還有 ${lockedOf(type)} 則上鎖</div>` : ''}
     </a>`;
 
   app.innerHTML = `
@@ -1588,6 +1609,7 @@ function viewJoin(notice, code = '') {
         document.getElementById('j-pass').value,
         document.getElementById('j-name').value.trim(),
       );
+      if (CloudDB.pendingJoin()) toast('已送出，等對方同意');
       go('#/');
       route();
     } catch (e) {
@@ -1596,6 +1618,32 @@ function viewJoin(notice, code = '') {
         ? '對方的 App 還沒開放分享碼加入，請對方到 Supabase 開啟「Allow anonymous sign-ins」。'
         : e.message;
     }
+  });
+}
+
+// 另一半送出加入要求後，等主人同意
+function viewWaitingApproval() {
+  const info = CloudDB.pendingJoin();
+  app.className = '';
+  app.innerHTML = `
+    <div style="display:flex;flex-direction:column;align-items:center;gap:10px;text-align:center;margin-top:40px">
+      <div class="thumb" style="width:72px;height:72px;border-radius:99px">${ICON.heart}</div>
+      <h1 class="title-xl">等 ${esc(info.owner_name || '對方')} 同意</h1>
+      <div class="muted">已經送出加入要求了。請 ${esc(info.owner_name || '對方')} 打開 App，到設定頁按「同意」，你就看得到分享的紀錄。</div>
+    </div>
+    <button class="btn" id="w-check">對方同意了，重新看看</button>
+    <button class="btn secondary small" id="w-leave">取消加入</button>
+  `;
+  const check = document.getElementById('w-check');
+  check.addEventListener('click', () => withBusy(check, '檢查中…', async () => {
+    await CloudDB.refreshPartner();
+    if (CloudDB.pendingJoin()) { toast('還沒同意，晚點再試試'); return; }
+    route();
+  }));
+  document.getElementById('w-leave').addEventListener('click', async () => {
+    if (!confirm('取消加入要求？')) return;
+    await CloudDB.leaveShare();
+    go('#/login');
   });
 }
 
@@ -1619,6 +1667,8 @@ async function shareCardHtml() {
       <button class="btn small" id="s-create">產生分享碼</button>
     </div>`;
   }
+  const joined = partners.filter((p) => p.approved !== false);
+  const waiting = partners.filter((p) => p.approved === false);
   return `<div class="card" id="share-card">
     <div class="bold">分享給另一半</div>
     <div class="muted">按下面的按鈕複製邀請連結傳給對方，密碼另外告訴他。對方點連結就會看到加入畫面，分享碼已經幫他填好。</div>
@@ -1628,8 +1678,14 @@ async function shareCardHtml() {
       <div class="row"><input id="s-name" class="input grow" maxlength="20" value="${esc(share.owner_name)}"><button class="btn small" id="s-save-name">儲存</button></div></div>
     <div class="field"><label for="s-pass">改分享密碼</label>
       <div class="row"><input id="s-pass" class="input grow" type="password" autocomplete="new-password" minlength="6" maxlength="72" placeholder="新密碼"><button class="btn small" id="s-save-pass">更改</button></div></div>
+    ${waiting.length ? `<div class="field" id="join-requests"><div class="label">想加入的人（要你同意）</div>
+      <div class="muted small">換手機或清掉瀏覽器重新加入的，也會出現在這裡。同意後會取代目前的另一半。</div>
+      ${waiting.map((p) => `<div class="row between"><span>${esc(p.name)}<span class="muted small">・${shortDate(p.joined_at.slice(0, 10))} 送出</span></span>
+        <span class="row" style="gap:6px"><button class="btn small" data-approve-partner="${esc(p.uid)}" data-name="${esc(p.name)}">同意</button>
+        <button class="btn small secondary" data-rm-partner="${esc(p.uid)}" data-name="${esc(p.name)}" data-pending="1">拒絕</button></span></div>`).join('')}
+    </div>` : ''}
     <div class="field"><div class="label">已加入的人</div>
-      ${partners.length ? partners.map((p) => `<div class="row between"><span>${esc(p.name)}<span class="muted small">・${shortDate(p.joined_at.slice(0, 10))} 加入</span></span>
+      ${joined.length ? joined.map((p) => `<div class="row between"><span>${esc(p.name)}<span class="muted small">・${shortDate(p.joined_at.slice(0, 10))} 加入</span></span>
         <button class="btn small secondary" data-rm-partner="${esc(p.uid)}" data-name="${esc(p.name)}">移除</button></div>`).join('') : '<div class="muted">還沒有人加入</div>'}
     </div>
     <div class="btn-row">
@@ -1697,8 +1753,17 @@ function bindShareCard() {
     toast('已停止分享');
     viewSettings();
   });
+  document.querySelectorAll('[data-approve-partner]').forEach((b) => b.addEventListener('click', () => {
+    const current = document.querySelectorAll('[data-rm-partner]:not([data-pending])').length;
+    if (current && !confirm(`同意「${b.dataset.name}」加入？目前已加入的人會被取代，看不到你的紀錄。`)) return;
+    withBusy(b, '', async () => {
+      await CloudDB.approvePartner(b.dataset.approvePartner);
+      toast(`已同意 ${b.dataset.name} 加入`);
+      viewSettings();
+    });
+  }));
   document.querySelectorAll('[data-rm-partner]').forEach((b) => b.addEventListener('click', async () => {
-    if (!confirm(`移除「${b.dataset.name}」？對方會馬上看不到你的紀錄。`)) return;
+    if (!confirm(b.dataset.pending ? `拒絕「${b.dataset.name}」加入？` : `移除「${b.dataset.name}」？對方會馬上看不到你的紀錄。`)) return;
     await CloudDB.removePartner(b.dataset.rmPartner);
     viewSettings();
   }));
@@ -1862,6 +1927,8 @@ async function route() {
       // 登入過的手機登出後回到登入畫面；新使用者可以直接試用（資料先存在手機）
       if (page === 'login' || await hasAccountHere()) { renderTabbar(null); viewLogin(); return; }
     }
+    // 已經送出加入要求、還在等主人同意
+    if (CLOUD_ENABLED && CloudDB.isAnonymous() && CloudDB.pendingJoin()) { renderTabbar(null); viewWaitingApproval(); return; }
     // 臨時帳號但不是（或已經不是）另一半：分享被停止、被移除，或加入沒成功
     if (CLOUD_ENABLED && CloudDB.isAnonymous() && !isPartner()) {
       renderTabbar(null);

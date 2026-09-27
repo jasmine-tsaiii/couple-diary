@@ -10,6 +10,7 @@ const CloudDB = CLOUD_ENABLED ? (() => {
   const BUCKET = 'photos';
   let session = null;
   let partner = null; // 用分享碼加入的另一半：{ owner, name, owner_name }
+  let pendingJoin = null; // 用分享碼加入、還在等主人同意：{ owner, name, owner_name }
 
   function check({ data, error }) {
     if (error) throw new Error(error.message || '雲端連線失敗');
@@ -29,10 +30,13 @@ const CloudDB = CLOUD_ENABLED ? (() => {
 
   async function loadPartner() {
     partner = null;
+    pendingJoin = null;
     if (!session) return;
     // 還沒更新資料表（沒有 partner_info）時就當作自己，App 照常能用
     const { data, error } = await client.rpc('partner_info');
-    partner = !error && data && data.owner ? data : null;
+    const info = !error && data && data.owner ? data : null;
+    // 還在等主人同意的，不算另一半（看不到紀錄）
+    if (info && info.approved === false) pendingJoin = info; else partner = info;
   }
 
   async function listPhotoNames() {
@@ -78,6 +82,8 @@ const CloudDB = CLOUD_ENABLED ? (() => {
     isSignedIn: () => !!session,
     isAnonymous: () => !!(session && session.user.is_anonymous),
     isPartner: () => !!partner,
+    pendingJoin: () => pendingJoin,
+    async refreshPartner() { await loadPartner(); },
     partnerInfo: () => partner,
     async signIn(email, password) {
       session = check(await client.auth.signInWithPassword({ email, password })).session;
@@ -132,7 +138,17 @@ const CloudDB = CLOUD_ENABLED ? (() => {
       check(await client.from('shares').delete().eq('owner', userId()));
     },
     async listPartners() {
-      return check(await client.from('partners').select('uid, name, joined_at').eq('owner', userId()).order('joined_at'));
+      const { data, error } = await client.from('partners').select('uid, name, joined_at, approved').eq('owner', userId()).order('joined_at');
+      if (!error) return data;
+      // 還沒更新資料表（沒有 approved 欄位）時，全部當作已同意
+      return check(await client.from('partners').select('uid, name, joined_at').eq('owner', userId()).order('joined_at')).map((p) => ({ ...p, approved: true }));
+    },
+    async approvePartner(uid) {
+      check(await client.rpc('approve_partner', { p_uid: uid }));
+    },
+    async partnerLocked() {
+      const { data, error } = await client.rpc('partner_locked');
+      return error ? [] : data || [];
     },
     async removePartner(uid) {
       check(await client.from('partners').delete().eq('uid', uid).eq('owner', userId()));
