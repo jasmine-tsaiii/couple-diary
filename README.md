@@ -88,7 +88,10 @@
 - `js/db-cloud.js`：雲端模式的資料儲存（Supabase），功能和單人模式一樣
 - `supabase/schema.sql`：雲端資料表和安全規則
 - `vendor/`：Supabase 官方的瀏覽器套件（2.117.2 版），放在這裡就不用靠外部 CDN
-- `js/app.js`：所有畫面和操作
+- `js/app/*.js`：所有畫面和操作，分成 core（共用）、extras、home、record、settings、partner、auth、main（路由和啟動，要最後載入）。共用同一個全域範圍，順序照 index.html
+- `js/cards.js`：回憶小卡（要在 js/app 之前載入）
+- `sw.js`：離線用的 service worker
+- `tests/`：畫面測試，`cd tests && npm install && npm test`
 - `manifest.json`、`icons/`：加到主畫面時的名稱和圖示
 
 ## 資料存在哪裡

@@ -2,7 +2,7 @@
 // 網頁本身（HTML、CSS、JS、圖示）一律「先上網拿最新的，拿不到才用手機裡存的」，
 // 所以有網路時永遠是最新版，不會卡在舊版本。
 // 改了快取的規則才需要把 VERSION 加一，舊的快取會在新版啟用時清掉。
-const VERSION = 'v1';
+const VERSION = 'v2';
 const SHELL = `shell-${VERSION}`;
 const FONTS = `fonts-${VERSION}`;
 const PRECACHE = [
@@ -15,7 +15,14 @@ const PRECACHE = [
   'js/db-cloud.js',
   'js/mascot.js',
   'js/cards.js',
-  'js/app.js',
+  'js/app/core.js',
+  'js/app/extras.js',
+  'js/app/home.js',
+  'js/app/record.js',
+  'js/app/settings.js',
+  'js/app/partner.js',
+  'js/app/auth.js',
+  'js/app/main.js',
   'vendor/supabase-2.117.2.js',
   'manifest.json',
   'icons/icon.svg',

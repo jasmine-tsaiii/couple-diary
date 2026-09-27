@@ -1,6 +1,6 @@
 // 回憶小卡：每週／每月總結、單則美好時刻、紀念日，做成一張圖分享到 IG、LINE 或存到相簿。
 // 只放美好時刻的內容和統計數字：烏雲、吵架的內容一律不上卡片，上鎖的紀錄也不算。
-// 用到 app.js 的共用函式（liveRecords、TYPES、NAMES、photoUrl…），畫面在 app.js 的 route 裡叫用。
+// 用到 js/app/ 的共用函式（liveRecords、TYPES、NAMES、photoUrl…），畫面在 js/app/main.js 的 route 裡叫用。
 
 const CARD_SIZES = { story: { w: 1080, h: 1920, label: '限動（直式）' }, square: { w: 1080, h: 1080, label: '貼文（方形）' } };
 const CARD_INK = '#2B2320';

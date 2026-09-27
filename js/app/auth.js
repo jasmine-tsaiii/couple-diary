@@ -1,0 +1,145 @@
+// 啾啾日記 js/app/auth.js：登入
+// 所有 js/app/*.js 共用同一個全域範圍，依 index.html 的順序載入。
+
+// ---------- 登入（雲端模式） ----------
+// 登入頁下方的介紹：第一次來的人知道這個 App 能做什麼
+const INTRO = [
+  ['❤️', '美好時刻', '把約會、驚喜、小確幸記下來，目標是一起集滿 100 個。'],
+  ['☁️', '烏雲時刻', '不開心的時刻也記下來，事後寫反思，心情過去了就按「放晴」。'],
+  ['⚡', '吵架議題', '分類、原因、後續進度，和好了就標成已解決，不再重複吵同一件事。'],
+  ['✅', '一起完成的事', '寫下想一起做的事，兩個人都能打勾，完成後變成美好時刻。'],
+  ['🔒', '上鎖與任務', '想給對方看的可以分享，也可以上鎖，出一個任務讓對方完成才解鎖。'],
+  ['🏅', '印章冊', '美好時刻、和好、放晴達到里程碑就蓋一個章，像集點卡一樣。'],
+];
+// 註冊的好處（登入頁、試用提醒共用）
+const SIGNUP_BENEFITS = [
+  ['紀錄存在雲端，換手機、清掉瀏覽器也不會不見'],
+  ['分享給另一半，兩個人一起寫'],
+  ['出任務解鎖紀錄、一起完成的待辦清單'],
+  ['照片跟著帳號走，在哪支手機都看得到'],
+];
+function introFeatures() {
+  return `<section class="card" style="gap:12px;margin-top:8px" aria-labelledby="intro-h">
+    <h2 id="intro-h" class="bold" style="font-size:17px;font-family:inherit;margin:0">這個 App 可以做什麼</h2>
+    ${INTRO.map(([icon, t, d]) => `<div class="row" style="align-items:flex-start;gap:12px"><div style="font-size:22px;line-height:1.2" aria-hidden="true">${icon}</div><div style="display:flex;flex-direction:column;gap:2px"><div class="bold">${t}</div><div class="small muted">${d}</div></div></div>`).join('')}
+    <div class="small muted">紀錄只有你和你分享的人看得到。${window.Analytics && window.Analytics.configured() ? ANALYTICS_NOTE : ''}</div>
+  </section>`;
+}
+// 記住上次用哪種方式登入，避免 Google 和 Email 各註冊一個帳號、以為資料不見
+function rememberLogin(kind) {
+  try {
+    localStorage.setItem('lastLogin', kind);
+    const em = kind === 'email' && document.getElementById('email');
+    if (em && em.value) localStorage.setItem('lastLoginEmail', em.value.trim());
+  } catch (e) { /* 不能存就算了 */ }
+}
+function lastLogin() { try { return localStorage.getItem('lastLogin'); } catch (e) { return null; } }
+function viewLogin(mode = 'signin') {
+  app.className = '';
+  const isUp = mode === 'signup';
+  const last = lastLogin();
+  app.innerHTML = `
+    <div style="display:flex;flex-direction:column;align-items:center;gap:10px;text-align:center;margin-top:40px">
+      ${mascotHtml('happy', 140)}
+      <h1 class="title-xl">啾啾日記</h1>
+      <div class="bold" style="font-size:17px">兩個人一起記下 100 個美好時刻</div>
+      <div class="muted">也記下烏雲、整理吵架，讓感情越來越好</div>
+    </div>
+    ${last ? '' : `<section class="card benefits-card" aria-labelledby="ben-h">
+      <div id="ben-h" class="bold">免費註冊，你們就可以：</div>
+      <ul class="benefits">${SIGNUP_BENEFITS.map(([t]) => `<li>${t}</li>`).join('')}</ul>
+    </section>`}
+    ${inAppNotice()}
+    <button class="btn secondary" id="google-btn" style="gap:10px"${IN_APP ? ' hidden' : ''}>
+      <svg width="20" height="20" viewBox="0 0 48 48" aria-hidden="true"><path fill="#EA4335" d="M24 9.5c3.5 0 6.6 1.2 9.1 3.6l6.8-6.8C35.8 2.4 30.3 0 24 0 14.6 0 6.6 5.4 2.7 13.3l7.9 6.1C12.5 13.6 17.8 9.5 24 9.5z"/><path fill="#4285F4" d="M46.5 24.5c0-1.6-.1-3.1-.4-4.5H24v9h12.7c-.6 3-2.3 5.5-4.8 7.2l7.7 6c4.5-4.2 6.9-10.3 6.9-17.7z"/><path fill="#FBBC05" d="M10.6 28.6c-.5-1.4-.8-3-.8-4.6s.3-3.2.8-4.6l-7.9-6.1C1 16.6 0 20.2 0 24s1 7.4 2.7 10.7l7.9-6.1z"/><path fill="#34A853" d="M24 48c6.5 0 11.9-2.1 15.9-5.8l-7.7-6c-2.1 1.4-4.9 2.3-8.2 2.3-6.2 0-11.5-4.1-13.4-9.9l-7.9 6.1C6.6 42.6 14.6 48 24 48z"/></svg>
+      ${isUp ? '用 Google 註冊／登入' : '用 Google 登入'}
+    </button>
+    <div class="muted" style="text-align:center">或用 Email</div>
+    <form id="login-form" style="display:flex;flex-direction:column;gap:14px">
+      <div class="field"><label for="email">Email</label>
+        <input id="email" class="input" type="email" autocomplete="email" required></div>
+      <div class="field"><label for="password">密碼${isUp ? '（至少 8 個字）' : ''}</label>
+        <input id="password" class="input" type="password" autocomplete="${isUp ? 'new-password' : 'current-password'}" minlength="${isUp ? 8 : 6}" maxlength="72" required></div>
+      <button class="btn" type="submit" id="login-btn">${isUp ? '免費註冊，開始我們的日記' : '登入'}</button>
+    </form>
+    <div id="login-msg" class="muted" style="text-align:center"></div>
+    ${isUp ? '' : '<button class="btn secondary small" id="forgot">忘記密碼？</button>'}
+    <button class="btn ${isUp ? 'secondary small' : 'secondary'}" id="switch">${isUp ? '已經有帳號？登入' : '第一次使用？免費註冊'}</button>
+    <a class="btn secondary small" href="#/join">我是另一半，用分享碼加入</a>
+    <a class="text-link small" href="#/" id="try-first" hidden>先看看，之後再註冊</a>
+    ${isUp || !last ? introFeatures() : ''}
+    <div class="small muted legal-links">${isUp ? '註冊就代表你同意' : ''}<a href="terms.html" target="_blank" rel="noopener">使用條款</a>${isUp ? '和' : '・'}<a href="privacy.html" target="_blank" rel="noopener">隱私權政策</a></div>
+  `;
+  if (!isUp && last) {
+    const hint = document.createElement('div');
+    hint.className = 'small muted'; hint.style.textAlign = 'center'; hint.id = 'last-login';
+    hint.textContent = last === 'google' ? '你上次是用 Google 登入的' : '你上次是用 Email 登入的';
+    const anchor = document.getElementById(last === 'google' && !IN_APP ? 'google-btn' : 'login-form');
+    anchor.parentNode.insertBefore(hint, anchor);
+    if (last === 'email') { try { const em = localStorage.getItem('lastLoginEmail'); if (em) document.getElementById('email').value = em; } catch (e) { /* 略過 */ } }
+  }
+  hasAccountHere().then((has) => { const b = document.getElementById('try-first'); if (b && !has) b.hidden = false; });
+  document.getElementById('try-first').addEventListener('click', (ev) => {
+    ev.preventDefault();
+    if (location.hash === '#/') route(); else go('#/');
+  });
+  document.getElementById('switch').addEventListener('click', () => viewLogin(isUp ? 'signin' : 'signup'));
+  const forgot = document.getElementById('forgot');
+  if (forgot) forgot.addEventListener('click', () => {
+    const email = document.getElementById('email').value.trim();
+    const msg = document.getElementById('login-msg');
+    if (!/^[^@\s]+@[^@\s]+$/.test(email)) { msg.textContent = '先在上面填你的 Email，再按「忘記密碼」。'; document.getElementById('email').focus(); return; }
+    withBusy(forgot, '寄送中…', async () => {
+      await CloudDB.resetPassword(email);
+      msg.textContent = `如果 ${email} 有註冊過，會收到一封重設密碼的信，點信裡的連結就能設定新密碼。`;
+    });
+  });
+  document.getElementById('google-btn').addEventListener('click', async () => {
+    rememberLogin('google');
+    try { sessionStorage.setItem('googlePending', '1'); } catch (e) { /* 略過 */ }
+    try { await CloudDB.signInWithGoogle(); } catch (e) {
+      document.getElementById('login-msg').textContent = /provider is not enabled|Unsupported provider/i.test(e.message)
+        ? 'Google 登入還沒在 Supabase 開啟，先用 Email 登入吧。' : '沒辦法用 Google 登入：' + e.message;
+    }
+  });
+  document.getElementById('login-form').addEventListener('submit', async (ev) => {
+    ev.preventDefault();
+    const email = document.getElementById('email').value.trim();
+    const password = document.getElementById('password').value;
+    const btn = document.getElementById('login-btn');
+    const msg = document.getElementById('login-msg');
+    btn.disabled = true;
+    msg.textContent = '';
+    try {
+      if (isUp) {
+        const session = await CloudDB.signUp(email, password);
+        track('sign_up', { method: 'email' });
+        // 從「註冊」建立的新 Email 帳號就是日記主人，不用再問身分
+        try { localStorage.setItem('newOwnerEmail', email.toLowerCase()); } catch (e) { /* 略過 */ }
+        if (!session) {
+          msg.textContent = '帳號建立好了！請到信箱點確認連結，確認後回到這裡登入。';
+          btn.disabled = false;
+          viewLoginAfterSignup(email);
+          return;
+        }
+      } else {
+        await CloudDB.signIn(email, password);
+        track('login', { method: 'email' });
+      }
+      rememberLogin('email');
+      await afterOwnerLogin();
+      go('#/');
+      route();
+    } catch (e) {
+      btn.disabled = false;
+      msg.textContent = /invalid login/i.test(e.message) ? 'Email 或密碼不對，再試一次。'
+        : /not confirmed/i.test(e.message) ? '這個帳號還沒確認，請先到信箱點確認連結。'
+        : '沒辦法完成：' + e.message;
+    }
+  });
+}
+function viewLoginAfterSignup(email) {
+  viewLogin('signin');
+  document.getElementById('email').value = email;
+  document.getElementById('login-msg').textContent = '帳號建立好了！請到信箱點確認連結，確認後在這裡登入。';
+}
