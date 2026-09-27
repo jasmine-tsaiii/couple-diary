@@ -2066,6 +2066,10 @@ async function viewPartnerHome() {
       <a class="icon-btn" href="#/settings" aria-label="設定">${ICON.gear}</a>
     </div>
     <div class="mascot-hello">${mascotHtml('happy', 110)}<div class="small muted">${bound ? '今天有想記下的小事嗎？' : `看看${esc(ownerName())}分享了什麼`}</div></div>
+    ${info.paused ? `<div class="card" id="paused-note" style="background:var(--lock-bg);border-color:transparent;gap:4px">
+      <div class="bold" style="color:var(--lock)">${esc(ownerName())}暫時停止分享</div>
+      <div class="small" style="color:var(--lock)">這段時間看不到${esc(ownerName())}寫的紀錄，你自己寫的照舊。${esc(ownerName())}恢復之後就會回來，什麼都不會不見。</div>
+    </div>` : ''}
     ${tasks.length ? `<a class="card" href="#/tasks" style="background:var(--lock-bg);border-color:transparent;gap:4px">
       <div class="bold" style="color:var(--lock)">${todo ? `有 ${todo} 個任務可以解鎖` : '任務都送出了'}</div>
       <div class="small" style="color:var(--lock)">${todo ? `完成任務、${esc(ownerName())}確認之後，就能看到上鎖的紀錄。` : `等${esc(ownerName())}確認中。`}</div>
@@ -2347,9 +2351,11 @@ function viewWaitingApproval() {
 async function shareCardHtml() {
   let share = null;
   let partners = [];
+  let paused = false;
   try {
     share = await CloudDB.getShare();
     if (share) partners = await CloudDB.listPartners();
+    if (share) paused = (await DB.getSetting('sharePaused', false)) === true;
   } catch (e) {
     return `<div class="card"><div class="bold">分享給另一半</div>
       <div class="muted">要先到 Supabase 的 SQL Editor 重新貼上最新的 supabase/schema.sql 並按 Run，才能使用分享碼。</div></div>`;
@@ -2384,6 +2390,11 @@ async function shareCardHtml() {
       ${joined.length ? joined.map((p) => `<div class="row between"><span>${esc(p.name)}<span class="muted small">・${shortDate(p.joined_at.slice(0, 10))} 加入</span></span>
         <button class="btn small secondary" data-rm-partner="${esc(p.uid)}" data-name="${esc(p.name)}">移除</button></div>`).join('') : '<div class="muted">還沒有人加入</div>'}
     </div>
+    ${joined.length ? `<div class="field" id="pause-box" style="background:${paused ? 'var(--lock-bg)' : 'transparent'};border-radius:12px;padding:${paused ? '10px' : '0'}">
+      <div class="row between"><div class="label" style="margin:0">暫停分享</div>
+        <button class="btn small ${paused ? '' : 'secondary'}" id="s-pause" aria-pressed="${paused}">${paused ? '恢復分享' : '暫停'}</button></div>
+      <div class="small muted">${paused ? `暫停中：${esc(joined[0].name)}現在看不到你寫的任何紀錄、照片和任務，對方自己寫的照舊。按「恢復分享」就回來，資料都不會動。` : `想先冷靜一下時可以暫停，${esc(joined[0].name)}會暫時看不到你寫的紀錄，隨時可以恢復。`}</div>
+    </div>` : ''}
     <div class="btn-row">
       <button class="btn small secondary" id="s-renew">換新分享碼</button>
       <button class="btn small danger" id="s-stop">停止分享</button>
@@ -2438,6 +2449,13 @@ function bindShareCard() {
     }
     toast('密碼已更改，已加入的人不受影響');
   });
+  if ($('s-pause')) $('s-pause').addEventListener('click', () => withBusy($('s-pause'), '', async () => {
+    const next = $('s-pause').getAttribute('aria-pressed') !== 'true';
+    if (next && !confirm('暫停分享？對方會暫時看不到你寫的紀錄、照片和任務，你隨時可以恢復。')) return;
+    await DB.setSetting('sharePaused', next);
+    toast(next ? '已暫停分享' : '已恢復分享');
+    viewSettings();
+  }));
   if ($('s-renew')) $('s-renew').addEventListener('click', async () => {
     if (!confirm('換一組新的分享碼？舊的分享碼就不能再用來加入，已加入的人不受影響。')) return;
     await saveWithNewCode(null, $('s-name').value.trim());

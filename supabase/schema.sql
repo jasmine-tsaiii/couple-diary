@@ -283,6 +283,7 @@ begin
   select * into r from public.records
   where id = p_record_id and owner = p.owner and visibility = 'task' and not unlocked and (data ->> 'deletedAt') is null;
   if not found then raise exception '找不到這個任務，可能已經解鎖了'; end if;
+  if public.space_paused(p.owner) then raise exception '對方暫停分享中，等對方打開再送出'; end if;
   if char_length(coalesce(p_note, '')) > 500 then raise exception '留言最多 500 個字'; end if;
   if p_photo_path is not null and p_photo_path !~ ('^' || auth.uid()::text || '/task-[A-Za-z0-9_-]+\.jpg$') then
     raise exception '照片位置不對';
@@ -706,6 +707,7 @@ begin
   if r.id is not null then
     if r.owner <> p.owner or (r.data ->> 'deletedAt') is not null then raise exception '找不到這則紀錄'; end if;
     if v_type = 'fight' and r.visibility <> 'shared' then raise exception '找不到這個議題，或它沒有分享給你'; end if;
+    if v_type = 'fight' and r.author is distinct from auth.uid() and public.space_paused(p.owner) then raise exception '對方暫停分享中，等對方打開再更新'; end if;
     if v_type <> 'fight' and r.author is distinct from auth.uid() then raise exception '只能修改你自己寫的紀錄'; end if;
     v_data := r.data || v_in || jsonb_build_object('visibility', v_vis, 'updatedAt', v_now, 'editedAt', v_now);
     if v_data -> 'clearedAt' = 'null'::jsonb then v_data := v_data - 'clearedAt'; end if;
@@ -983,3 +985,94 @@ create policy "photos: owner deletes partner tasks" on storage.objects
         and (storage.foldername(name))[1] = t.partner::text
     )
   );
+
+-- ============================================================
+-- 暫停分享：主人在設定頁打開後，另一半暫時看不到主人寫的任何紀錄、照片、任務和一起完成的事；
+-- 另一半自己寫的照舊看得到。關掉就恢復，資料不會動。
+-- ============================================================
+create or replace function public.space_paused(p_owner uuid) returns boolean
+language sql stable security definer set search_path = public as $$
+  select coalesce((select value = 'true'::jsonb from public.settings where owner = p_owner and key = 'sharePaused'), false)
+$$;
+revoke all on function public.space_paused(uuid) from public, anon;
+grant execute on function public.space_paused(uuid) to authenticated;
+
+drop policy if exists "records: partner read" on public.records;
+create policy "records: partner read" on public.records
+  for select to authenticated
+  using (
+    owner = public.my_owner()
+    and (author = auth.uid()
+         or (not public.space_paused(owner)
+             and (data ->> 'deletedAt') is null and (visibility = 'shared' or (visibility = 'task' and unlocked))))
+  );
+
+drop policy if exists "wishes: partner read" on public.wishes;
+create policy "wishes: partner read" on public.wishes
+  for select to authenticated using (owner = public.my_owner() and not public.space_paused(owner));
+
+drop policy if exists "photos: partner read" on storage.objects;
+create policy "photos: partner read" on storage.objects
+  for select to authenticated
+  using (
+    bucket_id = 'photos'
+    and (storage.foldername(name))[1] = public.my_owner()::text
+    and not public.space_paused(public.my_owner())
+    and exists (
+      select 1 from public.records r
+      where r.owner = public.my_owner()
+        and (r.visibility = 'shared' or (r.visibility = 'task' and r.unlocked))
+        and (r.data ->> 'deletedAt') is null
+        and r.data -> 'photoIds' ? split_part(storage.filename(name), '.', 1)
+    )
+  );
+
+create or replace function public.partner_tasks() returns jsonb
+language sql stable security definer set search_path = public as $$
+  select coalesce(jsonb_agg(jsonb_build_object(
+    'id', r.id,
+    'type', r.type,
+    'task', jsonb_build_object('text', r.data -> 'task' ->> 'text', 'mode', r.data -> 'task' ->> 'mode'),
+    'submission', (
+      select jsonb_build_object('status', t.status, 'created_at', t.created_at)
+      from public.task_submissions t
+      where t.record_id = r.id and t.partner = auth.uid()
+      order by t.created_at desc limit 1
+    )
+  ) order by r.created_at desc), '[]'::jsonb)
+  from public.records r
+  where r.owner = public.my_owner() and not public.space_paused(r.owner)
+    and r.visibility = 'task' and not r.unlocked and (r.data ->> 'deletedAt') is null
+$$;
+
+create or replace function public.member_can_see(p_record_id text) returns public.records
+language sql stable security definer set search_path = public as $$
+  select r.* from public.records r
+  where r.id = p_record_id
+    and r.owner = coalesce(public.my_owner(), case when public.is_real_user() then auth.uid() end)
+    and r.author is distinct from auth.uid()
+    and (r.data ->> 'deletedAt') is null
+    and (r.visibility = 'shared' or (r.visibility = 'task' and r.unlocked))
+    and (public.my_owner() is null or not public.space_paused(r.owner))
+$$;
+revoke all on function public.member_can_see(text) from public, anon, authenticated;
+
+-- 另一半的首頁會顯示「暫停分享中」
+create or replace function public.partner_info() returns jsonb
+language sql stable security definer set search_path = public as $$
+  select jsonb_build_object('owner', p.owner, 'name', p.name, 'owner_name', s.owner_name, 'approved', p.approved,
+    'mascot', (select value from public.settings where owner = p.owner and key = 'mascot'),
+    'paused', public.space_paused(p.owner))
+  from public.partners p join public.shares s on s.owner = p.owner
+  where p.uid = auth.uid()
+$$;
+
+create or replace function public.others_locked() returns jsonb
+language sql stable security definer set search_path = public as $$
+  select coalesce(jsonb_agg(jsonb_build_object('id', r.id, 'type', r.type, 'no', r.data -> 'no') order by r.created_at desc), '[]'::jsonb)
+  from public.records r
+  where r.owner = coalesce(public.my_owner(), case when public.is_real_user() then auth.uid() end)
+    and r.author is distinct from auth.uid()
+    and r.visibility = 'locked' and (r.data ->> 'deletedAt') is null
+    and (public.my_owner() is null or not public.space_paused(r.owner))
+$$;
