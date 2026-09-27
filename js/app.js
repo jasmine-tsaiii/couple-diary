@@ -1422,6 +1422,32 @@ async function viewFights(catFilter, statusFilter) {
 }
 
 // ---------- 詳情 ----------
+// 挑一則紀錄（相關紀錄用）：可以搜尋標題，最近的在上面
+function pickRecord(list) {
+  return new Promise((resolve) => {
+    const sorted = list.slice().sort(byDateDesc);
+    const box = document.createElement('div');
+    box.className = 'celebrate wish-dlg pick-dlg';
+    box.innerHTML = `<div class="celebrate-box" style="align-items:stretch;text-align:left" role="dialog" aria-modal="true" aria-label="連結其他紀錄">
+      <h2 style="font-size:20px">連結哪一則？</h2>
+      <input class="input" id="pick-q" placeholder="搜尋標題" aria-label="搜尋標題">
+      <div class="pick-list" id="pick-list"></div>
+      <button class="btn secondary small" id="pick-cancel">取消</button>
+    </div>`;
+    document.body.appendChild(box);
+    const done = (v) => { box.remove(); resolve(v); };
+    const render = () => {
+      const q = box.querySelector('#pick-q').value.trim().toLowerCase();
+      const rows = sorted.filter((x) => !q || (x.title || '').toLowerCase().includes(q)).slice(0, 50);
+      box.querySelector('#pick-list').innerHTML = rows.length ? rows.map((x) => `<button class="pick-item ${TYPES[x.type].theme}" data-pick="${esc(x.id)}"><span class="badge" style="background:var(--accent-bg);color:var(--accent-dark)">${TYPES[x.type].short}</span><span class="grow related-title">${esc(x.title)}</span><span class="muted small">${shortDate(x.date)}</span></button>`).join('') : '<div class="muted small">沒有可以連結的紀錄</div>';
+      box.querySelectorAll('[data-pick]').forEach((b) => b.addEventListener('click', () => done(b.dataset.pick)));
+    };
+    box.querySelector('#pick-q').addEventListener('input', render);
+    box.querySelector('#pick-cancel').addEventListener('click', () => done(null));
+    render();
+  });
+}
+
 async function viewDetail(id) {
   const r = await DB.getRecord(id);
   if (!r || r.deletedAt) { app.innerHTML = `<div class="empty">${r ? '這則在「最近刪除」裡，可以到設定頁救回來' : '找不到這則紀錄'}<a class="btn small" href="${r ? '#/settings' : '#/'}">${r ? '到設定頁' : '回首頁'}</a></div>`; return; }
@@ -1566,6 +1592,19 @@ async function viewDetail(id) {
       </div>`}`;
   }
 
+  // 相關紀錄：同一件事的美好、烏雲、吵架可以互相連結（連結存在自己這則，兩邊都顯示；看不到的紀錄不會出現）
+  const canLink = !r.archivedAt && mine && (!partner || bound);
+  const ownLinks = (r.related || []).filter((x) => x !== r.id);
+  const linked = all.filter((x) => x.id !== r.id && (ownLinks.includes(x.id) || (x.related || []).includes(r.id))).sort(byDateDesc);
+  const relatedPart = linked.length || canLink ? `<div class="field"><div class="label">相關紀錄</div>
+    ${linked.map((x) => `<div class="row related-row">
+      <a class="card related-item ${TYPES[x.type].theme}" href="#/view/${esc(x.id)}"><span class="badge" style="background:var(--accent-bg);color:var(--accent-dark)">${TYPES[x.type].short}</span><span class="grow related-title">${esc(x.title)}</span><span class="muted small">${shortDate(x.date)}</span></a>
+      ${canLink && ownLinks.includes(x.id) ? `<button class="icon-btn" data-unlink="${esc(x.id)}" aria-label="取消連結 ${esc(x.title)}">${ICON.x}</button>` : ''}
+    </div>`).join('')}
+    ${canLink ? '<button class="btn small secondary" id="link-add" style="align-self:flex-start">＋ 連結其他紀錄</button>' : ''}
+    ${!linked.length && canLink ? '<div class="small muted">同一件事有開心也有不開心的部分？把它們連起來，之後回頭看比較清楚。</div>' : ''}
+  </div>` : '';
+
   app.className = conf.theme;
   app.innerHTML = `
     <div class="topbar">
@@ -1591,9 +1630,21 @@ async function viewDetail(id) {
     ${reflectPart}
     ${fightPart}
     ${notesPart}
+    ${relatedPart}
     ${canDelete ? '<button class="btn danger" id="delete" style="margin-top:12px">刪除這則紀錄</button>' : ''}
     ${!partner && !canDelete ? `<div class="small muted" style="text-align:center">這則是${authorLabel(r)}寫的，只有${authorLabel(r)}能${r.type === 'fight' ? '刪除' : '修改和刪除'}。</div>` : ''}
   `;
+  const saveLinks = async (ids) => {
+    const latest = (await DB.getRecord(r.id)) || r;
+    await DB.putRecord({ ...latest, related: ids, updatedAt: Date.now() });
+    viewDetail(r.id);
+  };
+  const linkAdd = document.getElementById('link-add');
+  if (linkAdd) linkAdd.addEventListener('click', async () => {
+    const picked = await pickRecord(all.filter((x) => x.id !== r.id && !linked.some((y) => y.id === x.id)));
+    if (picked) await saveLinks([...ownLinks, picked]);
+  });
+  app.querySelectorAll('[data-unlink]').forEach((b) => b.addEventListener('click', () => saveLinks(ownLinks.filter((x) => x !== b.dataset.unlink))));
   const heartBtn = document.getElementById('heart-btn');
   if (heartBtn) heartBtn.addEventListener('click', () => withBusy(heartBtn, '', async () => {
     const on = await CloudDB.toggleHeart(r.id);

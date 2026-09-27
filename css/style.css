@@ -447,3 +447,10 @@ body::before { content: ''; position: fixed; top: 0; left: 0; right: 0; height: 
 
 /* 外觀：跟隨系統／淺色／深色 */
 .theme-pick { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; }
+
+/* 相關紀錄 */
+.related-row { gap: 6px; align-items: center; }
+.related-item { flex: 1; min-width: 0; flex-direction: row; align-items: center; gap: 8px; padding: 10px 12px; text-decoration: none; color: inherit; }
+.related-title { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pick-list { display: flex; flex-direction: column; gap: 6px; max-height: 50vh; overflow-y: auto; }
+.pick-item { display: flex; align-items: center; gap: 8px; width: 100%; text-align: left; padding: 10px 12px; border: 1px solid var(--line); border-radius: 12px; background: var(--card); }
