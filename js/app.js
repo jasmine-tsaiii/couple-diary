@@ -346,15 +346,15 @@ function showPaywall(q) {
 // ---------- 印章冊：像集點卡一樣，達到里程碑就蓋一個章 ----------
 // 每一組：怎麼算數量、各階段的門檻、每個章的圖案和名字
 const STAMP_GROUPS = [
-  { key: 'happy', title: '美好時刻', unit: '個美好時刻', u: '個', count: (c) => c.happy,
+  { key: 'happy', title: '美好時刻', help: '每新增一則美好時刻就算 1 個。移到「最近刪除」的不算。', unit: '個美好時刻', u: '個', count: (c) => c.happy,
     steps: [[1, '💗', '第一個美好'], [5, '🌸', '5 個美好'], [10, '💐', '10 個美好'], [30, '🌹', '30 個美好'], [50, '🎀', '50 個美好'], [100, '👑', '集滿 100 個']] },
-  { key: 'sunny', title: '烏雲放晴', unit: '個吵架議題解決', u: '個', count: (c) => c.resolved,
+  { key: 'sunny', title: '烏雲放晴', help: '在吵架議題的詳情頁，把「狀態」按成「已解決」就算 1 個。之後改回「處理中」就不算。', unit: '個吵架議題改成「已解決」', u: '個', count: (c) => c.resolved,
     steps: [[1, '🌤️', '第一次和好'], [5, '🌈', '解決 5 個'], [10, '☀️', '解決 10 個'], [30, '🏅', '解決 30 個']] },
-  { key: 'reflect', title: '事後反思', unit: '則反思', u: '則', count: (c) => c.reflections,
+  { key: 'reflect', title: '事後反思', help: '在烏雲時刻的詳情頁按「新增反思」，寫下冷靜之後的想法，每寫 1 則算 1 次。', unit: '則反思', u: '則', count: (c) => c.reflections,
     steps: [[1, '💭', '第一次反思'], [5, '📖', '反思 5 次'], [10, '🧘', '反思 10 次']] },
-  { key: 'task', title: '任務解鎖', unit: '個任務解鎖', u: '個', count: (c) => c.unlocked,
+  { key: 'task', title: '任務解鎖', help: '把紀錄設成「任務解鎖」，另一半完成任務、你按「通過並解鎖」就算 1 個（雲端版開啟分享碼後才能用）。', unit: '個任務解鎖', u: '個', count: (c) => c.unlocked,
     steps: [[1, '🔓', '第一次解鎖'], [5, '🗝️', '解鎖 5 個'], [10, '🎁', '解鎖 10 個']] },
-  { key: 'days', title: '在一起', unit: '天', u: '天', count: (c) => c.days,
+  { key: 'days', title: '在一起', help: '到設定頁填「在一起的日期」，每天自動累積，在一起那天算第 1 天。', unit: '天', u: '天', count: (c) => c.days,
     steps: [[100, '💯', '100 天'], [365, '🎂', '一週年'], [1000, '💍', '1000 天']] },
 ];
 function stampCounts(all) {
@@ -428,12 +428,20 @@ async function viewStamps() {
     ${STAMP_GROUPS.map((g) => {
       const list = stamps.filter((x) => x.group === g);
       return `<div class="card">
-        <div class="row between"><div class="bold">${esc(g.title)}</div><div class="small muted">目前 ${list[0].have} ${g.u}</div></div>
+        <div class="row between"><div class="row" style="gap:6px"><span class="bold">${esc(g.title)}</span>
+          <button class="help-btn" data-help="${g.key}" aria-label="怎麼集${esc(g.title)}的章" aria-expanded="false">?</button></div>
+          <div class="small muted">目前 ${list[0].have} ${g.u}</div></div>
+        <div class="help-text small" id="help-${g.key}" hidden>${esc(g.help)}</div>
         ${g.key === 'days' && !NAMES.since ? '<div class="small muted">到設定頁填「在一起的日期」就能開始集這組章。</div>' : ''}
         <div class="stamp-grid">${list.map(stampFace).join('')}</div>
       </div>`;
     }).join('')}
   `;
+  app.querySelectorAll('[data-help]').forEach((b) => b.addEventListener('click', () => {
+    const t = document.getElementById(`help-${b.dataset.help}`);
+    t.hidden = !t.hidden;
+    b.setAttribute('aria-expanded', String(!t.hidden));
+  }));
 }
 
 // ---------- 首頁 ----------
@@ -807,6 +815,7 @@ async function viewDetail(id) {
            ${s === 'resolved' && r.resolution ? `<div class="card"><div class="small bold" style="color:var(--fight)">我們怎麼解決的</div><p class="prose">${esc(r.resolution)}</p></div>` : ''}`
         : `<div class="field"><div class="label">狀態</div>
         <div class="opts cols-3">${Object.entries(STATUS).map(([k, v]) => `<button class="opt ${k === s ? 'on' : ''}" data-status="${k}">${v.label}</button>`).join('')}</div>
+        ${s === 'resolved' ? '' : '<div class="small muted">和好之後按「已解決」，印章冊的「烏雲放晴」就會加 1。</div>'}
       </div>
       ${s === 'resolved' ? `<div class="field"><label for="resolution">我們怎麼解決的</label><textarea id="resolution" class="textarea" maxlength="${LIMITS.resolution}" style="min-height:70px" placeholder="例如：隔週輪流陪家人">${esc(r.resolution || '')}</textarea></div>` : ''}`}
       ${r.reason ? `<div class="card"><div class="small bold" style="color:var(--fight)">原因</div><p class="prose">${esc(r.reason)}</p></div>` : ''}

@@ -256,3 +256,8 @@ a.card:active { transform: scale(0.99); }
 .celebrate .stamp-face { width: 120px; height: 120px; font-size: 56px; animation: stamp-in .5s cubic-bezier(.2, 1.6, .4, 1) both; }
 @keyframes stamp-in { from { transform: scale(2.2) rotate(-30deg); opacity: 0; } to { transform: scale(1) rotate(-8deg); opacity: 1; } }
 @media (prefers-reduced-motion: reduce) { .celebrate .stamp-face { animation: none; } }
+.help-btn {
+  width: 26px; height: 26px; border-radius: 99px; border: 1px solid var(--field); background: var(--card);
+  color: var(--muted); font-size: 12px; font-weight: 700; padding: 0; display: inline-flex; align-items: center; justify-content: center;
+}
+.help-text { background: var(--bg); border-radius: 10px; padding: 8px 10px; color: var(--soft); }
