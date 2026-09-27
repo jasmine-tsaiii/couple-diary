@@ -117,6 +117,7 @@ async function updateRecord(id, mutate) {
   await mutate(latest);
   latest.updatedAt = Date.now();
   await DB.putRecord(latest);
+  checkNewStamps().catch(() => {});
   return latest;
 }
 // 另一半看得到的小提示：最近 7 天剛解鎖、內容被改過
@@ -319,6 +320,99 @@ function renderTabbar(route) {
   ].join('');
 }
 
+// ---------- 印章冊：像集點卡一樣，達到里程碑就蓋一個章 ----------
+// 每一組：怎麼算數量、各階段的門檻、每個章的圖案和名字
+const STAMP_GROUPS = [
+  { key: 'happy', title: '美好時刻', unit: '個美好時刻', u: '個', count: (c) => c.happy,
+    steps: [[1, '💗', '第一個美好'], [5, '🌸', '5 個美好'], [10, '💐', '10 個美好'], [30, '🌹', '30 個美好'], [50, '🎀', '50 個美好'], [100, '👑', '集滿 100 個']] },
+  { key: 'sunny', title: '烏雲放晴', unit: '個吵架議題解決', u: '個', count: (c) => c.resolved,
+    steps: [[1, '🌤️', '第一次和好'], [5, '🌈', '解決 5 個'], [10, '☀️', '解決 10 個'], [30, '🏅', '解決 30 個']] },
+  { key: 'reflect', title: '事後反思', unit: '則反思', u: '則', count: (c) => c.reflections,
+    steps: [[1, '💭', '第一次反思'], [5, '📖', '反思 5 次'], [10, '🧘', '反思 10 次']] },
+  { key: 'task', title: '任務解鎖', unit: '個任務解鎖', u: '個', count: (c) => c.unlocked,
+    steps: [[1, '🔓', '第一次解鎖'], [5, '🗝️', '解鎖 5 個'], [10, '🎁', '解鎖 10 個']] },
+  { key: 'days', title: '在一起', unit: '天', u: '天', count: (c) => c.days,
+    steps: [[100, '💯', '100 天'], [365, '🎂', '一週年'], [1000, '💍', '1000 天']] },
+];
+function stampCounts(all) {
+  return {
+    happy: all.filter((r) => r.type === 'happy').length,
+    resolved: all.filter((r) => r.type === 'fight' && r.status === 'resolved').length,
+    reflections: all.reduce((n, r) => n + (r.reflections || []).length, 0),
+    unlocked: all.filter((r) => r.visibility === 'task' && r.unlocked).length,
+    days: togetherDays(),
+  };
+}
+// 全部的章，標出拿到了沒有
+function allStamps(all) {
+  const c = stampCounts(all);
+  return STAMP_GROUPS.flatMap((g) => g.steps.map(([n, icon, name]) => ({ id: `${g.key}-${n}`, group: g, n, icon, name, have: g.count(c), got: g.count(c) >= n })));
+}
+// 下一個最接近的章：「再 2 個美好時刻，就能拿到『10 個美好』」
+function nextStamp(all) {
+  const left = allStamps(all).filter((s) => !s.got && s.group.key !== 'days').map((s) => ({ ...s, need: s.n - s.have }));
+  return left.sort((a, b) => a.need / a.n - b.need / b.n)[0] || null;
+}
+const stampFace = (s) => `<div class="stamp ${s.got ? 'got' : ''}"><div class="stamp-face">${s.icon}</div><div class="stamp-name">${esc(s.name)}</div></div>`;
+
+// 有新的章就跳出慶祝畫面；第一次用這個功能時，已經達成的章直接記下來，不一次跳一堆
+let stampChecking = false;
+async function checkNewStamps() {
+  if (isPartner() || stampChecking || document.querySelector('.celebrate')) return;
+  stampChecking = true;
+  try { await showNewStamps(); } finally { stampChecking = false; }
+}
+async function showNewStamps() {
+  const got = allStamps(await liveRecords()).filter((s) => s.got);
+  const seen = await DB.getSetting('stamps', null);
+  if (!seen) { await DB.setSetting('stamps', Object.fromEntries(got.map((s) => [s.id, Date.now()]))); return; }
+  const fresh = got.filter((s) => !seen[s.id]);
+  if (!fresh.length) return;
+  await DB.setSetting('stamps', { ...seen, ...Object.fromEntries(fresh.map((s) => [s.id, Date.now()])) });
+  const s = fresh[fresh.length - 1];
+  const box = document.createElement('div');
+  box.className = 'celebrate';
+  box.innerHTML = `<div class="celebrate-box" role="dialog" aria-label="解鎖印章">
+    <div class="small bold" style="color:var(--happy)">解鎖新印章！</div>
+    <div class="stamp got"><div class="stamp-face">${s.icon}</div></div>
+    <h2 style="font-size:22px">${esc(s.name)}</h2>
+    <div class="muted">${esc(s.group.title)}：${s.n} ${s.group.u}${fresh.length > 1 ? `（這次一共拿到 ${fresh.length} 個章）` : ''}</div>
+    <a class="btn small secondary" href="#/stamps" id="cel-book">看印章冊</a>
+    <button class="btn small" id="cel-ok">太棒了</button>
+  </div>`;
+  document.body.appendChild(box);
+  const close = () => box.remove();
+  box.querySelector('#cel-ok').addEventListener('click', close);
+  box.querySelector('#cel-book').addEventListener('click', close);
+  box.addEventListener('click', (ev) => { if (ev.target === box) close(); });
+}
+
+async function viewStamps() {
+  const all = await liveRecords();
+  const stamps = allStamps(all);
+  const next = nextStamp(all);
+  app.className = '';
+  app.innerHTML = `
+    <div class="topbar">
+      <a class="icon-btn" href="#/" aria-label="返回">${ICON.back}</a>
+      <h1>印章冊</h1>
+      <div class="count"><b style="font-size:16px;color:var(--happy)">${stamps.filter((x) => x.got).length}</b> / ${stamps.length}</div>
+    </div>
+    ${next ? `<div class="card" style="background:var(--happy-bg);border-color:transparent;gap:4px">
+      <div class="small bold" style="color:var(--happy-dark)">下一個印章</div>
+      <div>再 ${next.need} ${esc(next.group.unit)}，就能拿到「${esc(next.name)}」${next.icon}</div>
+    </div>` : ''}
+    ${STAMP_GROUPS.map((g) => {
+      const list = stamps.filter((x) => x.group === g);
+      return `<div class="card">
+        <div class="row between"><div class="bold">${esc(g.title)}</div><div class="small muted">目前 ${list[0].have} ${g.u}</div></div>
+        ${g.key === 'days' && !NAMES.since ? '<div class="small muted">到設定頁填「在一起的日期」就能開始集這組章。</div>' : ''}
+        <div class="stamp-grid">${list.map(stampFace).join('')}</div>
+      </div>`;
+    }).join('')}
+  `;
+}
+
 // ---------- 首頁 ----------
 async function viewHome() {
   const all = await liveRecords();
@@ -340,6 +434,31 @@ async function viewHome() {
   const isIOS = /iphone|ipad|ipod/i.test(navigator.userAgent);
   const standalone = window.matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
 
+  // 烏雲不當成要集滿的目標，改看「美好：烏雲」的比例（研究說幸福的情侶大約是 5 : 1）
+  const ratioCard = () => {
+    const h = count('happy');
+    const c = count('cloud');
+    const ratio = c ? h / c : 0;
+    const label = !c ? (h ? '還沒有烏雲，繼續保持 ☀️' : '還沒有紀錄') : `美好 : 烏雲 = ${ratio >= 10 ? Math.round(ratio) : Math.round(ratio * 10) / 10} : 1`;
+    const pct = h + c ? (h / (h + c)) * 100 : 50;
+    const hint = !c ? '' : ratio >= 5 ? '已經達到幸福情侶的 5 : 1 了！' : `再 ${Math.ceil(c * 5 - h)} 個美好時刻就到 5 : 1（研究說幸福的情侶大約是這個比例）`;
+    return `<a class="card theme-cloud" href="#/list/cloud">
+      <div class="row between"><div class="bold" style="color:var(--cloud)">烏雲時刻</div><div class="count"><b>${c}</b> 則</div></div>
+      <div class="ratio-bar" aria-hidden="true"><div style="width:${pct}%"></div></div>
+      <div class="small bold">${label}</div>
+      ${hint ? `<div class="small muted">${hint}</div>` : ''}
+    </a>`;
+  };
+  const stampCard = () => {
+    const stamps = allStamps(all);
+    const got = stamps.filter((x) => x.got);
+    const next = nextStamp(all);
+    return `<a class="card" href="#/stamps" style="gap:8px">
+      <div class="row between"><div class="bold">印章冊</div><div class="count"><b>${got.length}</b> / ${stamps.length}</div></div>
+      <div class="row" style="gap:6px;font-size:22px">${got.slice(-6).map((x) => x.icon).join('') || '<span class="small muted">還沒有印章</span>'}</div>
+      ${next ? `<div class="small muted">再 ${next.need} ${esc(next.group.unit)}，就能拿到「${esc(next.name)}」${next.icon}</div>` : '<div class="small muted">全部集滿了！</div>'}
+    </a>`;
+  };
   const progressCard = (type) => {
     const n = count(type);
     const pct = Math.min(100, (n / TYPES[type].goal) * 100);
@@ -396,7 +515,8 @@ async function viewHome() {
       <div class="bold">${esc(memory.title)}</div>
     </a>` : ''}
     ${progressCard('happy')}
-    ${progressCard('cloud')}
+    ${ratioCard()}
+    ${stampCard()}
     <a class="card theme-fight" href="#/fights">
       <div class="bold" style="color:var(--fight)">吵架議題</div>
       <div class="status-grid">
@@ -459,9 +579,9 @@ async function viewList(type, tagFilter) {
     <div class="topbar">
       <a class="icon-btn" href="#/" aria-label="返回">${ICON.back}</a>
       <h1>${conf.label}</h1>
-      <div class="count"><b style="font-size:16px;color:var(--accent)">${mine.length}</b> / ${conf.goal}</div>
+      <div class="count"><b style="font-size:16px;color:var(--accent)">${mine.length}</b>${type === 'cloud' || isPartner() ? ' 則' : ` / ${conf.goal}`}</div>
     </div>
-    <div class="progress" style="height:8px"><div style="width:${pct}%"></div></div>
+    ${type === 'cloud' || isPartner() ? '' : `<div class="progress" style="height:8px"><div style="width:${pct}%"></div></div>`}
     ${tags.length ? `<div class="chips scroll">
       <button class="chip dark ${!tagFilter ? 'on' : ''}" data-tag="">全部</button>
       ${tags.map((t) => `<button class="chip ${t === tagFilter ? 'on' : ''}" data-tag="${esc(t)}">#${esc(t)}</button>`).join('')}
@@ -742,6 +862,7 @@ async function viewDetail(id) {
   app.querySelectorAll('[data-approve]').forEach((b) => b.addEventListener('click', () => withBusy(b, '解鎖中…', async () => {
     await CloudDB.reviewSubmission(b.dataset.approve, true);
     toast('已解鎖，對方看得到這則了');
+    checkNewStamps().catch(() => {});
     viewDetail(r.id);
   })));
   app.querySelectorAll('[data-reject]').forEach((b) => b.addEventListener('click', () => {
@@ -2004,7 +2125,9 @@ async function route() {
     else if (page === 'new') { renderTabbar(null); await viewForm('new', arg); }
     else if (page === 'edit') { renderTabbar(null); await viewForm('edit', arg); }
     else if (page === 'settings') { renderTabbar(null); await viewSettings(); }
+    else if (page === 'stamps') { renderTabbar(null); await viewStamps(); }
     else go('#/');
+    if (!page || page === 'view') checkNewStamps().catch(() => {});
   } catch (e) {
     console.error(e);
     app.innerHTML = `<div class="empty">${esc(cloudErrorText(e))}<button class="btn small" id="reload">重新整理</button></div>`;
