@@ -1,0 +1,24 @@
+const { chromium, devices } = require('playwright');
+const fs = require('fs');
+const U = (process.env.U || 'http://localhost:8770/');
+(async () => {
+  const b = await chromium.launch(require('./_launch'));
+  const log = (...a) => console.log(...a); const errs = [];
+  const ctx = await b.newContext({ viewport: { width: 390, height: 844 }, userAgent: devices['iPhone 13'].userAgent });
+  await ctx.route('**/vendor/supabase-2.117.2.js', (r) => r.fulfill({ contentType: 'text/javascript', body: fs.readFileSync('mock2.js', 'utf8') }));
+  await ctx.addInitScript(() => { localStorage.setItem('tourDone', '1'); localStorage.setItem('guestStarted', '1'); window.__shared = null; navigator.share = async (d) => { window.__shared = d; }; });
+  const p = await ctx.newPage(); p.on('pageerror', (e) => errs.push(e.message)); p.on('dialog', (d) => d.accept());
+  await p.goto(U); await p.waitForTimeout(600);
+  await p.goto(U + '#/new/happy'); await p.waitForTimeout(600); await p.fill('#f-title', '試用'); await p.click('#save'); await p.waitForTimeout(1200);
+  await p.click('#cel-ok').catch(() => {}); await p.waitForTimeout(1200);
+  log('guest a2hs login first', await p.isVisible('#a2hs-login'));
+  await p.screenshot({ path: 'r20-a2hs-guest.png' });
+  await p.click('#a2hs-login'); await p.waitForTimeout(600);
+  log('went login', p.url().endsWith('#/login'));
+  await p.fill('#email', 'jas@x.com'); await p.fill('#password', 'secret123'); await p.click('#login-btn'); await p.waitForTimeout(1500);
+  await p.goto(U + '#/settings'); await p.waitForTimeout(600);
+  await p.fill('#s-name', 'Jasmine'); await p.fill('#s-pass', '123456'); await p.click('#s-create'); await p.waitForTimeout(800);
+  await p.click('#s-copy'); await p.waitForTimeout(400);
+  log('shared', JSON.stringify(await p.evaluate(() => window.__shared)));
+  console.log('errors', errs); await b.close();
+})();

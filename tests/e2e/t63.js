@@ -1,0 +1,26 @@
+const { chromium } = require('playwright');
+const U = process.env.U || 'http://localhost:8770/';
+(async () => {
+  const b = await chromium.launch(require('./_launch'));
+  const errs = [];
+  const ctx = await b.newContext({ viewport: { width: 390, height: 844 } });
+  await ctx.addInitScript(() => { localStorage.setItem('tourDone', '1'); localStorage.setItem('a2hsNever', '1'); window.__noCelebrate = 1; new MutationObserver(() => document.querySelectorAll('.celebrate:not(.wish-dlg):not(.danger-dlg)').forEach((e) => e.remove())).observe(document, { childList: true, subtree: true }); });
+  const p = await ctx.newPage(); p.on('pageerror', (e) => errs.push(e.message)); p.on('dialog', (d) => d.accept());
+  const add = async (type, title) => { await p.goto(U + '#/new/' + type); await p.waitForTimeout(600); await p.fill('#f-title', title); await p.click('#save'); await p.waitForTimeout(1000); return p.url().split('/').pop(); };
+  const a = await add('happy', '淡水夕陽');
+  const c = await add('cloud', '在淡水吵架');
+  await add('happy', '別的事');
+  await p.goto(U + '#/view/' + a); await p.waitForTimeout(600);
+  await p.click('#link-add'); await p.waitForTimeout(300);
+  await p.fill('#pick-q', '吵架'); await p.waitForTimeout(200);
+  console.log('search filters', await p.locator('[data-pick]').count() === 1);
+  await p.click('[data-pick]'); await p.waitForTimeout(800);
+  console.log('linked on A', (await p.textContent('.related-item')).includes('在淡水吵架'));
+  await p.screenshot({ path: (process.env.SHOT_DIR || '.') + '/related.png', fullPage: true });
+  await p.click('.related-item'); await p.waitForTimeout(700);
+  console.log('back-link on C', p.url().endsWith(c), (await p.textContent('.related-item')).includes('淡水夕陽'), 'no unlink on C', await p.locator('[data-unlink]').count() === 0);
+  await p.goto(U + '#/view/' + a); await p.waitForTimeout(600);
+  await p.click('[data-unlink]'); await p.waitForTimeout(700);
+  console.log('unlinked', await p.locator('.related-item').count() === 0);
+  console.log('errors', errs); await b.close();
+})();

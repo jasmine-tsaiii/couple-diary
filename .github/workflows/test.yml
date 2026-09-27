@@ -1,0 +1,35 @@
+# 每次推上 main（或開 PR）就自動跑畫面測試；只改行銷圖片（m/）或說明文件時不跑
+name: tests
+on:
+  push:
+    branches: [main]
+    paths-ignore: ['m/**', '**.md', 'supabase/email-templates/**']
+  pull_request:
+    paths-ignore: ['m/**', '**.md', 'supabase/email-templates/**']
+  workflow_dispatch:
+concurrency:
+  group: tests-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    defaults:
+      run:
+        working-directory: tests
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm install --no-audit --no-fund
+      - run: npx playwright install --with-deps chromium
+      - run: node run.js
+        env:
+          JOBS: 4
+          CI: 'true'
+      - if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-output
+          path: tests/out/

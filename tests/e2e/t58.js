@@ -1,0 +1,28 @@
+const { chromium } = require('playwright');
+const fs = require('fs');
+const U = (process.env.U || 'http://localhost:8770/');
+(async () => {
+  const b = await chromium.launch(require('./_launch'));
+  const errs = [];
+  const ctx = await b.newContext({ viewport: { width: 390, height: 844 } });
+  await ctx.route('**/vendor/supabase-2.117.2.js', (r) => r.fulfill({ contentType: 'text/javascript', body: fs.readFileSync('mock2.js', 'utf8') }));
+  await ctx.addInitScript(() => { localStorage.setItem('tourDone', '1'); localStorage.setItem('a2hsNever', '1'); });
+  const p = await ctx.newPage(); p.on('pageerror', (e) => errs.push(e.message)); p.on('dialog', (d) => d.accept());
+  await p.goto(U); await p.waitForTimeout(900);
+  const n = await p.locator('.example-card').count();
+  console.log('home examples', n);
+  await p.locator('#recent').scrollIntoViewIfNeeded(); await p.screenshot({ path: (process.env.SHOT_DIR || '.') + '/examples-home.png', fullPage: true });
+  await p.goto(U + '#/list/happy'); await p.waitForTimeout(600);
+  console.log('happy list example', await p.locator('.example-card').count());
+  await p.goto(U + '#/fights'); await p.waitForTimeout(600);
+  console.log('fights example', await p.locator('.example-card').count());
+  await p.goto(U + '#/'); await p.waitForTimeout(600);
+  await p.click('.example-card[data-example="happy"]'); await p.waitForTimeout(600);
+  console.log('click -> new', p.url().endsWith('#/new/happy'));
+  await p.fill('#f-title', '第一則'); await p.click('#save'); await p.waitForTimeout(1200);
+  await p.goto(U + '#/'); await p.waitForTimeout(800);
+  console.log('gone after first', await p.locator('.example-card').count() === 0);
+  await p.goto(U + '#/list/cloud'); await p.waitForTimeout(600);
+  console.log('gone in cloud list', await p.locator('.example-card').count() === 0);
+  console.log('errors', errs); await b.close();
+})();

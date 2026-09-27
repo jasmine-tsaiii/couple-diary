@@ -1,0 +1,25 @@
+const { chromium } = require('playwright');
+const fs = require('fs');
+const U = process.env.U || 'http://localhost:8770/';
+(async () => {
+  const b = await chromium.launch(require('./_launch'));
+  const errs = [];
+  const ctx = await b.newContext({ viewport: { width: 390, height: 844 }, colorScheme: 'dark' });
+  await ctx.route('**/vendor/supabase-2.117.2.js', (r) => r.fulfill({ contentType: 'text/javascript', body: fs.readFileSync('mock2.js', 'utf8') }));
+  await ctx.addInitScript(() => { localStorage.setItem('tourDone', '1'); localStorage.setItem('a2hsNever', '1'); });
+  const p = await ctx.newPage(); p.on('pageerror', (e) => errs.push(e.message));
+  const bg = () => p.evaluate(() => getComputedStyle(document.body).backgroundColor);
+  await p.goto(U); await p.waitForTimeout(900);
+  console.log('system dark bg', await bg());
+  await p.screenshot({ path: (process.env.SHOT_DIR || '.') + '/dark-home.png' });
+  await p.goto(U + '#/new/fight'); await p.waitForTimeout(700);
+  await p.screenshot({ path: '/tmp/claude-0/-home-claude/14e9371e-a65b-5ec6-890a-1d116d5adbfe/scratchpad/dark-form.png' });
+  await p.goto(U + '#/settings'); await p.waitForTimeout(800);
+  await p.click('[data-theme-pick="light"]'); await p.waitForTimeout(200);
+  console.log('forced light bg', await bg());
+  await p.reload(); await p.waitForTimeout(800);
+  console.log('remembered light', await bg());
+  await p.click('[data-theme-pick="dark"]'); await p.waitForTimeout(200);
+  console.log('forced dark', await bg());
+  console.log('errors', errs); await b.close();
+})();

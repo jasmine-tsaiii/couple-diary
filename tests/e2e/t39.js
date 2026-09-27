@@ -1,0 +1,30 @@
+const { chromium } = require('playwright');
+const U = (process.env.U || 'http://localhost:8770/');
+(async () => {
+  const b = await chromium.launch(require('./_launch'));
+  const log = (...a) => console.log(...a);
+  const errs = []; const dialogs = [];
+  const ctx = await b.newContext({ viewport: { width: 390, height: 844 }, acceptDownloads: true });
+  await ctx.addInitScript(() => { localStorage.setItem("tourDone", "1"); localStorage.setItem("guestStarted", "1"); new MutationObserver(() => document.querySelectorAll(".tour-dlg").forEach((e) => e.remove())).observe(document, { childList: true, subtree: true }); });
+  const p = await ctx.newPage(); p.on('pageerror', (e) => errs.push(e.message)); p.on('dialog', (d) => { dialogs.push(d.message()); d.accept(); });
+  const type = async (pin) => { for (const d of pin) await p.click(`.pin-lock [data-pin="${d}"]`); await p.waitForTimeout(400); };
+  // local mode with a record, no backup -> backup prompt first
+  await p.goto(U + '#/new/happy'); await p.waitForTimeout(800);
+  await p.fill('#f-title', '測試備份'); await p.click('#save'); await p.waitForTimeout(900); await p.click('#cel-ok').catch(() => {});
+  await p.goto(U + '#/settings'); await p.waitForTimeout(700);
+  const dl = p.waitForEvent('download', { timeout: 5000 }).catch(() => null);
+  await p.click('#pin-toggle'); await p.waitForTimeout(800);
+  log('backup asked', dialogs.some((m) => m.includes('備份')), 'downloaded', !!(await dl), 'no pad yet', !(await p.isVisible('.pin-lock')));
+  await p.click('#pin-toggle'); await p.waitForTimeout(300);
+  log('pad now', await p.isVisible('.pin-lock'));
+  await type('1234'); await type('1234');
+  await p.reload(); await p.waitForTimeout(900);
+  for (let i = 0; i < 5; i++) await type('0000');
+  log('throttled', await p.textContent('#pin-sub'));
+  await type('1234');
+  log('still locked with right pin', await p.isVisible('.pin-lock'));
+  await p.evaluate(() => localStorage.setItem('pinFails', JSON.stringify({ n: 5, until: 0 })));
+  await type('1234');
+  log('unlocks after wait', !(await p.isVisible('.pin-lock')));
+  console.log('errors', errs); await b.close();
+})();

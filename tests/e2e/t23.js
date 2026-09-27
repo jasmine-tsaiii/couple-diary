@@ -1,0 +1,23 @@
+const { chromium } = require('playwright');
+const U = (process.env.U || 'http://localhost:8770/');
+(async () => {
+  const b = await chromium.launch(require('./_launch'));
+  const ctx = await b.newContext({ viewport: { width: 390, height: 844 } }); await ctx.addInitScript(() => { localStorage.setItem("tourDone", "1"); localStorage.setItem("guestStarted", "1"); new MutationObserver(() => document.querySelectorAll(".tour-dlg").forEach((e) => e.remove())).observe(document, { childList: true, subtree: true }); }); const p = await ctx.newPage();
+  const errs = []; p.on('pageerror', (e) => errs.push(e.message)); p.on('dialog', (d) => d.accept());
+  const log = (...a) => console.log(...a);
+  await p.goto(U + '#/'); await p.waitForTimeout(500);
+  await p.evaluate(async () => { await DB.setSetting('stamps', {}); await DB.putRecord({ id: 'c1', no: 1, type: 'cloud', title: '遲到', date: '2026-09-01', emojis: [], tags: [], photoIds: [], visibility: 'locked', createdAt: 1, updatedAt: 1 }); });
+  await p.goto(U + '#/view/c1'); await p.waitForTimeout(600);
+  await p.click('#clear-btn'); await p.waitForTimeout(900);
+  log('celebrate', await p.textContent('.celebrate h2').catch(() => 'none'));
+  await p.click('#cel-ok').catch(() => {});
+  log('cleared', await p.isVisible('text=已放晴'), await p.textContent('#clear-btn'));
+  await p.screenshot({ path: 'clear.png' });
+  await p.goto(U + '#/list/cloud'); await p.waitForTimeout(500);
+  log('tile', await p.isVisible('.tile >> text=已放晴'));
+  await p.goto(U + '#/stamps'); await p.waitForTimeout(500);
+  log('groups', await p.$$eval('.card .bold', (e) => e.map((x) => x.textContent).filter((t) => /和好|放晴/.test(t))));
+  await p.goto(U + '#/view/c1'); await p.waitForTimeout(500); await p.click('#clear-btn'); await p.waitForTimeout(600);
+  log('uncleared', await p.textContent('#clear-btn'));
+  console.log('errors', errs); await b.close();
+})();

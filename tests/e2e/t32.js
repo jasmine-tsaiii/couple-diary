@@ -1,0 +1,67 @@
+const { chromium } = require('playwright');
+const fs = require('fs');
+const U = (process.env.U || 'http://localhost:8770/');
+(async () => {
+  const b = await chromium.launch(require('./_launch'));
+  const ctx = await b.newContext({ viewport: { width: 390, height: 844 } });
+  await ctx.addInitScript(() => { localStorage.setItem("tourDone", "1"); localStorage.setItem("guestStarted", "1"); new MutationObserver(() => document.querySelectorAll(".tour-dlg").forEach((e) => e.remove())).observe(document, { childList: true, subtree: true }); });
+  await ctx.route('**/vendor/supabase-2.117.2.js', (r) => r.fulfill({ contentType: 'text/javascript', body: fs.readFileSync('mock2.js', 'utf8') }));
+  await ctx.addInitScript(() => localStorage.setItem('mockAutoApprove', '1'));
+  await ctx.addInitScript(() => { new MutationObserver(() => document.querySelectorAll('.celebrate:not(.wish-dlg)').forEach((e) => e.remove())).observe(document, { childList: true, subtree: true }); });
+  const p = await ctx.newPage();
+  const errs = []; p.on('pageerror', (e) => errs.push(e.message));
+  let promptAnswer = '';
+  p.on('dialog', (d) => (d.type() === 'prompt' ? d.accept(promptAnswer) : d.accept()));
+  const log = (...a) => console.log(...a);
+  const as = async (uid, hash) => { await p.evaluate((u) => (u ? sessionStorage.setItem('mockUid', u) : sessionStorage.removeItem('mockUid')), uid); await p.goto(U + '#/settings'); await p.reload(); await p.waitForTimeout(500); await p.goto(U + hash); await p.reload(); await p.waitForTimeout(800); };
+  await p.goto(U + '#/login'); await p.waitForTimeout(500);
+  await p.fill('#email', 'jas@x.com'); await p.fill('#password', 'secret123'); await p.click('#login-btn'); await p.waitForTimeout(800);
+  await p.evaluate(async () => { await DB.setSetting('names', { me: 'Jasmine', partner: '小明' }); });
+  await p.goto(U + '#/settings'); await p.waitForTimeout(600);
+  await p.fill('#s-name', 'Jasmine'); await p.fill('#s-pass', '123456'); await p.click('#s-create'); await p.waitForTimeout(600);
+  const code = (await p.textContent('.share-code')).trim();
+  await as(null, '#/login'); await p.click('text=我是另一半，用分享碼加入'); await p.waitForTimeout(300);
+  await p.fill('#j-code', code); await p.fill('#j-pass', '123456'); await p.fill('#j-name', '小明'); await p.click('#join-btn'); await p.waitForTimeout(900);
+  const pid = await p.evaluate(() => sessionStorage.getItem('mockUid'));
+  await p.evaluate((id) => { const S = JSON.parse(localStorage.mockServer); S.users[id].is_anonymous = false; S.users[id].email = 'ming@x.com'; localStorage.mockServer = JSON.stringify(S); }, pid);
+  // 另一半出任務
+  await as(pid, '#/new/cloud');
+  log('P has task option', await p.isVisible('[data-vis="task"]'));
+  await p.fill('#f-title', '小明的烏雲'); await p.click('[data-vis="task"]'); await p.waitForTimeout(200);
+  await p.fill('#f-task', '帶我去吃早午餐'); await p.click('#save'); await p.waitForTimeout(900);
+  const rid = await p.evaluate(async () => (await DB.allRecords()).find((r) => r.title === '小明的烏雲').id);
+  log('P saved task vis', await p.evaluate(async (id) => { const r = await DB.getRecord(id); return r.visibility + ':' + r.task.text; }, rid));
+  // 主人看到任務卡、去完成
+  await as('owner-jas', '#/');
+  log('O task card', await p.textContent('#my-tasks-card').catch(() => null));
+  await p.screenshot({ path: 'r4-owner-home-task.png', fullPage: true });
+  await p.goto(U + '#/tasks'); await p.waitForTimeout(600);
+  log('O task list', await p.isVisible('text=帶我去吃早午餐'));
+  await p.click('a:has-text("去完成")'); await p.waitForTimeout(500);
+  await p.fill('#task-note', '去吃了！'); await p.click('#task-send'); await p.waitForTimeout(800);
+  log('O pending badge', await p.isVisible('text=等小明確認'));
+  // 另一半退回並寫原因
+  await as(pid, '#/');
+  log('P review card', await p.isVisible('text=個任務等你確認'));
+  await p.goto(U + '#/view/' + rid); await p.waitForTimeout(700);
+  promptAnswer = '要拍照給我看';
+  await p.click('[data-reject]'); await p.waitForTimeout(700);
+  log('P sees rejected w/ note', await p.isVisible('text=已退回：要拍照給我看'));
+  await as('owner-jas', '#/tasks');
+  log('O sees reason', await p.isVisible('text=小明說：「要拍照給我看」'));
+  await p.screenshot({ path: 'r5-owner-rejected.png', fullPage: true });
+  await p.click('a:has-text("去完成")'); await p.waitForTimeout(500);
+  await p.click('#task-send'); await p.waitForTimeout(800);
+  await as(pid, '#/view/' + rid);
+  await p.click('[data-approve]'); await p.waitForTimeout(800);
+  await as('owner-jas', '#/list/cloud');
+  log('O sees unlocked', await p.isVisible('text=小明的烏雲'));
+  await p.goto(U + '#/view/' + rid); await p.waitForTimeout(600);
+  log('O detail unlocked msg', await p.isVisible('text=你完成任務解鎖了這則'));
+  // 另一半重新上鎖
+  await as(pid, '#/view/' + rid);
+  await p.click('#relock'); await p.waitForTimeout(800);
+  await as('owner-jas', '#/list/cloud');
+  log('O relocked hidden', !(await p.isVisible('text=小明的烏雲')));
+  console.log('errors', errs); await b.close();
+})();

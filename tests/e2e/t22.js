@@ -1,0 +1,23 @@
+const { chromium } = require('playwright');
+const U = (process.env.U || 'http://localhost:8770/');
+(async () => {
+  const b = await chromium.launch(require('./_launch'));
+  const ctx = await b.newContext({ viewport: { width: 390, height: 844 } });
+  await ctx.addInitScript(() => { localStorage.setItem("tourDone", "1"); localStorage.setItem("guestStarted", "1"); new MutationObserver(() => document.querySelectorAll(".tour-dlg").forEach((e) => e.remove())).observe(document, { childList: true, subtree: true }); });
+  await ctx.addInitScript(() => { new MutationObserver(() => document.querySelectorAll('.celebrate:not(.wish-dlg)').forEach((e) => e.remove())).observe(document, { childList: true, subtree: true }); });
+  const p = await ctx.newPage();
+  const errs = []; p.on('pageerror', (e) => errs.push(e.message)); p.on('dialog', (d) => d.accept());
+  const log = (...a) => console.log(...a);
+  await p.goto(U + '#/'); await p.waitForTimeout(500);
+  await p.evaluate(async () => { await DB.putRecord({ id: 'f1', no: 1, type: 'fight', title: '家事', date: '2026-09-01', status: 'open', followUps: [], emojis: [], tags: [], photoIds: [], visibility: 'locked', createdAt: 1, updatedAt: 1 }); });
+  await p.goto(U + '#/view/f1'); await p.waitForTimeout(500);
+  log('hint', await p.isVisible('text=和好之後按「已解決」'));
+  await p.click('[data-status="resolved"]'); await p.waitForTimeout(600);
+  await p.goto(U + '#/stamps'); await p.waitForTimeout(500);
+  log('sunny count', await p.isVisible('text=目前 1 個'));
+  log('help hidden', await p.isHidden('#help-sunny'));
+  await p.click('[data-help="sunny"]'); await p.waitForTimeout(200);
+  log('help shown', await p.textContent('#help-sunny'));
+  await p.screenshot({ path: 'help.png' });
+  console.log('errors', errs); await b.close();
+})();

@@ -1,0 +1,22 @@
+const { chromium } = require('playwright');
+const U = (process.env.U || 'http://localhost:8770/');
+(async () => {
+  const b = await chromium.launch(require('./_launch'));
+  const log = (...a) => console.log(...a); const errs = [];
+  const ctx = await b.newContext({ viewport: { width: 390, height: 844 } });
+  await ctx.addInitScript(() => { localStorage.setItem('tourDone', '1'); localStorage.setItem('guestStarted', '1'); localStorage.setItem('a2hsNever', '1'); window.print = () => { window.__printed = true; }; });
+  const p = await ctx.newPage(); p.on('pageerror', (e) => errs.push(e.message)); p.on('dialog', (d) => d.accept());
+  await p.goto(U); await p.waitForTimeout(500);
+  await p.evaluate(async () => { for (let i = 0; i < 6; i++) await DB.putRecord({ id: 'r' + i, type: i % 3 ? 'happy' : 'cloud', no: i + 1, title: '回憶 ' + i, date: '2026-09-0' + (i + 1), visibility: 'shared', emojis: ['🥰'], tags: ['約會'], photoIds: [], description: '那天一起去看海，風很大。', createdAt: i, updatedAt: i }); });
+  await p.goto(U + '#/settings'); await p.reload(); await p.waitForTimeout(800);
+  await p.click('#export-read'); await p.waitForTimeout(1200);
+  log('read view', await p.isVisible('.read-view'), 'title', await p.title());
+  await p.screenshot({ path: 'r24-read-view.png' });
+  await p.click('#read-print'); log('print called', await p.evaluate(() => !!window.__printed));
+  await p.emulateMedia({ media: 'print' });
+  await p.screenshot({ path: 'r25-read-print.png', fullPage: true });
+  await p.emulateMedia({ media: 'screen' });
+  await p.click('#read-close'); await p.waitForTimeout(300);
+  log('closed', !(await p.isVisible('.read-view')), await p.title());
+  console.log('errors', errs); await b.close();
+})();
