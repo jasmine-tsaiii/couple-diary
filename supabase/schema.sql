@@ -707,6 +707,14 @@ begin
     -- 重新上鎖：只能從解鎖改回上鎖，不能自己解鎖
     v_relock := r.id is not null and r.unlocked and (p_rec -> 'unlocked') = 'false'::jsonb;
   end if;
+  -- 照片：只收自己寫的紀錄的照片清單（照片檔放在自己的資料夾）
+  if p_rec ? 'photoIds' and (r.id is null or r.author = auth.uid()) then
+    if jsonb_typeof(p_rec -> 'photoIds') <> 'array' or jsonb_array_length(p_rec -> 'photoIds') > 9
+       or exists (select 1 from jsonb_array_elements(p_rec -> 'photoIds') e where jsonb_typeof(e) <> 'string' or e #>> '{}' !~ '^[A-Za-z0-9_-]{1,40}$') then
+      raise exception '照片資料不對，每則最多 9 張';
+    end if;
+    v_in := v_in || jsonb_build_object('photoIds', p_rec -> 'photoIds');
+  end if;
   -- 烏雲放晴：時間由資料庫記
   if v_type = 'cloud' and p_rec ? 'clearedAt' then
     v_in := v_in || jsonb_build_object('clearedAt', case when jsonb_typeof(p_rec -> 'clearedAt') = 'number' then to_jsonb(coalesce((r.data ->> 'clearedAt')::bigint, v_now)) else 'null'::jsonb end);
@@ -726,12 +734,11 @@ begin
     if (select count(*) from public.records where owner = p.owner and author = auth.uid()) >= 3000 then
       raise exception '紀錄太多了';
     end if;
-    v_data := jsonb_build_object('emojis', '[]'::jsonb, 'tags', '[]'::jsonb, 'description', '', 'task', jsonb_build_object('text', '', 'mode', 'confirm'))
+    v_data := jsonb_build_object('emojis', '[]'::jsonb, 'tags', '[]'::jsonb, 'description', '', 'photoIds', '[]'::jsonb, 'task', jsonb_build_object('text', '', 'mode', 'confirm'))
       || case when v_type = 'fight' then jsonb_build_object('status', 'open', 'followUps', '[]'::jsonb, 'category', '', 'reason', '', 'myView', '', 'theirView', '', 'resolution', '')
               when v_type = 'cloud' then jsonb_build_object('reflections', '[]'::jsonb) else '{}'::jsonb end
       || v_in
       || jsonb_build_object('id', v_id, 'type', v_type, 'no', public.take_next_no(p.owner, v_type), 'visibility', v_vis, 'unlocked', false,
-                            'photoIds', '[]'::jsonb,
                             'author', auth.uid(), 'authorName', p.name, 'v', 1,
                             'createdAt', v_now, 'updatedAt', v_now);
     if v_data -> 'clearedAt' = 'null'::jsonb then v_data := v_data - 'clearedAt'; end if;
@@ -1239,5 +1246,58 @@ create policy "photos: author deletes task photos" on storage.objects
       select 1 from public.task_submissions t join public.records r on r.id = t.record_id
       where r.author = auth.uid() and t.photo_path = name
         and (storage.foldername(name))[1] = t.partner::text
+    )
+  );
+
+-- ============================================================
+-- 雙人版第三段：另一半的照片。照片放在「寫的人」自己的資料夾，
+-- 對方只看得到分享或已解鎖紀錄裡的照片；照片額度兩個人共用。
+-- ============================================================
+create or replace function public.photo_quota() returns jsonb
+language sql stable security definer set search_path = public as $$
+  with sp as (select coalesce(public.my_owner(), auth.uid()) as owner)
+  select jsonb_build_object(
+    'plan', coalesce((select plan from public.plans, sp where plans.owner = sp.owner), 'free'),
+    'limit', case when coalesce((select plan from public.plans, sp where plans.owner = sp.owner), 'free') = 'plus' then null else 30 end,
+    'used', (select count(*) from storage.objects o, sp
+             where o.bucket_id = 'photos'
+               and (storage.foldername(o.name))[1] in (
+                 select sp.owner::text union all select uid::text from public.partners where owner = sp.owner and approved)
+               and coalesce((storage.foldername(o.name))[2], '') <> 't'
+               and storage.filename(o.name) not like 'task-%')
+  )
+  from sp
+$$;
+
+-- 另一半看主人的照片：只限主人自己寫、分享或已解鎖的紀錄（不能拿自己的紀錄去指主人的照片）
+drop policy if exists "photos: partner read" on storage.objects;
+create policy "photos: partner read" on storage.objects
+  for select to authenticated
+  using (
+    bucket_id = 'photos'
+    and (storage.foldername(name))[1] = public.my_owner()::text
+    and not public.space_paused(public.my_owner())
+    and exists (
+      select 1 from public.records r
+      where r.owner = public.my_owner() and r.author = r.owner
+        and (r.visibility = 'shared' or (r.visibility = 'task' and r.unlocked))
+        and (r.data ->> 'deletedAt') is null
+        and r.data -> 'photoIds' ? split_part(storage.filename(name), '.', 1)
+    )
+  );
+
+-- 主人看另一半的照片：只限另一半自己寫、分享或已解鎖的紀錄
+drop policy if exists "photos: owner reads partner photos" on storage.objects;
+create policy "photos: owner reads partner photos" on storage.objects
+  for select to authenticated
+  using (
+    bucket_id = 'photos' and public.is_real_user()
+    and storage.filename(name) not like 'task-%'
+    and exists (
+      select 1 from public.records r
+      where r.owner = auth.uid() and r.author::text = (storage.foldername(name))[1] and r.author <> auth.uid()
+        and (r.visibility = 'shared' or (r.visibility = 'task' and r.unlocked))
+        and (r.data ->> 'deletedAt') is null
+        and r.data -> 'photoIds' ? split_part(storage.filename(name), '.', 1)
     )
   );

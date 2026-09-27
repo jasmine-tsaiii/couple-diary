@@ -179,7 +179,7 @@ async function thumbUrl(id) {
     const p = await DB.getPhoto(id);
     if (!p) return null;
     if (!photoUrlCache.has(id)) photoUrlCache.set(id, URL.createObjectURL(p.blob));
-    if (!isPartner()) {
+    if (CloudDB.photoIsMine(id)) {
       try { await CloudDB.putThumb(id, await compressImage(p.blob, THUMB_SIDE, 0.75)); } catch (e) { /* 補小圖失敗沒關係，下次再補 */ }
     }
     return photoUrlCache.get(id);
@@ -1243,7 +1243,12 @@ async function viewDetail(id) {
     const delBtn = document.getElementById('delete');
     delBtn.addEventListener('click', () => {
       if (!confirm(r.type === 'fight' ? `要刪除這個議題嗎？${ownerName()}那邊也會看不到。` : '要刪除這則嗎？刪除後就救不回來了。')) return;
-      withBusy(delBtn, '', async () => { await CloudDB.partnerDeleteRecord(r.id); toast('已刪除'); go(backHref); });
+      withBusy(delBtn, '', async () => {
+        await CloudDB.partnerDeleteRecord(r.id);
+        // 美好、烏雲是直接刪掉，照片也一起清掉（吵架議題會先放到最近刪除，照片先留著）
+        if (r.type !== 'fight') for (const pid of r.photoIds || []) { try { await DB.deletePhoto(pid); } catch (e) { /* 之後再清 */ } }
+        toast('已刪除'); go(backHref);
+      });
     });
   }
   if (!mine) return;
@@ -1430,7 +1435,7 @@ async function viewForm(mode, arg) {
         <div class="field"><label for="f-desc">描述</label>
           <textarea id="f-desc" class="textarea" maxlength="${LIMITS.description}" placeholder="發生了什麼？">${esc(rec.description)}</textarea></div>
       `}
-      ${partner ? '<div class="small muted">照片功能之後開放給另一半，目前先寫文字。</div>' : `<div class="field"><div class="label">照片${rec.type === 'happy' ? '（沒放會用預設圖）' : '（可不放）'}</div>
+      ${mode === 'edit' && !isMine(rec) ? `<div class="small muted">照片只有寫這則的${esc(otherName())}能改。</div>` : `<div class="field"><div class="label">照片${rec.type === 'happy' ? '（沒放會用預設圖）' : '（可不放）'}</div>
         <div class="photos">
           ${photoCells.join('')}
           <label class="photo-add">${ICON.camera}上傳<input type="file" accept="image/*" multiple class="visually-hidden" id="f-photos"></label>

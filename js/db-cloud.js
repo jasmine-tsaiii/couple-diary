@@ -24,9 +24,13 @@ const CloudDB = CLOUD_ENABLED ? (() => {
   function dataOwner() {
     return partner ? partner.owner : userId();
   }
-  const photoPath = (id) => `${dataOwner()}/${id}.jpg`;
-  // 列表用的小圖放在 t/ 資料夾，檔名和原圖一樣，另一半的讀取權限也就跟著原圖
-  const thumbPath = (id) => `${dataOwner()}/t/${id}.jpg`;
+  // 照片放在「寫那則紀錄的人」自己的資料夾；讀紀錄時記下每張照片在誰的資料夾
+  const photoFolders = new Map();
+  const noteFolders = (rec) => { if (rec && Array.isArray(rec.photoIds)) for (const pid of rec.photoIds) photoFolders.set(pid, rec.author || dataOwner()); return rec; };
+  const folderOf = (id) => photoFolders.get(id) || dataOwner();
+  const photoPath = (id) => `${folderOf(id)}/${id}.jpg`;
+  // 列表用的小圖放在 t/ 資料夾，檔名和原圖一樣，對方的讀取權限也就跟著原圖
+  const thumbPath = (id) => `${folderOf(id)}/t/${id}.jpg`;
 
   // 意見回饋：不用登入也能送（沒有讀取權限，送出後只有後台看得到）
   async function sendFeedback(f) {
@@ -259,11 +263,11 @@ const CloudDB = CLOUD_ENABLED ? (() => {
         rows.push(...page);
         if (page.length < 1000) break;
       }
-      return rows.map((r) => r.data);
+      return rows.map((r) => noteFolders(r.data));
     },
     async getRecord(id) {
       const row = check(await client.from('records').select('data').eq('owner', dataOwner()).eq('id', id).maybeSingle());
-      return row ? row.data : undefined;
+      return row ? noteFolders(row.data) : undefined;
     },
     async putRecord(rec) {
       // 另一半寫在主人的空間裡，透過資料庫函式檢查（只能改自己寫的，和分享的吵架議題）
@@ -301,7 +305,10 @@ const CloudDB = CLOUD_ENABLED ? (() => {
       if (error) return undefined;
       return { id, blob: data };
     },
+    // 新照片一律放自己的資料夾
+    photoIsMine: (id) => folderOf(id) === userId(),
     async putPhoto(photo) {
+      photoFolders.set(photo.id, userId());
       check(await client.storage.from(BUCKET).upload(photoPath(photo.id), photo.blob, { contentType: 'image/jpeg', upsert: true }));
     },
     async deletePhoto(id) {
@@ -312,6 +319,7 @@ const CloudDB = CLOUD_ENABLED ? (() => {
       return error ? undefined : { id, blob: data };
     },
     async putThumb(id, blob) {
+      if (folderOf(id) !== userId()) return;
       check(await client.storage.from(BUCKET).upload(thumbPath(id), blob, { contentType: 'image/jpeg', upsert: true }));
     },
     async allPhotos() {
