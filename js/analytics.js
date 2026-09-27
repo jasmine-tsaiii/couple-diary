@@ -39,6 +39,8 @@
     upgrade_interest: { feature: oneOf(['photos']) },
     feedback_send: {},
     signup_prompt: { where: oneOf(['tour', 'share', 'third_record']) },
+    card_view: { kind: oneOf(['week', 'month', 'days', 'record']), size: oneOf(['story', 'square']) },
+    card_share: { kind: oneOf(['week', 'month', 'days', 'record']), size: oneOf(['story', 'square']), how: oneOf(['share', 'download']) },
   };
   function off() { try { return !!localStorage.getItem('analyticsOff'); } catch (e) { return false; } }
   // 網址只留 utm_ 參數（Supabase 登入回來的 ?code= 之類都拿掉）

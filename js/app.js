@@ -1004,6 +1004,7 @@ function quickRecord(text) {
   </div>`;
 }
 const TILE_ICON = {
+  card: '<svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="3" width="16" height="18" rx="2.5"/><path d="M12 15.5s-3.5-2.1-3.5-4.4A1.9 1.9 0 0 1 12 10a1.9 1.9 0 0 1 3.5 1.1c0 2.3-3.5 4.4-3.5 4.4z"/></svg>',
   wish: '<svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 11l3 3 8-8"/><path d="M20 12v7a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h9"/></svg>',
   stamp: '<svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="9" r="6"/><path d="M8.5 14 7 22l5-3 5 3-1.5-8"/></svg>',
   share: '<svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="9" cy="8" r="3.5"/><path d="M2.5 20a6.5 6.5 0 0 1 13 0"/><path d="M19 8v6M16 11h6"/></svg>',
@@ -1037,6 +1038,7 @@ async function viewHome() {
   const fights = all.filter((r) => r.type === 'fight');
   const recent = all.slice().sort(byDateDesc).slice(0, 5);
   const examples = await showExamples(all);
+  const cardPending = typeof pendingCard === 'function' ? await pendingCard(all) : null;
   const lastBackup = await DB.getSetting('lastBackupAt', null);
   // 手機版 14 天提醒一次；雲端版免費方案沒有自動備份，30 天提醒一次
   const remindDays = usingCloud() ? CLOUD_BACKUP_REMIND_DAYS : BACKUP_REMIND_DAYS;
@@ -1087,6 +1089,7 @@ async function viewHome() {
     homeTile({ href: '#/fights', icon: ICON.bolt, color: 'var(--fight)', title: '吵架議題', sub: fightSub(fights) }),
     wishTile(wishes),
     homeTile({ href: '#/stamps', icon: TILE_ICON.stamp, color: 'var(--cloud)', title: '印章冊', sub: `已集 ${gotStamps} / ${stamps.length}` }),
+    homeTile({ href: '#/cards', icon: TILE_ICON.card, color: 'var(--happy)', title: '回憶小卡', sub: '做成圖分享出去' }),
     usingCloud() ? homeTile({ href: '#/tasks', icon: ICON.lock, color: 'var(--lock)', title: '解鎖任務', sub: taskSub }) : '',
     homeTile({ href: isGuest() ? '#/signup' : '#/settings', icon: TILE_ICON.share, color: 'var(--happy-dark)', title: '分享給另一半', sub: shareSub, id: 'tile-share', cls: 'ftile-wide' }),
   ].join('');
@@ -1153,6 +1156,7 @@ async function viewHome() {
       <div class="bold" style="color:var(--lock)">${esc(partnerName())}出了 ${myTodo} 個任務給你</div>
       <div class="small" style="color:var(--lock)">完成任務、${esc(partnerName())}確認之後，就能看到那則上鎖的紀錄 ›</div>
     </a>` : ''}
+    ${cardBanner(cardPending)}
     ${memory ? `<a class="card theme-happy" href="#/view/${esc(memory.id)}" style="background:var(--happy-bg);border-color:transparent;gap:4px">
       <div class="small bold" style="color:var(--happy-dark)">${Number(today().slice(0, 4)) - Number(memory.date.slice(0, 4))} 年前的今天</div>
       <div class="bold">${esc(memory.title)}</div>
@@ -1630,6 +1634,7 @@ async function viewDetail(id) {
     ${reflectPart}
     ${fightPart}
     ${notesPart}
+    ${r.type === 'happy' && !r.archivedAt && cardSafe(r) ? `<a class="btn secondary small" href="#/card/record/${esc(r.id)}" style="align-self:flex-start">做成回憶小卡</a>` : ''}
     ${relatedPart}
     ${canDelete ? '<button class="btn danger" id="delete" style="margin-top:12px">刪除這則紀錄</button>' : ''}
     ${!partner && !canDelete ? `<div class="small muted" style="text-align:center">這則是${authorLabel(r)}寫的，只有${authorLabel(r)}能${r.type === 'fight' ? '刪除' : '修改和刪除'}。</div>` : ''}
@@ -2723,6 +2728,7 @@ async function viewPartnerHome() {
     typeTile('cloud', ICON.cloud, 'var(--cloud)', `${count('cloud')} 則`),
     homeTile({ href: '#/fights', icon: ICON.bolt, color: 'var(--fight)', title: '吵架議題', sub: fightSub(fights) }),
     wishTile(await loadWishesSafe()),
+    homeTile({ href: '#/cards', icon: TILE_ICON.card, color: 'var(--happy)', title: '回憶小卡', sub: '做成圖分享出去' }),
     homeTile({ href: '#/tasks', icon: ICON.lock, color: 'var(--lock)', title: '解鎖任務', sub: pending.length ? `${pending.length} 個等你確認` : todo ? `${todo} 個可以解鎖` : tasks.length ? `等${esc(ownerName())}確認中` : '目前沒有任務' }),
   ].join('');
 
@@ -3621,6 +3627,8 @@ async function route() {
       else if (page === 'bind') { renderTabbar(null); viewBind(); }
       else if (page === 'tasks') { renderTabbar('tasks'); await viewPartnerTasks(); }
       else if (page === 'wishes') { renderTabbar(null); await viewWishes(); }
+      else if (page === 'cards') { renderTabbar(null); await viewCards(); }
+      else if (page === 'card') { renderTabbar(null); await viewCard(arg, parts[2]); }
       else if (page === 'feedback') { renderTabbar(null); viewFeedback(); }
       else if (page === 'task') { renderTabbar(null); await viewPartnerTaskForm(arg); }
       else if (page === 'settings') { renderTabbar(null); viewPartnerSettings(); }
@@ -3636,6 +3644,8 @@ async function route() {
     else if (page === 'settings') { renderTabbar(null); await viewSettings(); }
     else if (page === 'stamps') { renderTabbar(null); await viewStamps(); }
     else if (page === 'wishes') { renderTabbar(null); await viewWishes(); }
+    else if (page === 'cards') { renderTabbar(null); await viewCards(); }
+    else if (page === 'card') { renderTabbar(null); await viewCard(arg, parts[2]); }
     else if (page === 'feedback') { renderTabbar(null); viewFeedback(); }
     else if (page === 'tasks' && usingCloud()) { renderTabbar(null); await viewPartnerTasks(); }
     else if (page === 'end' && usingCloud()) { renderTabbar(null); await viewEnd(arg ? decodeURIComponent(arg) : ''); }

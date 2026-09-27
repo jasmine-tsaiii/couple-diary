@@ -454,3 +454,8 @@ body::before { content: ''; position: fixed; top: 0; left: 0; right: 0; height: 
 .related-title { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .pick-list { display: flex; flex-direction: column; gap: 6px; max-height: 50vh; overflow-y: auto; }
 .pick-item { display: flex; align-items: center; gap: 8px; width: 100%; text-align: left; padding: 10px 12px; border: 1px solid var(--line); border-radius: 12px; background: var(--card); }
+
+/* 回憶小卡 */
+.card-preview { display: flex; flex-direction: column; align-items: center; gap: 8px; }
+.card-preview img { width: 100%; max-width: 360px; border-radius: 16px; box-shadow: 0 6px 24px rgba(43,35,32,.14); background: #FBF7F2; }
+.card-preview img:not([src]) { display: none; }
