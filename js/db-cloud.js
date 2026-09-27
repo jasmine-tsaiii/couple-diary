@@ -146,6 +146,24 @@ const CloudDB = CLOUD_ENABLED ? (() => {
     async approvePartner(uid) {
       check(await client.rpc('approve_partner', { p_uid: uid }));
     },
+    // ---- 另一半的愛心和補充 ----
+    async partnerNotes(recordId) {
+      const { data, error } = await client.from('partner_notes').select('*').eq('record_id', recordId).order('created_at');
+      return error ? [] : data || [];
+    },
+    async heartedIds() {
+      const { data, error } = await client.from('partner_notes').select('record_id').eq('kind', 'heart');
+      return new Set(error ? [] : (data || []).map((x) => x.record_id));
+    },
+    async toggleHeart(recordId) {
+      return check(await client.rpc('toggle_heart', { p_record_id: recordId }));
+    },
+    async addPartnerNote(recordId, text) {
+      check(await client.rpc('add_partner_note', { p_record_id: recordId, p_text: text }));
+    },
+    async deletePartnerNote(id) {
+      check(await client.from('partner_notes').delete().eq('id', id));
+    },
     async partnerLocked() {
       const { data, error } = await client.rpc('partner_locked');
       return error ? [] : data || [];

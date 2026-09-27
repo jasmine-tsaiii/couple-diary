@@ -472,6 +472,7 @@ async function viewList(type, tagFilter) {
   app.querySelectorAll('[data-tag]').forEach((b) => b.addEventListener('click', () => viewList(type, b.dataset.tag || null)));
 
   const grid = document.getElementById('grid');
+  const hearted = usingCloud() && type === 'happy' ? await CloudDB.heartedIds() : new Set();
   for (const r of shown) {
     const a = document.createElement('a');
     a.className = 'card tile';
@@ -492,6 +493,7 @@ async function viewList(type, tagFilter) {
         <div class="muted small">${shortDate(r.date)} · ${esc((r.emojis || []).join(''))}</div>
         ${(r.tags || []).length ? `<div class="tile-tags">${esc(r.tags.map((t) => '#' + t).join(' '))}</div>` : ''}
         ${(r.reflections || []).length ? `<div class="small muted">💭 ${r.reflections.length} 則反思</div>` : ''}
+        ${hearted.has(r.id) ? `<div class="small" style="color:var(--happy-dark)">❤️ ${isPartner() ? '你按了愛心' : `${esc(partnerName())}按了愛心`}</div>` : ''}
         ${lockNote ? `<div class="small row" style="color:var(--lock);gap:4px">${ICON.lockSmall}${lockNote}</div>` : ''}
       </div>`;
     grid.appendChild(a);
@@ -627,6 +629,29 @@ async function viewDetail(id) {
       </div>`}`;
   }
 
+  // 另一半的回應：美好時刻的愛心、吵架議題的補充（雲端版才有）
+  let notesPart = '';
+  if (usingCloud() && (r.type === 'happy' || r.type === 'fight')) {
+    const notes = await CloudDB.partnerNotes(r.id);
+    const hearts = notes.filter((n) => n.kind === 'heart');
+    const pnotes = notes.filter((n) => n.kind === 'note');
+    if (r.type === 'happy' && partner) {
+      notesPart = `<button class="btn ${hearts.length ? '' : 'secondary'}" id="heart-btn">${hearts.length ? '❤️ 你喜歡這則（再按一次收回）' : '🤍 按愛心，讓' + esc(ownerName()) + '知道你也喜歡'}</button>`;
+    } else if (r.type === 'happy' && hearts.length) {
+      notesPart = `<div class="card" style="background:var(--happy-bg);border-color:transparent;flex-direction:row;align-items:center"><span style="font-size:20px">❤️</span><span class="bold" style="color:var(--happy-dark)">${esc(hearts[0].partner_name)} 按了愛心</span></div>`;
+    } else if (r.type === 'fight' && (partner || pnotes.length)) {
+      notesPart = `<div class="card theme-fight" style="gap:10px">
+        <div class="bold" style="color:var(--fight)">${partner ? '我的補充' : `${esc(pnotes[0].partner_name)}的補充`}</div>
+        ${partner ? `<div class="muted small">${esc(ownerName())}寫的內容你不能改，但可以在這裡補充你的想法，${esc(ownerName())}看得到。</div>` : ''}
+        ${pnotes.map((n) => `<div class="field" style="gap:4px">
+          <div class="row between"><span class="small muted">${shortDate(n.created_at.slice(0, 10))}</span>${partner ? `<button class="btn small secondary" data-del-pn="${esc(n.id)}">刪除</button>` : ''}</div>
+          <div class="prose">${esc(n.text)}</div></div>`).join('')}
+        ${partner ? `<textarea id="pn-text" class="input" rows="3" maxlength="${LIMITS.fightText}" placeholder="例如：我那天其實是因為…"></textarea>
+        <button class="btn small" id="pn-add">送出補充</button>` : ''}
+      </div>`;
+    }
+  }
+
   let fightPart = '';
   if (r.type === 'fight') {
     const s = r.status || 'open';
@@ -682,8 +707,29 @@ async function viewDetail(id) {
     ${task}
     ${reflectPart}
     ${fightPart}
+    ${notesPart}
     ${partner ? '' : '<button class="btn danger" id="delete" style="margin-top:12px">刪除這則紀錄</button>'}
   `;
+  const heartBtn = document.getElementById('heart-btn');
+  if (heartBtn) heartBtn.addEventListener('click', () => withBusy(heartBtn, '', async () => {
+    const on = await CloudDB.toggleHeart(r.id);
+    toast(on ? `已經讓${ownerName()}知道你喜歡這則` : '已收回愛心');
+    viewDetail(r.id);
+  }));
+  const pnAdd = document.getElementById('pn-add');
+  if (pnAdd) pnAdd.addEventListener('click', () => {
+    const text = document.getElementById('pn-text').value.trim();
+    if (!text) { toast('先寫點什麼'); return; }
+    withBusy(pnAdd, '送出中…', async () => {
+      await CloudDB.addPartnerNote(r.id, text);
+      toast(`已送出，${ownerName()}看得到`);
+      viewDetail(r.id);
+    });
+  });
+  app.querySelectorAll('[data-del-pn]').forEach((b) => b.addEventListener('click', () => {
+    if (!confirm('刪除這則補充？')) return;
+    withBusy(b, '', async () => { await CloudDB.deletePartnerNote(b.dataset.delPn); viewDetail(r.id); });
+  }));
   if (partner) return;
 
   document.getElementById('delete').addEventListener('click', async () => {

@@ -367,6 +367,87 @@ grant execute on function public.partner_tasks() to authenticated;
 grant execute on function public.submit_task(text, text, text) to authenticated;
 grant execute on function public.my_owner() to authenticated;
 
+-- 另一半的回應：美好時刻按愛心、吵架議題寫「我的補充」。紀錄本身另一半還是不能改。
+create table if not exists public.partner_notes (
+  id            uuid primary key default gen_random_uuid(),
+  owner         uuid not null references auth.users (id) on delete cascade,
+  record_id     text not null references public.records (id) on delete cascade,
+  partner       uuid not null references auth.users (id) on delete cascade,
+  partner_name  text not null,
+  kind          text not null check (kind in ('heart', 'note')),
+  text          text not null default '' check (char_length(text) <= 1000),
+  created_at    timestamptz not null default now()
+);
+create unique index if not exists partner_notes_one_heart on public.partner_notes (record_id, partner) where kind = 'heart';
+create index if not exists partner_notes_owner_idx on public.partner_notes (owner, record_id);
+alter table public.partner_notes enable row level security;
+
+-- 你看得到所有回應、可以刪；另一半只看得到、刪得掉自己寫的；新增要透過下面的函式
+drop policy if exists "notes: owner read" on public.partner_notes;
+create policy "notes: owner read" on public.partner_notes
+  for select to authenticated using (owner = auth.uid() and public.is_real_user());
+drop policy if exists "notes: partner read" on public.partner_notes;
+create policy "notes: partner read" on public.partner_notes
+  for select to authenticated using (partner = auth.uid() and owner = public.my_owner());
+drop policy if exists "notes: owner delete" on public.partner_notes;
+create policy "notes: owner delete" on public.partner_notes
+  for delete to authenticated using (owner = auth.uid() and public.is_real_user());
+drop policy if exists "notes: partner delete" on public.partner_notes;
+create policy "notes: partner delete" on public.partner_notes
+  for delete to authenticated using (partner = auth.uid());
+
+-- 另一半看得到的紀錄（給對方看、或已解鎖，而且沒有被刪除）
+create or replace function public.partner_can_see(p_record_id text) returns public.records
+language sql stable security definer set search_path = public as $$
+  select r.* from public.records r
+  where r.id = p_record_id and r.owner = public.my_owner() and (r.data ->> 'deletedAt') is null
+    and (r.visibility = 'shared' or (r.visibility = 'task' and r.unlocked))
+$$;
+
+-- 按愛心／收回愛心（只有美好時刻），回傳按完之後是不是有愛心
+create or replace function public.toggle_heart(p_record_id text) returns boolean
+language plpgsql security definer set search_path = public as $$
+declare
+  r public.records;
+  p public.partners;
+begin
+  select * into p from public.partners where uid = auth.uid() and approved;
+  if not found then raise exception '你還沒有用分享碼加入'; end if;
+  r := public.partner_can_see(p_record_id);
+  if r.id is null or r.type <> 'happy' then raise exception '只能對看得到的美好時刻按愛心'; end if;
+  if exists (select 1 from public.partner_notes where record_id = r.id and partner = auth.uid() and kind = 'heart') then
+    delete from public.partner_notes where record_id = r.id and partner = auth.uid() and kind = 'heart';
+    return false;
+  end if;
+  insert into public.partner_notes (owner, record_id, partner, partner_name, kind) values (p.owner, r.id, auth.uid(), p.name, 'heart');
+  return true;
+end $$;
+
+-- 在吵架議題寫「我的補充」（每則最多 1000 字，一個議題最多 50 則）
+create or replace function public.add_partner_note(p_record_id text, p_text text) returns void
+language plpgsql security definer set search_path = public as $$
+declare
+  r public.records;
+  p public.partners;
+  v_text text := trim(coalesce(p_text, ''));
+begin
+  select * into p from public.partners where uid = auth.uid() and approved;
+  if not found then raise exception '你還沒有用分享碼加入'; end if;
+  r := public.partner_can_see(p_record_id);
+  if r.id is null or r.type <> 'fight' then raise exception '只能在看得到的吵架議題寫補充'; end if;
+  if v_text = '' or char_length(v_text) > 1000 then raise exception '補充要 1 到 1000 個字'; end if;
+  if (select count(*) from public.partner_notes where record_id = r.id and partner = auth.uid() and kind = 'note') >= 50 then
+    raise exception '一個議題最多寫 50 則補充';
+  end if;
+  insert into public.partner_notes (owner, record_id, partner, partner_name, kind, text) values (p.owner, r.id, auth.uid(), p.name, 'note', v_text);
+end $$;
+
+revoke all on function public.partner_can_see(text) from public, anon, authenticated;
+revoke all on function public.toggle_heart(text) from public, anon;
+revoke all on function public.add_partner_note(text, text) from public, anon;
+grant execute on function public.toggle_heart(text) to authenticated;
+grant execute on function public.add_partner_note(text, text) to authenticated;
+
 -- ============================================================
 -- 3. 照片：放在不公開的 photos 儲存空間，路徑是「使用者 id/照片 id.jpg」
 -- ============================================================
