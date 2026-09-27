@@ -1065,7 +1065,10 @@ async function viewHome() {
         <h1 class="title-xl">${esc(diaryTitle())}</h1>
         ${togetherDays() ? `<div class="small muted">在一起第 ${togetherDays()} 天</div>` : ''}
       </div>
-      <a class="icon-btn gear-btn" href="#/settings" aria-label="設定">${ICON.gear}<span>設定</span></a>
+      <div class="row" style="gap:8px;align-items:flex-start">
+        ${isGuest() ? '<a class="btn small secondary" href="#/login" id="home-login">登入</a>' : ''}
+        <a class="icon-btn gear-btn" href="#/settings" aria-label="設定">${ICON.gear}<span>設定</span></a>
+      </div>
     </div>
     ${quickRecord('今天想記下什麼？')}
     ${joinReqs.map((j) => `<div class="card join-req" style="background:var(--lock-bg);border-color:transparent;gap:8px">
@@ -1092,11 +1095,12 @@ async function viewHome() {
       <div class="small" style="color:var(--progress-ink)">${lastBackup ? `上次備份是 ${daysAgo(lastBackup)} 天前` : '還沒有備份過'}，${usingCloud() ? '雲端免費方案沒有自動備份，' : ''}點這裡到設定頁匯出備份，再存到 iCloud 雲碟或 Google 雲端硬碟。</div>
     </a>` : ''}
     ${isGuest() ? inAppNotice() : ''}
-    ${isGuest() ? `<a class="card" href="#/login" style="background:var(--happy-bg);border-color:transparent;gap:4px">
+    ${isGuest() ? `<div class="card" id="guest-account" style="background:var(--happy-bg);border-color:transparent;gap:4px">
       <div class="bold" style="color:var(--happy-dark)">${all.length ? '註冊，把紀錄存到雲端' : '免費註冊，保存你們的紀錄'}</div>
-      <div class="small" style="color:var(--happy-dark)">${all.length ? `目前 ${all.length} 則紀錄只存在這支手機。` : '現在是試用，紀錄只存在這支手機。'}在這支手機註冊或登入後會自動搬上雲端，換手機不會不見，也能分享給另一半 ›</div>
+      <div class="small" style="color:var(--happy-dark)">${all.length ? `目前 ${all.length} 則紀錄只存在這支手機。` : '現在是試用，紀錄只存在這支手機。'}在這支手機註冊或登入後會自動搬上雲端，換手機不會不見，也能分享給另一半。</div>
       ${isIOS && standalone && !all.length ? '<div class="small" style="color:var(--happy-dark)">之前在 Safari 寫過的話：從主畫面打開的和 Safari 是分開存的。請回 Safari 打開網址、註冊或登入，紀錄就會搬上雲端，再回來這裡登入同一個帳號就看得到。</div>' : ''}
-    </a>` : ''}
+    <div class="btn-row"><a class="btn small" href="#/signup" id="guest-signup">免費註冊</a><a class="btn small secondary" href="#/login" id="guest-login">已經有帳號？登入</a></div>
+    </div>` : ''}
     ${partnerLeft ? `<div class="card" id="partner-left" style="background:var(--lock-bg);border-color:transparent;gap:6px">
       <div class="bold" style="color:var(--lock)">${esc(partnerLeft.name)}結束了這段關係</div>
       <div class="small" style="color:var(--lock)">${esc(partnerLeft.name)}已經看不到你的紀錄了。之前的紀錄要封存（收起來，只有你看得到）還是刪除？之後分享給新的人，對方就看不到這些。</div>
