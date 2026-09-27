@@ -156,6 +156,11 @@ const CloudDB = CLOUD_ENABLED ? (() => {
       }
       const res = check(await client.rpc('join_share', { p_code: code, p_password: password, p_name: name }));
       if (!res || !res.ok) throw new Error((res && res.error) || '沒辦法加入');
+      // 這段分享已經有綁定帳號的另一半：等待頁提醒「是同一個人的話請用原本的帳號登入」
+      try {
+        if (res.bound_partner) sessionStorage.setItem('boundPartnerHint', res.bound_partner);
+        else sessionStorage.removeItem('boundPartnerHint');
+      } catch (e) { /* 略過 */ }
       await loadPartner();
     },
     // 另一半結束這段關係：自己離開，主人下次打開會收到通知
@@ -191,6 +196,12 @@ const CloudDB = CLOUD_ENABLED ? (() => {
     },
     async deleteShare() {
       check(await client.from('shares').delete().eq('owner', userId()));
+    },
+    // 另一半（包括等同意的人）是不是綁定帳號、是不是以前寫過紀錄的人；舊版資料庫沒有這個函式就回空的
+    async partnerAccounts() {
+      const r = await client.rpc('partner_accounts');
+      if (r.error) return [];
+      return r.data || [];
     },
     async listPartners() {
       const { data, error } = await client.from('partners').select('uid, name, joined_at, approved').eq('owner', userId()).order('joined_at');

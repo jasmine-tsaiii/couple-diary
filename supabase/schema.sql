@@ -220,7 +220,12 @@ begin
   end if;
   insert into public.partners (uid, owner, name, approved) values (auth.uid(), s.owner, v_name, false)
   on conflict (uid) do update set owner = excluded.owner, name = excluded.name, joined_at = now(), approved = false;
-  return jsonb_build_object('ok', true, 'pending', true);
+  -- 臨時身分加入、但這段分享已經有綁定帳號的另一半：提醒他如果是同一個人，要用原本的帳號登入（不然同意後會擠掉原本的帳號）
+  return jsonb_build_object('ok', true, 'pending', true, 'bound_partner', (
+    select p.name from public.partners p join auth.users u on u.id = p.uid
+    where p.owner = s.owner and p.approved and p.uid <> auth.uid() and not coalesce(u.is_anonymous, false)
+      and not public.is_real_user()
+    limit 1));
 end $$;
 
 -- 你同意某個人加入：一組分享碼只有一位另一半，同意新的人就會取代舊的（包括舊手機的身分）
@@ -1443,3 +1448,17 @@ begin
 end $$;
 revoke all on function public.partner_end_relationship() from public, anon;
 grant execute on function public.partner_end_relationship() to authenticated;
+
+-- 主人看另一半（包括等同意的人）是不是綁定帳號、是不是以前就寫過紀錄的人（回來的另一半）
+create or replace function public.partner_accounts() returns jsonb
+language sql stable security definer set search_path = public as $$
+  select coalesce(jsonb_agg(jsonb_build_object(
+    'uid', p.uid,
+    'bound', not coalesce(u.is_anonymous, false),
+    'returning', exists (select 1 from public.records r where r.owner = p.owner and r.author = p.uid and r.author <> p.owner)
+  )), '[]'::jsonb)
+  from public.partners p left join auth.users u on u.id = p.uid
+  where p.owner = auth.uid() and public.is_real_user()
+$$;
+revoke all on function public.partner_accounts() from public, anon;
+grant execute on function public.partner_accounts() to authenticated;

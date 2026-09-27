@@ -3022,6 +3022,8 @@ function viewRoleChoice() {
 
 function viewWaitingApproval() {
   const info = CloudDB.pendingJoin();
+  let boundHint = '';
+  try { boundHint = sessionStorage.getItem('boundPartnerHint') || ''; } catch (e) { boundHint = ''; }
   app.className = '';
   app.innerHTML = `
     <div style="display:flex;flex-direction:column;align-items:center;gap:10px;text-align:center;margin-top:40px">
@@ -3029,9 +3031,20 @@ function viewWaitingApproval() {
       <h1 class="title-xl">等 ${esc(info.owner_name || '對方')} 同意</h1>
       <div class="muted">已經送出加入要求了。請 ${esc(info.owner_name || '對方')} 打開 App，到設定頁按「同意」，你就看得到分享的紀錄。</div>
     </div>
-    <button class="btn" id="w-check">對方同意了，重新看看</button>
+    ${boundHint ? `<div class="card" id="bound-hint" style="background:var(--progress-bg);border-color:transparent;gap:8px">
+      <div class="bold" style="color:var(--progress-ink)">你是「${esc(boundHint)}」嗎？</div>
+      <div class="small" style="color:var(--progress-ink)">這本日記已經有一位綁定帳號的「${esc(boundHint)}」。如果那就是你，請改用原本的 Google 或 Email 登入，之前寫的紀錄才接得回來；用現在這個臨時身分加入，對方同意後會把原本的帳號擠掉。</div>
+      <button class="btn small" id="w-use-account">我是${esc(boundHint)}，改用原本的帳號登入</button>
+    </div>` : ''}
+    <button class="btn${boundHint ? ' secondary' : ''}" id="w-check">對方同意了，重新看看</button>
     <button class="btn secondary small" id="w-leave">取消加入</button>
   `;
+  const useAcc = document.getElementById('w-use-account');
+  if (useAcc) useAcc.addEventListener('click', () => withBusy(useAcc, '', async () => {
+    try { sessionStorage.removeItem('boundPartnerHint'); } catch (e) { /* 略過 */ }
+    await CloudDB.leaveShare();
+    go('#/login'); route();
+  }));
   const check = document.getElementById('w-check');
   check.addEventListener('click', () => withBusy(check, '檢查中…', async () => {
     await CloudDB.refreshPartner();
@@ -3187,7 +3200,25 @@ function bindShareCard() {
 async function approveJoin(btn, uid, name) {
   const current = (await CloudDB.listPartners()).find((p) => p.approved !== false && p.uid !== uid);
   const hasRecords = (await liveRecords()).length > 0;
-  if (current || hasRecords) {
+  const accounts = await CloudDB.partnerAccounts();
+  const acc = (u) => accounts.find((a) => a.uid === u) || {};
+  const joiner = acc(uid);
+  if (joiner.bound && joiner.returning) {
+    // 以前就在這本日記寫過紀錄的帳號回來了：不用再分同一個人還是新對象
+    if (!(await choose(`${name} 回來了`, `這是之前一起寫日記的帳號，同意後${current ? `會取代目前的「${current.name}」，` : ''}之前寫的紀錄都會接回來。`, [
+      { key: 'ok', label: `同意 ${name} 回來`, primary: true },
+    ]))) return false;
+  } else if (current && acc(current.uid).bound && !joiner.bound) {
+    // 目前的另一半已經綁定帳號，新的是臨時身分：多半是同一個人換了瀏覽器，請他用原本的帳號登入，不要擠掉帳號
+    const pick = await choose(`${name} 想加入`, `目前的另一半「${current.name}」已經綁定帳號。如果這是${current.name}換手機或換瀏覽器，請他用原本的 Google 或 Email 登入再加入，不要用臨時身分，不然會把原本的帳號擠掉。`, [
+      { key: 'reject', label: '先拒絕，請他用原本的帳號登入', hint: `${current.name}照舊看得到，不受影響`, primary: true },
+      { key: 'new', label: '是新的對象', hint: '先把之前的紀錄封存或刪除，新的人才看不到' },
+      { key: 'replace', label: `還是同意，取代「${current.name}」的帳號`, hint: '原本帳號寫的紀錄會留著，但那個帳號就不能再寫了' },
+    ]);
+    if (!pick) return false;
+    if (pick === 'reject') { await CloudDB.removePartner(uid); toast(`已拒絕，請${current.name}用原本的帳號登入再加入`); return true; }
+    if (pick === 'new') { go(`#/end/${encodeURIComponent(uid)}`); return false; }
+  } else if (current || hasRecords) {
     const before = current ? current.name : (NAMES.partner || '');
     const same = before && before === name;
     const pick = await choose(`${name} 想加入`, current ? `目前的另一半是「${before}」。同意後會取代「${before}」。` : '你已經有一些紀錄了。', [
