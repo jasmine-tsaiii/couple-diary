@@ -905,7 +905,7 @@ async function viewList(type, tagFilter) {
         ${(r.reflections || []).length ? `<div class="small muted">💭 ${r.reflections.length} 則反思</div>` : ''}
         ${r.clearedAt ? '<div class="small" style="color:var(--resolved-ink)">☀️ 已放晴</div>' : ''}
         ${twoAuthors && who === 'all' ? `<div class="small muted">${isMine(r) ? '你寫的' : `${esc(r.authorName || otherName())}寫的`}</div>` : ''}
-        ${hearted.has(r.id) ? `<div class="small" style="color:var(--happy-dark)">❤️ ${isPartner() ? '你按了愛心' : `${esc(partnerName())}按了愛心`}</div>` : ''}
+        ${hearted.has(r.id) ? `<div class="small" style="color:var(--happy-dark)">❤️ ${isMine(r) ? `${esc(otherName())}按了愛心` : '你按了愛心'}</div>` : ''}
         ${lockNote ? `<div class="small row" style="color:var(--lock);gap:4px">${ICON.lockSmall}${lockNote}</div>` : ''}
       </div>`;
     grid.appendChild(a);
@@ -1067,8 +1067,10 @@ async function viewDetail(id) {
     const notes = await CloudDB.partnerNotes(r.id);
     const hearts = notes.filter((n) => n.kind === 'heart');
     const pnotes = notes.filter((n) => n.kind === 'note');
-    if (r.type === 'happy' && partner && !mine) {
-      notesPart = `<button class="btn ${hearts.length ? '' : 'secondary'}" id="heart-btn">${hearts.length ? '❤️ 你喜歡這則（再按一次收回）' : '🤍 按愛心，讓' + esc(ownerName()) + '知道你也喜歡'}</button>`;
+    // 對方寫的美好時刻：按愛心讓對方知道你也喜歡（兩個人都可以按）
+    if (r.type === 'happy' && !mine) {
+      const myHeart = hearts.some((h) => h.partner === CloudDB.myId());
+      notesPart = `<button class="btn ${myHeart ? '' : 'secondary'}" id="heart-btn">${myHeart ? '❤️ 你喜歡這則（再按一次收回）' : '🤍 按愛心，讓' + authorLabel(r) + '知道你也喜歡'}</button>`;
     } else if (r.type === 'happy' && hearts.length) {
       notesPart = `<div class="card" style="background:var(--happy-bg);border-color:transparent;flex-direction:row;align-items:center"><span style="font-size:20px">❤️</span><span class="bold" style="color:var(--happy-dark)">${esc(hearts[0].partner_name)} 按了愛心</span></div>`;
     } else if (r.type === 'fight' && ((partner && !bound) || pnotes.length)) {
@@ -1151,7 +1153,7 @@ async function viewDetail(id) {
   const heartBtn = document.getElementById('heart-btn');
   if (heartBtn) heartBtn.addEventListener('click', () => withBusy(heartBtn, '', async () => {
     const on = await CloudDB.toggleHeart(r.id);
-    toast(on ? `已經讓${ownerName()}知道你喜歡這則` : '已收回愛心');
+    toast(on ? `已經讓${authorLabel(r)}知道你喜歡這則` : '已收回愛心');
     viewDetail(r.id);
   }));
   const pnAdd = document.getElementById('pn-add');

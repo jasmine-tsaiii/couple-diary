@@ -756,6 +756,67 @@ grant execute on function public.renumber_all() to authenticated;
 grant execute on function public.partner_save_record(jsonb) to authenticated;
 grant execute on function public.partner_delete_record(text) to authenticated;
 
+-- ---------- 雙人版第三段：互相按愛心 ----------
+-- partner_notes 的 partner 欄位改成「寫這則回應的人」，可能是另一半，也可能是主人（對另一半寫的紀錄按愛心）
+-- 自己寫的紀錄上的回應，自己看得到
+drop policy if exists "notes: author read" on public.partner_notes;
+create policy "notes: author read" on public.partner_notes
+  for select to authenticated
+  using (exists (select 1 from public.records r where r.id = record_id and r.author = auth.uid()));
+
+-- 我在這個空間裡看得到、但不是我寫的紀錄（按愛心、寫補充用）
+create or replace function public.member_can_see(p_record_id text) returns public.records
+language sql stable security definer set search_path = public as $$
+  select r.* from public.records r
+  where r.id = p_record_id
+    and r.owner = coalesce(public.my_owner(), case when public.is_real_user() then auth.uid() end)
+    and r.author is distinct from auth.uid()
+    and (r.data ->> 'deletedAt') is null
+    and (r.visibility = 'shared' or (r.visibility = 'task' and r.unlocked))
+$$;
+-- 我在這個空間裡的名字
+create or replace function public.member_name() returns text
+language sql stable security definer set search_path = public as $$
+  select coalesce(
+    (select name from public.partners where uid = auth.uid() and approved),
+    (select nullif(owner_name, '') from public.shares where owner = auth.uid()),
+    '對方')
+$$;
+
+-- 按愛心／收回愛心（只有美好時刻，而且是對方寫的），回傳按完之後是不是有愛心
+create or replace function public.toggle_heart(p_record_id text) returns boolean
+language plpgsql security definer set search_path = public as $$
+declare
+  r public.records;
+begin
+  r := public.member_can_see(p_record_id);
+  if r.id is null or r.type <> 'happy' then raise exception '只能對看得到、對方寫的美好時刻按愛心'; end if;
+  if exists (select 1 from public.partner_notes where record_id = r.id and partner = auth.uid() and kind = 'heart') then
+    delete from public.partner_notes where record_id = r.id and partner = auth.uid() and kind = 'heart';
+    return false;
+  end if;
+  insert into public.partner_notes (owner, record_id, partner, partner_name, kind) values (r.owner, r.id, auth.uid(), public.member_name(), 'heart');
+  return true;
+end $$;
+
+-- 在對方寫的吵架議題寫「我的補充」（每則最多 1000 字，一個議題最多 50 則）
+create or replace function public.add_partner_note(p_record_id text, p_text text) returns void
+language plpgsql security definer set search_path = public as $$
+declare
+  r public.records;
+  v_text text := trim(coalesce(p_text, ''));
+begin
+  r := public.member_can_see(p_record_id);
+  if r.id is null or r.type <> 'fight' then raise exception '只能在看得到的吵架議題寫補充'; end if;
+  if v_text = '' or char_length(v_text) > 1000 then raise exception '補充要 1 到 1000 個字'; end if;
+  if (select count(*) from public.partner_notes where record_id = r.id and partner = auth.uid() and kind = 'note') >= 50 then
+    raise exception '一個議題最多寫 50 則補充';
+  end if;
+  insert into public.partner_notes (owner, record_id, partner, partner_name, kind, text) values (r.owner, r.id, auth.uid(), public.member_name(), 'note', v_text);
+end $$;
+revoke all on function public.member_can_see(text) from public, anon, authenticated;
+revoke all on function public.member_name() from public, anon, authenticated;
+
 -- 意見回饋：訪客、主人、另一半都能送出；只有你在 Supabase 後台看得到（沒有讀取權限）
 create table if not exists public.feedback (
   id bigint generated always as identity primary key,
