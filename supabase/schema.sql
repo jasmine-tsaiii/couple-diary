@@ -536,6 +536,102 @@ grant execute on function public.partner_set_wish_done(uuid, boolean) to authent
 grant execute on function public.partner_delete_wish(uuid) to authenticated;
 
 -- ============================================================
+-- ---------- 雙人版（第一段）：吵架議題兩個人共用 ----------
+-- 每則紀錄記下「誰寫的」；舊紀錄都是主人寫的
+alter table public.records add column if not exists author uuid;
+update public.records set author = owner where author is null;
+alter table public.records alter column author set default auth.uid();
+
+-- 另一半新增或修改吵架議題（要先綁定 Email 或 Google，臨時帳號不能寫）
+-- 只收文字欄位；編號、照片、誰可以看、誰寫的都由資料庫決定
+create or replace function public.partner_save_fight(p_rec jsonb) returns jsonb
+language plpgsql security definer set search_path = public as $$
+declare
+  p public.partners;
+  r public.records;
+  v_id text := p_rec ->> 'id';
+  v_now bigint := (extract(epoch from now()) * 1000)::bigint;
+  v_in jsonb := '{}'::jsonb;
+  v_data jsonb;
+  v_no int;
+  k text;
+begin
+  if not public.is_real_user() then raise exception '要先綁定 Email 或 Google 帳號，才能新增或修改吵架議題'; end if;
+  select * into p from public.partners where uid = auth.uid() and approved;
+  if not found then raise exception '你還沒有用分享碼加入，或還在等對方同意'; end if;
+  if v_id is null or v_id !~ '^[A-Za-z0-9_-]{1,40}$' then raise exception '紀錄編號不對'; end if;
+
+  -- 檢查每個欄位
+  foreach k in array array['title', 'date', 'category', 'reason', 'myView', 'theirView', 'status', 'resolution'] loop
+    if p_rec ? k then
+      if jsonb_typeof(p_rec -> k) <> 'string' then raise exception '資料格式不對：%', k; end if;
+      v_in := v_in || jsonb_build_object(k, p_rec ->> k);
+    end if;
+  end loop;
+  foreach k in array array['followUps', 'emojis', 'tags'] loop
+    if p_rec ? k then
+      if jsonb_typeof(p_rec -> k) <> 'array' then raise exception '資料格式不對：%', k; end if;
+      v_in := v_in || jsonb_build_object(k, p_rec -> k);
+    end if;
+  end loop;
+  if char_length(coalesce(v_in ->> 'title', 'x')) not between 1 and 60 then raise exception '議題要 1 到 60 個字'; end if;
+  if v_in ? 'date' and v_in ->> 'date' !~ '^\d{4}-\d{2}-\d{2}$' then raise exception '日期格式不對'; end if;
+  if char_length(coalesce(v_in ->> 'category', '')) > 12 then raise exception '分類最多 12 個字'; end if;
+  if greatest(char_length(coalesce(v_in ->> 'reason', '')), char_length(coalesce(v_in ->> 'myView', '')), char_length(coalesce(v_in ->> 'theirView', ''))) > 1000 then raise exception '每一欄最多 1000 個字'; end if;
+  if char_length(coalesce(v_in ->> 'resolution', '')) > 500 then raise exception '解法最多 500 個字'; end if;
+  if v_in ? 'status' and v_in ->> 'status' not in ('open', 'progress', 'resolved') then raise exception '狀態不對'; end if;
+  if jsonb_array_length(coalesce(v_in -> 'followUps', '[]')) > 100 then raise exception '每個議題最多 100 則後續'; end if;
+  if jsonb_array_length(coalesce(v_in -> 'emojis', '[]')) > 5 or jsonb_array_length(coalesce(v_in -> 'tags', '[]')) > 10 then raise exception '表情或標籤太多了'; end if;
+
+  select * into r from public.records where id = v_id for update;
+  if found then
+    -- 修改：只能改分享給你的吵架議題
+    if r.owner <> p.owner or r.type <> 'fight' or r.visibility <> 'shared' or (r.data ->> 'deletedAt') is not null then
+      raise exception '找不到這個議題，或它沒有分享給你';
+    end if;
+    v_data := r.data || v_in || jsonb_build_object('updatedAt', v_now, 'editedAt', v_now);
+    update public.records set data = v_data, updated_at = now() where id = v_id;
+  else
+    -- 新增：一律兩個人都看得到；編號接在最大號後面
+    if (select count(*) from public.records where owner = p.owner and author = auth.uid()) >= 1000 then
+      raise exception '新增的議題太多了';
+    end if;
+    select greatest(
+      coalesce(max((data ->> 'no')::int), 0),
+      coalesce((select (value ->> 'fight')::int from public.settings where owner = p.owner and key = 'lastNo'), 0)
+    ) + 1 into v_no
+    from public.records where owner = p.owner and type = 'fight';
+    insert into public.settings (owner, key, value) values (p.owner, 'lastNo', jsonb_build_object('fight', v_no))
+    on conflict (owner, key) do update set value = coalesce(public.settings.value, '{}'::jsonb) || jsonb_build_object('fight', v_no);
+    v_data := jsonb_build_object('status', 'open', 'followUps', '[]'::jsonb, 'emojis', '[]'::jsonb, 'tags', '[]'::jsonb,
+                                 'category', '', 'reason', '', 'myView', '', 'theirView', '', 'resolution', '', 'description', '')
+      || v_in
+      || jsonb_build_object('id', v_id, 'type', 'fight', 'no', v_no, 'visibility', 'shared', 'unlocked', false,
+                            'photoIds', '[]'::jsonb, 'task', jsonb_build_object('text', '', 'mode', 'confirm'),
+                            'author', auth.uid(), 'authorName', p.name, 'v', 1,
+                            'createdAt', v_now, 'updatedAt', v_now);
+    if not v_data ? 'date' then v_data := v_data || jsonb_build_object('date', to_char(now(), 'YYYY-MM-DD')); end if;
+    insert into public.records (id, owner, author, type, visibility, data) values (v_id, p.owner, auth.uid(), 'fight', 'shared', v_data);
+  end if;
+  return v_data;
+end $$;
+
+-- 另一半刪掉自己新增的吵架議題（移到主人的「最近刪除」，30 天內可以救回來）
+create or replace function public.partner_delete_fight(p_id text) returns void
+language plpgsql security definer set search_path = public as $$
+declare
+  v_now bigint := (extract(epoch from now()) * 1000)::bigint;
+begin
+  if not public.is_real_user() then raise exception '要先綁定帳號'; end if;
+  update public.records set data = data || jsonb_build_object('deletedAt', v_now, 'updatedAt', v_now), updated_at = now()
+  where id = p_id and owner = public.my_owner() and type = 'fight' and author = auth.uid() and (data ->> 'deletedAt') is null;
+  if not found then raise exception '只能刪除你自己新增的議題'; end if;
+end $$;
+revoke all on function public.partner_save_fight(jsonb) from public, anon;
+revoke all on function public.partner_delete_fight(text) from public, anon;
+grant execute on function public.partner_save_fight(jsonb) to authenticated;
+grant execute on function public.partner_delete_fight(text) to authenticated;
+
 -- 意見回饋：訪客、主人、另一半都能送出；只有你在 Supabase 後台看得到（沒有讀取權限）
 create table if not exists public.feedback (
   id bigint generated always as identity primary key,

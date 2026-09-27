@@ -134,7 +134,8 @@ function inAppNotice() {
   </div>`;
 }
 // 新紀錄預設誰可以看：美好時刻給對方看；烏雲和吵架常在氣頭上寫，預設上鎖
-const defaultVisibility = (type) => (type === 'happy' ? 'shared' : 'locked');
+// 吵架議題是兩個人的事，一律兩個人都看得到；烏雲預設只有自己看得到
+const defaultVisibility = (type) => (type === 'cloud' ? 'locked' : 'shared');
 // 另一半模式：用分享碼加入的人
 function isPartner() { return CLOUD_ENABLED && CloudDB.isPartner(); }
 // 試用中：有雲端設定，但這支手機還沒登入過帳號（登入過一次之後，登出就回到登入畫面）
@@ -910,12 +911,17 @@ async function viewFights(catFilter, statusFilter) {
   const shown = fights.filter((f) => (!catFilter || f.category === catFilter) && (!statusFilter || (f.status || 'open') === statusFilter));
 
   const lockedFights = isPartner() && !catFilter && !statusFilter ? (await CloudDB.partnerLocked()).filter((x) => x.type === 'fight').length : 0;
+  const partner = isPartner();
+  const myId = usingCloud() ? CloudDB.myId() : null;
+  const byOther = (f) => usingCloud() && f.author && f.author !== myId;
   app.className = 'theme-fight';
   app.innerHTML = `
     <div class="topbar">
       <a class="icon-btn" href="#/" aria-label="返回">${ICON.back}</a>
       <h1>吵架議題</h1>
     </div>
+    ${partner ? `<a class="btn" href="${CloudDB.isBoundPartner() ? '#/new/fight' : '#/bind'}">＋ 新增議題</a>
+      ${CloudDB.isBoundPartner() ? '' : `<div class="small muted">綁定帳號後，就能和${esc(ownerName())}一起新增、更新吵架議題。</div>`}` : ''}
     ${counts.length ? `<div class="card">
       <div class="muted bold">按分類看</div>
       ${counts.map((x) => `<div class="bar-row"><div class="label">${esc(x.c)}</div><div class="bar"><div style="width:${(x.n / max) * 100}%"></div></div><div class="num">${x.n} 次・解決 ${x.done}</div></div>`).join('')}
@@ -936,12 +942,12 @@ async function viewFights(catFilter, statusFilter) {
         return `<a class="card" href="#/view/${esc(f.id)}" style="gap:6px">
           <div class="row between"><span class="small bold" style="color:var(--fight)">${esc(f.category || '未分類')}</span><span class="badge ${s.cls}">${s.label}</span></div>
           <div class="bold" style="font-size:16px">${esc(f.title)}</div>
-          <div class="muted small">${shortDate(f.date)} · ${extra} ${esc((f.emojis || []).join(''))}</div>
+          <div class="muted small">${shortDate(f.date)} · ${extra} ${esc((f.emojis || []).join(''))}${byOther(f) ? ` · ${esc(f.authorName || (partner ? ownerName() : partnerName()))}新增` : ''}</div>
         </a>`;
       }).join('')}
     </div>
     ${lockedFights ? `<div class="card" style="background:var(--lock-bg);border-color:transparent;gap:4px;flex-direction:row;align-items:center">${ICON.lockSmall}<span class="small" style="color:var(--lock)">另外還有 ${lockedFights} 則上鎖的吵架議題</span></div>` : ''}
-    ${fights.length ? (shown.length ? '' : '<div class="empty">這個條件下沒有議題</div>') : isPartner() ? (lockedFights ? '' : '<div class="empty">沒有分享的吵架議題</div>') : `<div class="empty">還沒有吵架議題，很棒！<a class="btn small" href="#/new/fight">新增一個議題</a></div>`}
+    ${fights.length ? (shown.length ? '' : '<div class="empty">這個條件下沒有議題</div>') : isPartner() ? (lockedFights ? '' : '<div class="empty">還沒有吵架議題</div>') : `<div class="empty">還沒有吵架議題，很棒！<a class="btn small" href="#/new/fight">新增一個議題</a></div>`}
   `;
   app.querySelectorAll('[data-cat]').forEach((b) => b.addEventListener('click', () => viewFights(b.dataset.cat || null, statusFilter)));
   app.querySelectorAll('[data-st]').forEach((b) => b.addEventListener('click', () => viewFights(catFilter, b.dataset.st || null)));
@@ -954,6 +960,13 @@ async function viewDetail(id) {
   const all = await liveRecords();
   const conf = TYPES[r.type];
   const partner = isPartner();
+  const bound = partner && CloudDB.isBoundPartner();
+  // 吵架議題兩個人都能改：主人全部都能改；另一半要綁定帳號，而且是分享給他的議題
+  const fightEdit = r.type === 'fight' && (!partner || (bound && r.visibility === 'shared'));
+  // 誰新增的（舊紀錄沒有記，就是主人）
+  const mine = usingCloud() ? (r.author ? r.author === CloudDB.myId() : !partner) : true;
+  const authorText = usingCloud() && r.author ? (mine ? '你新增的' : `${esc(r.authorName || (partner ? ownerName() : partnerName()))}新增的`) : '';
+  const canDelete = !partner ? (mine || r.type !== 'fight') : (bound && mine && r.type === 'fight');
   const backHref = r.type === 'fight' ? '#/fights' : `#/list/${r.type}`;
   const urls = [];
   for (const pid of r.photoIds || []) { const u = await photoUrl(pid); if (u) urls.push(u); }
@@ -1030,14 +1043,14 @@ async function viewDetail(id) {
       notesPart = `<button class="btn ${hearts.length ? '' : 'secondary'}" id="heart-btn">${hearts.length ? '❤️ 你喜歡這則（再按一次收回）' : '🤍 按愛心，讓' + esc(ownerName()) + '知道你也喜歡'}</button>`;
     } else if (r.type === 'happy' && hearts.length) {
       notesPart = `<div class="card" style="background:var(--happy-bg);border-color:transparent;flex-direction:row;align-items:center"><span style="font-size:20px">❤️</span><span class="bold" style="color:var(--happy-dark)">${esc(hearts[0].partner_name)} 按了愛心</span></div>`;
-    } else if (r.type === 'fight' && (partner || pnotes.length)) {
+    } else if (r.type === 'fight' && ((partner && !bound) || pnotes.length)) {
       notesPart = `<div class="card theme-fight" style="gap:10px">
         <div class="bold" style="color:var(--fight)">${partner ? '我的補充' : `${esc(pnotes[0].partner_name)}的補充`}</div>
-        ${partner ? `<div class="muted small">${esc(ownerName())}寫的內容你不能改，但可以在這裡補充你的想法，${esc(ownerName())}看得到。</div>` : ''}
+        ${partner && !bound ? `<div class="muted small">${esc(ownerName())}寫的內容你不能改，但可以在這裡補充你的想法，${esc(ownerName())}看得到。</div>` : ''}
         ${pnotes.map((n) => `<div class="field" style="gap:4px">
           <div class="row between"><span class="small muted">${shortDate(n.created_at.slice(0, 10))}</span>${partner ? `<button class="btn small secondary" data-del-pn="${esc(n.id)}">刪除</button>` : ''}</div>
           <div class="prose">${esc(n.text)}</div></div>`).join('')}
-        ${partner ? `<textarea id="pn-text" class="input" rows="3" maxlength="${LIMITS.fightText}" placeholder="例如：我那天其實是因為…"></textarea>
+        ${partner && !bound ? `<textarea id="pn-text" class="input" rows="3" maxlength="${LIMITS.fightText}" placeholder="例如：我那天其實是因為…"></textarea>
         <button class="btn small" id="pn-add">送出補充</button>` : ''}
       </div>`;
     }
@@ -1048,9 +1061,9 @@ async function viewDetail(id) {
     const s = r.status || 'open';
     const fu = r.followUps || [];
     const myLabel = partner ? `${esc(ownerName())}的想法` : `${esc(myName())}的想法`;
-    const theirLabel = partner ? `${esc(CloudDB.partnerInfo().name)}的想法（${esc(ownerName())}寫的）` : `${esc(partnerName())}的想法`;
+    const theirLabel = partner ? `${esc(CloudDB.partnerInfo().name)}的想法` : `${esc(partnerName())}的想法`;
     fightPart = `
-      ${partner
+      ${!fightEdit
         ? `<div class="field"><div class="label">狀態</div><span class="badge ${STATUS[s].cls}" style="align-self:flex-start">${STATUS[s].label}</span></div>
            ${s === 'resolved' && r.resolution ? `<div class="card"><div class="small bold" style="color:var(--fight)">我們怎麼解決的</div><p class="prose">${esc(r.resolution)}</p></div>` : ''}`
         : `<div class="field"><div class="label">狀態</div>
@@ -1067,11 +1080,14 @@ async function viewDetail(id) {
         <div class="timeline">
           ${fu.length ? fu.map((f, i) => `<div class="tl-item">
             <div class="tl-rail"><div class="tl-dot"></div>${i < fu.length - 1 ? '<div class="tl-line"></div>' : ''}</div>
-            <div class="tl-body"><div class="muted small">${shortDate(f.date)}</div><div>${esc(f.text)}</div>${partner ? '' : `<button class="tl-del" data-del-fu="${esc(f.id)}">刪除</button>`}</div>
-          </div>`).join('') : `<div class="muted">${partner ? '還沒有後續。' : '還沒有後續，發生新進展時記下來吧。'}</div>`}
+            <div class="tl-body"><div class="muted small">${shortDate(f.date)}${f.by ? `・${esc(f.by)}` : ''}</div><div>${esc(f.text)}</div>${fightEdit ? `<button class="tl-del" data-del-fu="${esc(f.id)}">刪除</button>` : ''}</div>
+          </div>`).join('') : `<div class="muted">${fightEdit ? '還沒有後續，發生新進展時記下來吧。' : '還沒有後續。'}</div>`}
         </div>
       </div>
-      ${partner ? '' : `<div class="field"><label for="fu-text">新增後續</label>
+      ${partner && !bound && r.visibility === 'shared' ? `<a class="card" href="#/bind" style="background:var(--fight-bg);border-color:transparent;gap:4px">
+        <div class="bold" style="color:var(--fight-dark)">想一起更新狀態、寫後續？</div>
+        <div class="small muted">綁定 Email 或 Google 帳號後，就能和${esc(ownerName())}一起編輯吵架議題 ›</div></a>` : ''}
+      ${!fightEdit ? '' : `<div class="field"><label for="fu-text">新增後續</label>
         <input id="fu-date" class="input" type="date" min="1970-01-01" max="${today()}" value="${today()}" aria-label="後續日期">
         <div class="row"><input id="fu-text" class="input grow" maxlength="${LIMITS.followUp}" placeholder="發生了什麼新進展？"><button class="btn small" id="fu-add">加入</button></div>
       </div>`}`;
@@ -1082,12 +1098,13 @@ async function viewDetail(id) {
     <div class="topbar">
       <a class="icon-btn" href="${backHref}" aria-label="返回">${ICON.back}</a>
       <div class="grow"></div>
-      ${partner ? '' : `<a class="btn small secondary" href="#/edit/${esc(r.id)}">編輯</a>`}
+      ${!partner || fightEdit ? `<a class="btn small secondary" href="#/edit/${esc(r.id)}">編輯</a>` : ''}
     </div>
     <div class="field" style="gap:6px">
       <div class="row" style="gap:8px">
         <span class="badge" style="background:var(--accent-bg);color:var(--accent-dark)">${r.type === 'fight' ? esc(r.category || '未分類') : conf.label}</span>
         <span class="muted small">${longDate(r.date)}</span>
+        ${authorText ? `<span class="muted small">・${authorText}</span>` : ''}
         ${r.editedAt ? `<span class="muted small">・${shortDate(new Date(r.editedAt - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 10))} 編輯過</span>` : ''}
       </div>
       <h1 style="font-size:24px">${esc(r.title)}</h1>
@@ -1100,7 +1117,8 @@ async function viewDetail(id) {
     ${reflectPart}
     ${fightPart}
     ${notesPart}
-    ${partner ? '' : '<button class="btn danger" id="delete" style="margin-top:12px">刪除這則紀錄</button>'}
+    ${canDelete ? '<button class="btn danger" id="delete" style="margin-top:12px">刪除這則紀錄</button>' : ''}
+    ${!partner && !canDelete ? `<div class="small muted" style="text-align:center">這個議題是${esc(r.authorName || partnerName())}新增的，只有${esc(r.authorName || partnerName())}能刪除。</div>` : ''}
   `;
   const heartBtn = document.getElementById('heart-btn');
   if (heartBtn) heartBtn.addEventListener('click', () => withBusy(heartBtn, '', async () => {
@@ -1122,9 +1140,51 @@ async function viewDetail(id) {
     if (!confirm('刪除這則補充？')) return;
     withBusy(b, '', async () => { await CloudDB.deletePartnerNote(b.dataset.delPn); viewDetail(r.id); });
   }));
+  if (fightEdit) {
+    app.querySelectorAll('[data-status]').forEach((b) => b.addEventListener('click', () => withBusy(b, '', async () => {
+      await updateRecord(r.id, (x) => { x.status = b.dataset.status; });
+      viewDetail(r.id);
+    })));
+    const res = document.getElementById('resolution');
+    if (res) res.addEventListener('change', async () => {
+      try { await updateRecord(r.id, (x) => { x.resolution = res.value.trim(); }); toast('已儲存'); } catch (e) { toast('沒有存成功：' + e.message); }
+    });
+    const fuAdd = document.getElementById('fu-add');
+    fuAdd.addEventListener('click', () => {
+      const text = document.getElementById('fu-text').value.trim();
+      if (!text) { toast('先寫一點內容'); return; }
+      const date = document.getElementById('fu-date').value || today();
+      if (!dateOk(date)) { toast('日期要在今天以前'); return; }
+      withBusy(fuAdd, '加入中…', async () => {
+        await updateRecord(r.id, (x) => {
+          const list = x.followUps || [];
+          if (list.length >= LIMITS.followUpsPerFight) throw new Error(`每個議題最多 ${LIMITS.followUpsPerFight} 則後續`);
+          x.followUps = list.concat({ id: DB.uid(), date, text, by: partner ? CloudDB.partnerInfo().name : myName() }).sort((a, b) => a.date.localeCompare(b.date));
+          // 第一次加後續時，自動從「未解決」變成「處理中」
+          if ((x.status || 'open') === 'open') x.status = 'progress';
+        });
+        viewDetail(r.id);
+      });
+    });
+    app.querySelectorAll('[data-del-fu]').forEach((b) => b.addEventListener('click', () => {
+      if (!confirm('刪除這則後續？')) return;
+      withBusy(b, '', async () => {
+        await updateRecord(r.id, (x) => { x.followUps = (x.followUps || []).filter((f) => f.id !== b.dataset.delFu); });
+        viewDetail(r.id);
+      });
+    }));
+  }
+  if (partner && canDelete) {
+    const delBtn = document.getElementById('delete');
+    delBtn.addEventListener('click', () => {
+      if (!confirm(`要刪除這個議題嗎？${ownerName()}那邊也會看不到。`)) return;
+      withBusy(delBtn, '', async () => { await CloudDB.partnerDeleteFight(r.id); toast('已刪除'); go(backHref); });
+    });
+  }
   if (partner) return;
 
-  document.getElementById('delete').addEventListener('click', async () => {
+  const delBtn = document.getElementById('delete');
+  if (delBtn) delBtn.addEventListener('click', async () => {
     if (!confirm(`要刪除這則嗎？會先移到設定頁的「最近刪除」，${TRASH_DAYS} 天內都可以救回來${usingCloud() ? '，這段時間對方也看不到' : ''}。`)) return;
     await updateRecord(r.id, (x) => { x.deletedAt = Date.now(); });
     toast(`已移到最近刪除，${TRASH_DAYS} 天內可以救回來`);
@@ -1185,40 +1245,6 @@ async function viewDetail(id) {
     }));
   }
 
-  if (r.type === 'fight') {
-    app.querySelectorAll('[data-status]').forEach((b) => b.addEventListener('click', () => withBusy(b, '', async () => {
-      await updateRecord(r.id, (x) => { x.status = b.dataset.status; });
-      viewDetail(r.id);
-    })));
-    const res = document.getElementById('resolution');
-    if (res) res.addEventListener('change', async () => {
-      try { await updateRecord(r.id, (x) => { x.resolution = res.value.trim(); }); toast('已儲存'); } catch (e) { toast('沒有存成功：' + e.message); }
-    });
-    const fuAdd = document.getElementById('fu-add');
-    fuAdd.addEventListener('click', () => {
-      const text = document.getElementById('fu-text').value.trim();
-      if (!text) { toast('先寫一點內容'); return; }
-      const date = document.getElementById('fu-date').value || today();
-      if (!dateOk(date)) { toast('日期要在今天以前'); return; }
-      withBusy(fuAdd, '加入中…', async () => {
-        await updateRecord(r.id, (x) => {
-          const list = x.followUps || [];
-          if (list.length >= LIMITS.followUpsPerFight) throw new Error(`每個議題最多 ${LIMITS.followUpsPerFight} 則後續`);
-          x.followUps = list.concat({ id: DB.uid(), date, text }).sort((a, b) => a.date.localeCompare(b.date));
-          // 第一次加後續時，自動從「未解決」變成「處理中」
-          if ((x.status || 'open') === 'open') x.status = 'progress';
-        });
-        viewDetail(r.id);
-      });
-    });
-    app.querySelectorAll('[data-del-fu]').forEach((b) => b.addEventListener('click', () => {
-      if (!confirm('刪除這則後續？')) return;
-      withBusy(b, '', async () => {
-        await updateRecord(r.id, (x) => { x.followUps = (x.followUps || []).filter((f) => f.id !== b.dataset.delFu); });
-        viewDetail(r.id);
-      });
-    }));
-  }
 }
 
 // ---------- 新增／編輯 ----------
@@ -1261,6 +1287,11 @@ async function viewForm(mode, arg) {
   const all = await DB.allRecords();
   const cats = await getCategories();
   const originalType = rec.type;
+  const partner = isPartner();
+  // 另一半只能寫吵架議題（要先綁定帳號）；吵架議題一律兩個人都看得到（舊的上鎖議題可以打開）
+  if (partner && (rec.type !== 'fight' || !CloudDB.isBoundPartner() || (mode === 'edit' && rec.visibility !== 'shared'))) { go(CloudDB.isBoundPartner() ? '#/fights' : '#/bind'); return; }
+  const fightAlwaysShared = () => rec.type === 'fight' && (mode === 'new' || originalVisibility === 'shared' || originalType !== 'fight');
+  const originalVisibility = rec.visibility;
   const loadedUpdatedAt = rec.updatedAt || 0;
   const contentKey = (x) => JSON.stringify({ ...x, updatedAt: 0, editedAt: 0, v: 0 });
   const loadedContent = contentKey(rec);
@@ -1288,7 +1319,7 @@ async function viewForm(mode, arg) {
     app.className = conf.theme;
     const emojiList = [...conf.emojis, ...customEmojis.filter((e) => !conf.emojis.includes(e))];
     const tagList = [...new Set([...tagSuggestions(rec.type, all), ...extraTags, ...rec.tags])];
-    const catList = [...new Set([...cats, ...(rec.category ? [rec.category] : [])])];
+    const catList = [...new Set([...cats, ...all.filter((x) => x.type === 'fight' && !x.deletedAt).map((x) => x.category).filter(Boolean), ...(rec.category ? [rec.category] : [])])];
 
     const photoCells = [];
     for (const pid of rec.photoIds) {
@@ -1302,7 +1333,7 @@ async function viewForm(mode, arg) {
         <h1 style="font-size:20px;text-align:center">${mode === 'edit' ? '編輯紀錄' : '新增紀錄'}</h1>
         <div style="width:44px"></div>
       </div>
-      ${true ? `<div class="seg" style="grid-template-columns:repeat(3,minmax(0,1fr))">
+      ${!partner ? `<div class="seg" style="grid-template-columns:repeat(3,minmax(0,1fr))">
         ${Object.entries(TYPES).map(([k, t]) => `<button class="${k === rec.type ? 'on' : ''}" data-type="${k}">${t.label}</button>`).join('')}
       </div>` : ''}
       <div class="field"><label for="f-title">${rec.type === 'fight' ? '議題' : '標題'}</label>
@@ -1317,9 +1348,9 @@ async function viewForm(mode, arg) {
           </div></div>
         <div class="field"><label for="f-reason">原因</label>
           <textarea id="f-reason" class="textarea" maxlength="${LIMITS.fightText}" style="min-height:70px" placeholder="這次吵架是怎麼開始的？">${esc(rec.reason)}</textarea></div>
-        <div class="field"><label for="f-my">${esc(myName())}的想法</label>
+        <div class="field"><label for="f-my">${esc(partner ? ownerName() : myName())}的想法</label>
           <textarea id="f-my" class="textarea" maxlength="${LIMITS.fightText}" style="min-height:70px">${esc(rec.myView)}</textarea></div>
-        <div class="field"><label for="f-their">${esc(partnerName())}的想法</label>
+        <div class="field"><label for="f-their">${esc(partner ? `${CloudDB.partnerInfo().name}（你）` : partnerName())}的想法</label>
           <textarea id="f-their" class="textarea" maxlength="${LIMITS.fightText}" style="min-height:70px">${esc(rec.theirView)}</textarea></div>
         <div class="field"><div class="label">狀態</div>
           <div class="opts cols-3">${Object.entries(STATUS).map(([k, v]) => `<button class="opt ${k === rec.status ? 'on' : ''}" data-status="${k}">${v.label}</button>`).join('')}</div></div>
@@ -1327,11 +1358,11 @@ async function viewForm(mode, arg) {
         <div class="field"><label for="f-desc">描述</label>
           <textarea id="f-desc" class="textarea" maxlength="${LIMITS.description}" placeholder="發生了什麼？">${esc(rec.description)}</textarea></div>
       `}
-      <div class="field"><div class="label">照片${rec.type === 'happy' ? '（沒放會用預設圖）' : '（可不放）'}</div>
+      ${partner ? '' : `<div class="field"><div class="label">照片${rec.type === 'happy' ? '（沒放會用預設圖）' : '（可不放）'}</div>
         <div class="photos">
           ${photoCells.join('')}
           <label class="photo-add">${ICON.camera}上傳<input type="file" accept="image/*" multiple class="visually-hidden" id="f-photos"></label>
-        </div></div>
+        </div></div>`}
       <div class="field"><div class="label">心情（最多 ${MAX_EMOJIS} 個）</div>
         <div class="emoji-row">
           ${emojiList.map((e) => `<button class="emoji ${rec.emojis.includes(e) ? 'on' : ''}" data-emoji="${esc(e)}">${esc(e)}</button>`).join('')}
@@ -1346,7 +1377,7 @@ async function viewForm(mode, arg) {
           ${tagList.map((t) => `<button class="chip ${rec.tags.includes(t) ? 'on' : ''}" data-tag="${esc(t)}">#${esc(t)}</button>`).join('')}
         </div>
         <input id="f-tag" class="input" maxlength="${LIMITS.tag}" placeholder="輸入新標籤，按 Enter 加入" enterkeyhint="done"></div>
-      <div class="field"><div class="label">誰可以看</div>
+      ${fightAlwaysShared() ? `<div class="small muted">${partner ? `吵架議題是兩個人的事，${esc(ownerName())}也看得到、也能一起更新。` : usingCloud() ? `吵架議題是兩個人的事，${esc(partnerName())}也看得到、也能一起更新狀態和後續。` : '吵架議題是兩個人的事，開啟分享後兩個人都看得到。'}</div>` : `<div class="field"><div class="label">誰可以看</div>
         <div class="opts cols-3">${Object.entries(VISIBILITY).map(([k, v]) => `<button class="opt ${k === rec.visibility ? 'on' : ''}" data-vis="${k}">${esc(visLabel(k))}</button>`).join('')}</div>
         ${rec.visibility === 'task' ? `
           <label for="f-task" class="muted">對方要完成的任務</label>
@@ -1357,8 +1388,8 @@ async function viewForm(mode, arg) {
             <button class="opt ${rec.task.mode === 'photo' ? 'on' : ''}" data-taskmode="photo">要上傳照片</button>
           </div>` : ''}
         <div class="muted small">${usingCloud() ? '給對方看：對方用分享碼就看得到。上鎖：只有你看得到。任務解鎖：對方完成任務、你按通過後才看得到。' : (CLOUD_ENABLED ? '這個設定會先記下來；註冊登入並開啟分享碼後，對方就會依這個設定看到內容。' : '現在是單人版，這個設定會先記下來；換成雲端版並開啟分享碼後，對方就會依這個設定看到內容。') + '目前「上鎖」只是標記，拿到這支手機的人還是看得到。'}</div>
-      </div>
-      <button class="btn" id="save">${usingCloud() && rec.visibility === 'shared' && rec.type !== 'happy' ? `儲存並給${esc(partnerName())}看` : '儲存紀錄'}</button>
+      </div>`}
+      <button class="btn" id="save">${partner ? '儲存' : usingCloud() && (rec.visibility === 'shared' || fightAlwaysShared()) && rec.type !== 'happy' ? `儲存並給${esc(partnerName())}看` : '儲存紀錄'}</button>
     `;
     bind();
   }
@@ -1443,7 +1474,8 @@ async function viewForm(mode, arg) {
       if (mode === 'new') clearDraft();
     });
     app.querySelectorAll('[data-taskmode]').forEach((b) => b.addEventListener('click', () => { collect(); rec.task.mode = b.dataset.taskmode; render(); }));
-    document.getElementById('f-photos').addEventListener('change', async (ev) => {
+    const photoInput = document.getElementById('f-photos');
+    if (photoInput) photoInput.addEventListener('change', async (ev) => {
       collect();
       let files = [...ev.target.files];
       if (!files.length) return;
@@ -1487,6 +1519,7 @@ async function viewForm(mode, arg) {
       if (!rec.title) { toast(rec.type === 'fight' ? '請填寫議題' : '請填寫標題'); document.getElementById('f-title').focus(); return; }
       if (!rec.date) rec.date = today();
       if (!dateOk(rec.date)) { toast('日期要在 1970 年到今天之間'); return; }
+      if (fightAlwaysShared()) rec.visibility = 'shared';
       if (rec.visibility === 'task' && !rec.task.text.trim()) { toast('請填寫解鎖任務'); return; }
       if (mode === 'edit') {
         const latest = await DB.getRecord(rec.id);
@@ -1506,7 +1539,8 @@ async function viewForm(mode, arg) {
       }
       for (const id of removedPhotos) { await DB.deletePhoto(id); photoUrlCache.delete(id); thumbUrlCache.delete(id); }
       const now = Date.now();
-      if (!rec.no || rec.type !== originalType) rec.no = await nextNumber(rec.type);
+      // 另一半新增的議題由資料庫編號
+      if (!partner && (!rec.no || rec.type !== originalType)) rec.no = await nextNumber(rec.type);
       rec.v = RECORD_VERSION;
       if (mode === 'edit' && (contentKey(rec) !== loadedContent || newPhotos.size || removedPhotos.size)) rec.editedAt = Date.now();
       // 改成不是「任務解鎖」時，解鎖狀態就不再保留
@@ -1919,6 +1953,10 @@ async function viewPartnerHome() {
       <div class="bold" style="color:var(--lock)">${todo ? `有 ${todo} 個任務可以解鎖` : '任務都送出了'}</div>
       <div class="small" style="color:var(--lock)">${todo ? `完成任務、${esc(ownerName())}確認之後，就能看到上鎖的紀錄。` : `等${esc(ownerName())}確認中。`}</div>
     </a>` : ''}
+    ${CloudDB.isAnonymous() ? `<a class="card" href="#/bind" style="background:var(--fight-bg);border-color:transparent;gap:4px">
+      <div class="bold" style="color:var(--fight-dark)">綁定帳號，一起寫吵架議題</div>
+      <div class="small muted">現在是用分享碼暫時登入。綁定 Email 或 Google 後，就能一起新增、更新吵架議題，換手機也不用重新加入 ›</div>
+    </a>` : ''}
     ${typeCard('happy')}
     ${typeCard('cloud')}
     ${wishCard(await loadWishesSafe())}
@@ -2014,6 +2052,66 @@ async function viewPartnerTaskForm(id) {
   });
 }
 
+// 另一半綁定 Email / Google：臨時帳號變成正式帳號（同一個身分，不用重新加入）
+function viewBind(sentTo = '') {
+  app.className = 'theme-fight';
+  const bound = CloudDB.isBoundPartner();
+  app.innerHTML = `
+    <div class="topbar">
+      <a class="icon-btn" href="#/" aria-label="返回">${ICON.back}</a>
+      <h1>綁定帳號</h1>
+    </div>
+    ${bound ? `<div class="card" style="gap:6px">
+      <div class="bold">已經綁定 ${esc(CloudDB.currentEmail() || '')}</div>
+      <div class="muted">現在可以和${esc(ownerName())}一起新增、更新吵架議題。換手機時用這個帳號登入就好，不用再輸入分享碼。</div>
+      <a class="btn small" href="#/fights" style="align-self:flex-start">去看吵架議題</a>
+    </div>
+    <form class="card" id="pw-form" style="gap:10px">
+      <div class="bold">設定登入密碼</div>
+      <div class="small muted">用 Email 綁定的話，設定密碼後就能在別的手機用 Email 和密碼登入。用 Google 綁定的可以略過。</div>
+      <input id="b-pass" class="input" type="password" autocomplete="new-password" minlength="8" maxlength="72" required placeholder="至少 8 個字" aria-label="新密碼">
+      <button class="btn small" id="b-pass-save" type="submit">儲存密碼</button>
+    </form>` : `
+    <div class="muted">你現在是用分享碼暫時登入，身分只存在這個瀏覽器裡。綁定之後：</div>
+    <div class="card" style="gap:6px">
+      <div>・可以和${esc(ownerName())}一起新增、更新吵架議題</div>
+      <div>・換手機或清掉瀏覽器資料，登入就回來了，不用${esc(ownerName())}再同意一次</div>
+    </div>
+    ${sentTo ? `<div class="card" style="background:var(--resolved-bg);border-color:transparent;gap:8px">
+      <div class="bold" style="color:var(--resolved-ink)">確認信已經寄到 ${esc(sentTo)}</div>
+      <div class="small">到信箱點信裡的連結就完成了。如果是在別的 App 或瀏覽器打開連結，回到這裡按下面的按鈕。</div>
+      <button class="btn small secondary" id="b-check" style="align-self:flex-start">我已經點了連結</button>
+    </div>` : ''}
+    <button class="btn secondary" id="b-google"${IN_APP ? ' hidden' : ''}>用 Google 綁定</button>
+    <form class="card" id="b-form" style="gap:10px">
+      <label for="b-email" class="bold">用 Email 綁定</label>
+      <input id="b-email" class="input" type="email" autocomplete="email" required placeholder="you@example.com">
+      <button class="btn" id="b-send" type="submit">寄確認信</button>
+    </form>`}
+  `;
+  const pw = document.getElementById('pw-form');
+  if (pw) pw.addEventListener('submit', (ev) => {
+    ev.preventDefault();
+    const v = document.getElementById('b-pass').value;
+    if (v.length < 8) { toast('密碼至少 8 個字'); return; }
+    withBusy(document.getElementById('b-pass-save'), '儲存中…', async () => { await CloudDB.updatePassword(v); toast('密碼已設定'); document.getElementById('b-pass').value = ''; });
+  });
+  if (bound) return;
+  const g = document.getElementById('b-google');
+  g.addEventListener('click', () => withBusy(g, '前往 Google…', async () => { await CloudDB.linkGoogle(); await CloudDB.refreshUser(); viewBind(); }));
+  document.getElementById('b-form').addEventListener('submit', (ev) => {
+    ev.preventDefault();
+    const email = document.getElementById('b-email').value.trim();
+    if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) { toast('Email 格式不對'); return; }
+    withBusy(document.getElementById('b-send'), '寄送中…', async () => { await CloudDB.bindEmail(email); viewBind(email); });
+  });
+  const chk = document.getElementById('b-check');
+  if (chk) chk.addEventListener('click', () => withBusy(chk, '確認中…', async () => {
+    await CloudDB.refreshUser();
+    if (CloudDB.isBoundPartner()) { toast('綁定完成！'); viewBind(); } else toast('還沒收到確認，請到信箱點連結（也看看垃圾信件匣）');
+  }));
+}
+
 function viewPartnerSettings() {
   const info = CloudDB.partnerInfo();
   app.className = '';
@@ -2024,8 +2122,17 @@ function viewPartnerSettings() {
     </div>
     <div class="card">
       <div class="bold">你的身分</div>
-      <div class="muted">你用「${esc(info.name)}」這個名字加入，可以看${esc(ownerName())}分享給你的紀錄和做任務，但不能修改紀錄。</div>
+      <div class="muted">你用「${esc(info.name)}」這個名字加入，可以看${esc(ownerName())}分享給你的紀錄、做任務${CloudDB.isBoundPartner() ? '，也能一起新增、更新吵架議題' : ''}。</div>
     </div>
+    <a class="card" href="#/bind" style="gap:4px">
+      <div class="row between"><div class="bold">帳號</div><div class="muted">›</div></div>
+      <div class="small muted">${CloudDB.isBoundPartner() ? `已綁定 ${esc(CloudDB.currentEmail() || '')}` : '還沒綁定：綁定後可以一起寫吵架議題，換手機也不會不見'}</div>
+    </a>
+    ${CloudDB.isBoundPartner() ? `<div class="card">
+      <div class="bold">登出</div>
+      <div class="muted">登出後用綁定的帳號登入就能回來。</div>
+      <button class="btn small secondary" id="logout">登出</button>
+    </div>` : ''}
     ${feedbackCard()}
     <div class="card">
       <div class="bold">離開</div>
@@ -2033,8 +2140,10 @@ function viewPartnerSettings() {
       <button class="btn small danger" id="leave">離開</button>
     </div>
   `;
+  const logout = document.getElementById('logout');
+  if (logout) logout.addEventListener('click', async () => { await CloudDB.signOut(); photoUrlCache.clear(); go('#/login'); });
   document.getElementById('leave').addEventListener('click', async () => {
-    if (!confirm('確定要離開嗎？')) return;
+    if (!confirm(`確定要離開嗎？離開後就看不到${ownerName()}的紀錄，要重新用分享碼加入、等${ownerName()}同意。`)) return;
     await CloudDB.leaveShare();
     photoUrlCache.clear();
     go('#/join');
@@ -2423,7 +2532,7 @@ async function route() {
       if (page === 'login' || await hasAccountHere()) { renderTabbar(null); viewLogin(); return; }
     }
     // 已經送出加入要求、還在等主人同意
-    if (CLOUD_ENABLED && CloudDB.isAnonymous() && CloudDB.pendingJoin()) { renderTabbar(null); viewWaitingApproval(); return; }
+    if (CLOUD_ENABLED && CloudDB.pendingJoin() && !isPartner()) { renderTabbar(null); viewWaitingApproval(); return; }
     // 臨時帳號但不是（或已經不是）另一半：分享被停止、被移除，或加入沒成功
     if (CLOUD_ENABLED && CloudDB.isAnonymous() && !isPartner()) {
       renderTabbar(null);
@@ -2440,6 +2549,9 @@ async function route() {
       else if (page === 'list' && TYPES[arg] && arg !== 'fight') { renderTabbar(arg); await viewList(arg); }
       else if (page === 'fights') { renderTabbar('fight'); await viewFights(); }
       else if (page === 'view') { renderTabbar(null); await viewDetail(arg); }
+      else if (page === 'new' && arg === 'fight') { renderTabbar(null); await viewForm('new', 'fight'); }
+      else if (page === 'edit') { renderTabbar(null); await viewForm('edit', arg); }
+      else if (page === 'bind') { renderTabbar(null); viewBind(); }
       else if (page === 'tasks') { renderTabbar('tasks'); await viewPartnerTasks(); }
       else if (page === 'wishes') { renderTabbar(null); await viewWishes(); }
       else if (page === 'feedback') { renderTabbar(null); viewFeedback(); }

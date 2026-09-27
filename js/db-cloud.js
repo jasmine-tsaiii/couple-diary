@@ -90,6 +90,24 @@ const CloudDB = CLOUD_ENABLED ? (() => {
     isSignedIn: () => !!session,
     isAnonymous: () => !!(session && session.user.is_anonymous),
     isPartner: () => !!partner,
+    myId: () => (session ? session.user.id : null),
+    // 另一半綁定 Email / Google 之後就不是臨時帳號，可以一起寫吵架議題
+    isBoundPartner: () => !!(partner && session && !session.user.is_anonymous),
+    // 臨時帳號綁定 Email：先寄確認信，點信裡的連結後才算綁定
+    async bindEmail(email) {
+      check(await client.auth.updateUser({ email }, { emailRedirectTo: location.origin + location.pathname }));
+    },
+    async linkGoogle() {
+      const { error } = await client.auth.linkIdentity({ provider: 'google', options: { redirectTo: location.origin + location.pathname } });
+      if (error) throw new Error(/manual linking|disabled/i.test(error.message) ? 'Google 綁定還沒開通（要先在 Supabase 開啟 Manual Linking），先用 Email 綁定吧' : error.message);
+    },
+    // 在別的瀏覽器點了確認信：回到這裡重新拿一次登入狀態
+    async refreshUser() {
+      try { await client.auth.refreshSession(); } catch (e) { /* 沒關係 */ }
+      session = check(await client.auth.getSession()).session;
+      await loadPartner();
+      return session;
+    },
     pendingJoin: () => pendingJoin,
     async refreshPartner() { await loadPartner(); },
     partnerInfo: () => partner,
@@ -241,6 +259,12 @@ const CloudDB = CLOUD_ENABLED ? (() => {
       return row ? row.data : undefined;
     },
     async putRecord(rec) {
+      // 另一半只能新增、修改吵架議題，透過資料庫函式檢查
+      if (partner) {
+        if (rec.type !== 'fight') throw new Error('另一半只能新增或修改吵架議題');
+        check(await client.rpc('partner_save_fight', { p_rec: rec }));
+        return;
+      }
       check(await client.from('records').upsert({
         id: rec.id,
         type: rec.type,
@@ -249,6 +273,9 @@ const CloudDB = CLOUD_ENABLED ? (() => {
         data: rec,
         updated_at: new Date().toISOString(),
       }));
+    },
+    async partnerDeleteFight(id) {
+      check(await client.rpc('partner_delete_fight', { p_id: id }));
     },
     async deleteRecord(id) {
       check(await client.from('records').delete().eq('id', id));
