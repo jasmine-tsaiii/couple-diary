@@ -212,6 +212,8 @@ async function loadNames() {
   try { NAMES = { me: '', partner: '', ...(await DB.getSetting('names', {})) }; } catch (e) { NAMES = { me: '', partner: '' }; }
 }
 const myName = () => NAMES.me || '我';
+// 時間戳記轉成當地的 YYYY-MM-DD
+const dateOf = (ts) => new Date(ts - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 10);
 // 在一起的第幾天（在一起那天算第 1 天）
 function togetherDays() {
   if (!NAMES.since || !dateOk(NAMES.since)) return 0;
@@ -348,8 +350,10 @@ function showPaywall(q) {
 const STAMP_GROUPS = [
   { key: 'happy', title: '美好時刻', help: '每新增一則美好時刻就算 1 個。移到「最近刪除」的不算。', unit: '個美好時刻', u: '個', count: (c) => c.happy,
     steps: [[1, '💗', '第一個美好'], [5, '🌸', '5 個美好'], [10, '💐', '10 個美好'], [30, '🌹', '30 個美好'], [50, '🎀', '50 個美好'], [100, '👑', '集滿 100 個']] },
-  { key: 'sunny', title: '烏雲放晴', help: '在吵架議題的詳情頁，把「狀態」按成「已解決」就算 1 個。之後改回「處理中」就不算。', unit: '個吵架議題改成「已解決」', u: '個', count: (c) => c.resolved,
-    steps: [[1, '🌤️', '第一次和好'], [5, '🌈', '解決 5 個'], [10, '☀️', '解決 10 個'], [30, '🏅', '解決 30 個']] },
+  { key: 'sunny', title: '吵架和好', help: '在吵架議題的詳情頁，把「狀態」按成「已解決」就算 1 個。之後改回「處理中」就不算。', unit: '個吵架議題改成「已解決」', u: '個', count: (c) => c.resolved,
+    steps: [[1, '🤝', '第一次和好'], [5, '💞', '和好 5 次'], [10, '🕊️', '和好 10 次'], [30, '🏆', '和好 30 次']] },
+  { key: 'clear', title: '烏雲放晴', help: '在烏雲時刻的詳情頁，心情過去了就按「已放晴」，每則算 1 個。之後取消放晴就不算。', unit: '則烏雲時刻按「已放晴」', u: '則', count: (c) => c.cleared,
+    steps: [[1, '🌤️', '第一次放晴'], [5, '🌈', '放晴 5 次'], [10, '☀️', '放晴 10 次'], [30, '🌻', '放晴 30 次']] },
   { key: 'reflect', title: '事後反思', help: '在烏雲時刻的詳情頁按「新增反思」，寫下冷靜之後的想法，每寫 1 則算 1 次。', unit: '則反思', u: '則', count: (c) => c.reflections,
     steps: [[1, '💭', '第一次反思'], [5, '📖', '反思 5 次'], [10, '🧘', '反思 10 次']] },
   { key: 'task', title: '任務解鎖', help: '把紀錄設成「任務解鎖」，另一半完成任務、你按「通過並解鎖」就算 1 個（雲端版開啟分享碼後才能用）。', unit: '個任務解鎖', u: '個', count: (c) => c.unlocked,
@@ -361,6 +365,7 @@ function stampCounts(all) {
   return {
     happy: all.filter((r) => r.type === 'happy').length,
     resolved: all.filter((r) => r.type === 'fight' && r.status === 'resolved').length,
+    cleared: all.filter((r) => r.type === 'cloud' && r.clearedAt).length,
     reflections: all.reduce((n, r) => n + (r.reflections || []).length, 0),
     unlocked: all.filter((r) => r.visibility === 'task' && r.unlocked).length,
     days: togetherDays(),
@@ -644,6 +649,7 @@ async function viewList(type, tagFilter) {
         <div class="muted small">${shortDate(r.date)} · ${esc((r.emojis || []).join(''))}</div>
         ${(r.tags || []).length ? `<div class="tile-tags">${esc(r.tags.map((t) => '#' + t).join(' '))}</div>` : ''}
         ${(r.reflections || []).length ? `<div class="small muted">💭 ${r.reflections.length} 則反思</div>` : ''}
+        ${r.clearedAt ? '<div class="small" style="color:var(--resolved-ink)">☀️ 已放晴</div>' : ''}
         ${hearted.has(r.id) ? `<div class="small" style="color:var(--happy-dark)">❤️ ${isPartner() ? '你按了愛心' : `${esc(partnerName())}按了愛心`}</div>` : ''}
         ${lockNote ? `<div class="small row" style="color:var(--lock);gap:4px">${ICON.lockSmall}${lockNote}</div>` : ''}
       </div>`;
@@ -765,6 +771,12 @@ async function viewDetail(id) {
   if (r.type === 'cloud') {
     const rf = r.reflections || [];
     reflectPart = `
+      ${partner ? (r.clearedAt ? `<div class="card" style="background:var(--resolved-bg);border-color:transparent;color:var(--resolved-ink)">☀️ ${shortDate(dateOf(r.clearedAt))} 已經放晴了</div>` : '')
+        : `<div class="card" style="background:${r.clearedAt ? 'var(--resolved-bg)' : 'var(--cloud-bg)'};border-color:transparent;gap:6px">
+          <div class="bold" style="color:${r.clearedAt ? 'var(--resolved-ink)' : 'var(--cloud-dark)'}">${r.clearedAt ? `☀️ ${shortDate(dateOf(r.clearedAt))} 已放晴` : '這片烏雲還在嗎？'}</div>
+          <div class="small muted">${r.clearedAt ? '心情又回來了的話，可以取消放晴。' : '心情過去了、想通了，就按「已放晴」，印章冊的「烏雲放晴」會加 1。'}</div>
+          <button class="btn small ${r.clearedAt ? 'secondary' : ''}" id="clear-btn" style="align-self:flex-start">${r.clearedAt ? '取消放晴' : '☀️ 已放晴'}</button>
+        </div>`}
       <div class="field"><div class="label">事後反思</div>
         <div class="timeline">
           ${rf.length ? rf.map((f, i) => `<div class="tl-item">
@@ -916,6 +928,11 @@ async function viewDetail(id) {
   });
 
   if (r.type === 'cloud') {
+    const clearBtn = document.getElementById('clear-btn');
+    clearBtn.addEventListener('click', () => withBusy(clearBtn, '', async () => {
+      await updateRecord(r.id, (x) => { if (x.clearedAt) delete x.clearedAt; else x.clearedAt = Date.now(); });
+      viewDetail(r.id);
+    }));
     const rfAdd = document.getElementById('rf-add');
     rfAdd.addEventListener('click', () => {
       const text = document.getElementById('rf-text').value.trim();
@@ -1295,6 +1312,7 @@ function checkBackup(data) {
     if (r.visibility && !VISIBILITY[r.visibility]) r.visibility = 'locked';
     if (r.status && !STATUS[r.status]) r.status = 'open';
     if (r.deletedAt != null && typeof r.deletedAt !== 'number') delete r.deletedAt;
+    if (r.clearedAt != null && typeof r.clearedAt !== 'number') delete r.clearedAt;
     if (r.date && !DATE_RE.test(r.date)) throw new Error('備份檔內容不對，沒有匯入');
     if (r.reflections && (!Array.isArray(r.reflections) || !r.reflections.every((f) => f && DATE_RE.test(f.date) && SAFE_ID.test(String(f.id))))) throw new Error('備份檔內容不對，沒有匯入');
     if (r.followUps && (!Array.isArray(r.followUps) || !r.followUps.every((f) => f && DATE_RE.test(f.date) && SAFE_ID.test(String(f.id))))) throw new Error('備份檔內容不對，沒有匯入');
