@@ -289,8 +289,9 @@ const CloudDB = CLOUD_ENABLED ? (() => {
       }));
     },
     // 結束這段關係：'archive' 封存或 'delete' 刪除；另一半會被移除、分享碼作廢
-    async endRelationship(mode) {
-      check(await client.rpc('end_relationship', { p_mode: mode }));
+    async endRelationship(mode, keepUid = null) {
+      // keepUid：結束後要讓哪個還在等同意的新對象加入（分享碼保留）
+      check(await client.rpc('end_relationship', keepUid ? { p_mode: mode, p_keep: keepUid } : { p_mode: mode }));
     },
     async deleteArchive() {
       check(await client.rpc('delete_archive'));

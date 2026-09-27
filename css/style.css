@@ -292,3 +292,6 @@ a.card:active { transform: scale(0.99); }
 .pin-keys button { height: 64px; border-radius: 99px; border: 1px solid var(--line, #E8DDD3); background: var(--card, #fff); font-size: 22px; color: inherit; cursor: pointer; }
 .pin-keys button:active { transform: scale(.95); }
 @media (prefers-reduced-motion: reduce) { .pin-dots.shake { animation: none; } }
+
+/* 選項小視窗 */
+.choice-dlg .btn { flex-direction: column; gap: 2px; height: auto; min-height: 48px; padding-top: 10px; padding-bottom: 10px; }

@@ -1379,7 +1379,8 @@ create policy "photos: partner read" on storage.objects
 
 -- p_mode：'archive' 封存、'delete' 刪除（只動目前這段關係的，之前封存的不動）
 -- 刪除時照片請 App 先刪（App 會先刪你資料夾裡這些紀錄的照片）
-create or replace function public.end_relationship(p_mode text) returns void
+-- p_keep：結束後要讓哪個「還在等同意」的新對象加入（分享碼保留給他）；null 就全部移除、分享碼作廢
+create or replace function public.end_relationship(p_mode text, p_keep uuid) returns void
 language plpgsql security definer set search_path = public as $$
 declare
   v_now bigint := (extract(epoch from now()) * 1000)::bigint;
@@ -1395,14 +1396,21 @@ begin
     delete from public.records where owner = auth.uid() and not archived;
     delete from public.wishes where owner = auth.uid() and not archived;
   end if;
-  delete from public.partners where owner = auth.uid();
-  delete from public.shares where owner = auth.uid();
+  if p_keep is not null and not exists (select 1 from public.partners where owner = auth.uid() and uid = p_keep and not approved) then
+    raise exception '找不到這個加入要求，可能對方已經離開了';
+  end if;
+  delete from public.partners where owner = auth.uid() and (p_keep is null or uid <> p_keep);
+  if p_keep is null then delete from public.shares where owner = auth.uid(); end if;
   delete from public.settings where owner = auth.uid() and key in ('lastNo', 'sharePaused');
   update public.settings set value = value || '{"partner": "", "since": ""}'::jsonb
     where owner = auth.uid() and key = 'names' and jsonb_typeof(value) = 'object';
 end $$;
+create or replace function public.end_relationship(p_mode text) returns void
+language sql security definer set search_path = public as $$ select public.end_relationship(p_mode, null::uuid) $$;
 revoke all on function public.end_relationship(text) from public, anon;
 grant execute on function public.end_relationship(text) to authenticated;
+revoke all on function public.end_relationship(text, uuid) from public, anon;
+grant execute on function public.end_relationship(text, uuid) to authenticated;
 
 -- 永久刪除封存的紀錄（照片請 App 先刪）
 create or replace function public.delete_archive() returns void

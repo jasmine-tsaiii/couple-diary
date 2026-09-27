@@ -431,6 +431,22 @@ async function loadWishesSafe() {
 let formPrefill = null;
 
 // 新增／修改一件事的小視窗
+// 幾個選項選一個的小視窗；回傳選到的 key，按取消回傳 null
+function choose(title, text, options) {
+  return new Promise((resolve) => {
+    const box = document.createElement('div');
+    box.className = 'celebrate wish-dlg choice-dlg';
+    box.innerHTML = `<div class="celebrate-box" style="align-items:stretch;text-align:left" role="dialog" aria-modal="true" aria-label="${esc(title)}">
+      <h2 style="font-size:20px">${esc(title)}</h2>
+      <div class="muted">${esc(text)}</div>
+      ${options.map((o) => `<button class="btn ${o.primary ? '' : 'secondary'}" data-choice="${esc(o.key)}">${esc(o.label)}${o.hint ? `<span class="small" style="display:block;font-weight:400;opacity:.8">${esc(o.hint)}</span>` : ''}</button>`).join('')}
+      <button class="btn secondary small" data-choice="">取消</button>
+    </div>`;
+    document.body.appendChild(box);
+    box.querySelectorAll('[data-choice]').forEach((b) => b.addEventListener('click', () => { box.remove(); resolve(b.dataset.choice || null); }));
+  });
+}
+
 function wishDialog(w, onSave) {
   const box = document.createElement('div');
   box.className = 'celebrate wish-dlg';
@@ -2064,16 +2080,21 @@ async function viewSettings() {
 }
 
 // ---------- 結束這段關係 ----------
-async function viewEnd() {
+async function viewEnd(keepUid = '') {
   const all = await liveRecords();
   const other = partnerName();
+  let keepName = '';
+  if (keepUid) {
+    try { const p = (await CloudDB.listPartners()).find((x) => x.uid === keepUid && x.approved === false); keepName = p ? p.name : ''; } catch (e) { keepName = ''; }
+    if (!keepName) keepUid = '';
+  }
   app.className = '';
   app.innerHTML = `
     <div class="topbar">
       <a class="icon-btn" href="#/settings" aria-label="返回">${ICON.back}</a>
       <h1>結束這段關係</h1>
     </div>
-    <div class="muted">目前這段關係有 ${all.length} 則紀錄。兩種做法都會移除${esc(other)}、讓分享碼作廢，首頁的數字和編號會從頭開始；之後分享給新的人，對方看不到這段的任何紀錄。</div>
+    <div class="muted">${keepUid ? `讓「${esc(keepName)}」加入之前，先處理之前的 ${all.length} 則紀錄。兩種做法都會移除之前的另一半，首頁的數字和編號會從頭開始；${esc(keepName)}看不到之前的任何紀錄。處理完就會讓${esc(keepName)}加入。` : `目前這段關係有 ${all.length} 則紀錄。兩種做法都會移除${esc(other)}、讓分享碼作廢，首頁的數字和編號會從頭開始；之後分享給新的人，對方看不到這段的任何紀錄。`}</div>
     <div class="card" style="gap:8px">
       <div class="bold">封存（建議）</div>
       <div class="small muted">紀錄、照片、一起完成的事都收進設定頁的「封存的回憶」，只有你看得到，之後想刪再刪。${esc(other)}寫的、上鎖的紀錄你還是看不到。</div>
@@ -2086,6 +2107,7 @@ async function viewEnd() {
     </div>
   `;
   const done = async (msg) => {
+    if (keepUid) { await CloudDB.approvePartner(keepUid); msg += `，也讓 ${keepName} 加入了`; }
     photoUrlCache.clear(); thumbUrlCache.clear();
     await loadNames();
     toast(msg);
@@ -2095,7 +2117,7 @@ async function viewEnd() {
   archiveBtn.addEventListener('click', () => {
     if (!confirm(`封存目前的 ${all.length} 則紀錄，並移除${other}？封存的紀錄只有你看得到。`)) return;
     withBusy(archiveBtn, '封存中…', async () => {
-      await CloudDB.endRelationship('archive');
+      await CloudDB.endRelationship('archive', keepUid || null);
       await done('已封存，這段回憶收在設定頁的「封存的回憶」');
     });
   });
@@ -2109,7 +2131,7 @@ async function viewEnd() {
         for (const pid of r.photoIds || []) if (CloudDB.photoIsMine(pid)) { try { await DB.deletePhoto(pid); } catch (e) { /* 之後再清 */ } }
       }
       try { for (const sub of await CloudDB.submissions()) if (sub.photo_path) await CloudDB.removeTaskPhoto(sub.photo_path); } catch (e) { /* 略過 */ }
-      await CloudDB.endRelationship('delete');
+      await CloudDB.endRelationship('delete', keepUid || null);
       await done('已刪除這段關係的紀錄');
     });
   });
@@ -2580,9 +2602,21 @@ function bindShareCard() {
     toast('已停止分享');
     viewSettings();
   });
-  document.querySelectorAll('[data-approve-partner]').forEach((b) => b.addEventListener('click', () => {
-    const current = document.querySelectorAll('[data-rm-partner]:not([data-pending])').length;
-    if (current && !confirm(`同意「${b.dataset.name}」加入？目前已加入的人會被取代，看不到你的紀錄。`)) return;
+  document.querySelectorAll('[data-approve-partner]').forEach((b) => b.addEventListener('click', async () => {
+    const currentEl = document.querySelector('[data-rm-partner]:not([data-pending])');
+    const hasRecords = (await liveRecords()).length > 0;
+    // 已經有另一半、或已經有紀錄時，先分清楚是「同一個人換手機」還是「新的對象」：
+    // 新的對象要先結束上一段（封存或刪除），不然他會看到之前所有分享的紀錄
+    if (currentEl || hasRecords) {
+      const before = currentEl ? currentEl.dataset.name : (NAMES.partner || '');
+      const same = before && before === b.dataset.name;
+      const pick = await choose(`${b.dataset.name} 想加入`, currentEl ? `目前的另一半是「${before}」。同意後會取代「${before}」。` : '你已經有一些紀錄了。', [
+        { key: 'same', label: `是${before || '同一個人'}換手機或重新加入`, hint: '照舊看得到之前分享的紀錄', primary: same },
+        { key: 'new', label: '是新的對象', hint: '先把之前的紀錄封存或刪除，新的人才看不到', primary: !same },
+      ]);
+      if (!pick) return;
+      if (pick === 'new') { go(`#/end/${encodeURIComponent(b.dataset.approvePartner)}`); return; }
+    }
     withBusy(b, '', async () => {
       await CloudDB.approvePartner(b.dataset.approvePartner);
       toast(`已同意 ${b.dataset.name} 加入`);
@@ -2852,7 +2886,7 @@ async function route() {
     else if (page === 'wishes') { renderTabbar(null); await viewWishes(); }
     else if (page === 'feedback') { renderTabbar(null); viewFeedback(); }
     else if (page === 'tasks' && usingCloud()) { renderTabbar(null); await viewPartnerTasks(); }
-    else if (page === 'end' && usingCloud()) { renderTabbar(null); await viewEnd(); }
+    else if (page === 'end' && usingCloud()) { renderTabbar(null); await viewEnd(arg ? decodeURIComponent(arg) : ''); }
     else if (page === 'archive' && usingCloud()) { renderTabbar(null); await viewArchive(); }
     else if (page === 'task' && usingCloud()) { renderTabbar(null); await viewPartnerTaskForm(arg); }
     else go('#/');
