@@ -164,6 +164,14 @@ const CloudDB = CLOUD_ENABLED ? (() => {
     async deletePartnerNote(id) {
       check(await client.from('partner_notes').delete().eq('id', id));
     },
+    // ---- 雲端照片額度（付費功能還沒推出，先限制免費張數） ----
+    async photoQuota() {
+      const { data, error } = await client.rpc('photo_quota');
+      return error || !data ? null : data; // 還沒更新資料表時當作不限
+    },
+    async noteUpgradeInterest() {
+      await client.rpc('note_upgrade_interest');
+    },
     async partnerLocked() {
       const { data, error } = await client.rpc('partner_locked');
       return error ? [] : data || [];

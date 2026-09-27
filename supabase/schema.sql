@@ -463,12 +463,74 @@ create policy "photos: owner read" on storage.objects
   for select to authenticated
   using (bucket_id = 'photos' and (storage.foldername(name))[1] = auth.uid()::text);
 
+-- 雲端照片額度：免費帳號最多 30 張（小圖和任務照片不算）。
+-- 要讓某個人不受限制：到 Table Editor 的 plans 表新增一列，owner 填他的使用者 id，plan 填 plus。
+create table if not exists public.plans (
+  owner       uuid primary key references auth.users (id) on delete cascade,
+  plan        text not null default 'free' check (plan in ('free', 'plus')),
+  note        text not null default '',
+  updated_at  timestamptz not null default now()
+);
+alter table public.plans enable row level security;
+drop policy if exists "plans: owner read" on public.plans;
+create policy "plans: owner read" on public.plans
+  for select to authenticated using (owner = auth.uid());
+
+-- 誰按過「我有興趣」（付費功能還沒推出，先看有多少人想要）
+create table if not exists public.upgrade_interest (
+  owner       uuid primary key references auth.users (id) on delete cascade,
+  times       int not null default 1,
+  first_at    timestamptz not null default now(),
+  last_at     timestamptz not null default now()
+);
+alter table public.upgrade_interest enable row level security;
+
+create or replace function public.photo_quota() returns jsonb
+language sql stable security definer set search_path = public as $$
+  select jsonb_build_object(
+    'plan', coalesce((select plan from public.plans where owner = auth.uid()), 'free'),
+    'limit', case when coalesce((select plan from public.plans where owner = auth.uid()), 'free') = 'plus' then null else 30 end,
+    'used', (select count(*) from storage.objects o
+             where o.bucket_id = 'photos' and (storage.foldername(o.name))[1] = auth.uid()::text
+               and coalesce((storage.foldername(o.name))[2], '') <> 't')
+  )
+$$;
+-- 小圖只能放「已經有原圖」的，免得有人拿小圖資料夾繞過額度
+create or replace function public.thumb_ok(p_name text) returns boolean
+language sql stable security definer set search_path = public as $$
+  select exists (select 1 from storage.objects o
+    where o.bucket_id = 'photos' and o.name = (storage.foldername(p_name))[1] || '/' || storage.filename(p_name))
+$$;
+create or replace function public.photo_quota_ok() returns boolean
+language sql stable security definer set search_path = public as $$
+  select (q ->> 'limit') is null or (q ->> 'used')::int < (q ->> 'limit')::int from (select public.photo_quota() as q) x
+$$;
+create or replace function public.note_upgrade_interest() returns void
+language sql security definer set search_path = public as $$
+  insert into public.upgrade_interest (owner) values (auth.uid())
+  on conflict (owner) do update set times = public.upgrade_interest.times + 1, last_at = now()
+$$;
+revoke all on function public.photo_quota() from public, anon;
+revoke all on function public.photo_quota_ok() from public, anon;
+revoke all on function public.note_upgrade_interest() from public, anon;
+revoke all on function public.thumb_ok(text) from public, anon;
+grant execute on function public.thumb_ok(text) to authenticated;
+grant execute on function public.photo_quota() to authenticated;
+grant execute on function public.photo_quota_ok() to authenticated;
+grant execute on function public.note_upgrade_interest() to authenticated;
+
 drop policy if exists "photos: owner insert" on storage.objects;
 create policy "photos: owner insert" on storage.objects
   for insert to authenticated
   with check (
     bucket_id = 'photos' and (storage.foldername(name))[1] = auth.uid()::text
-    and (public.is_real_user() or (public.my_owner() is not null and storage.filename(name) like 'task-%'))
+    and (
+      (public.is_real_user() and (
+        (coalesce((storage.foldername(name))[2], '') = 't' and public.thumb_ok(name))
+        or (coalesce((storage.foldername(name))[2], '') = '' and public.photo_quota_ok())
+      ))
+      or (public.my_owner() is not null and storage.filename(name) like 'task-%')
+    )
   );
 
 drop policy if exists "photos: owner update" on storage.objects;

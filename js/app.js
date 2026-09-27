@@ -320,6 +320,29 @@ function renderTabbar(route) {
   ].join('');
 }
 
+// 付費功能（還沒推出）：雲端照片超過免費額度時跳出來，按「我有興趣」會記下來，讓你知道有多少人想要
+function showPaywall(q) {
+  const box = document.createElement('div');
+  box.className = 'celebrate';
+  box.innerHTML = `<div class="celebrate-box" role="dialog" aria-label="付費功能">
+    <div class="thumb" style="width:64px;height:64px;border-radius:99px;background:var(--lock-bg);color:var(--lock)">${ICON.lock}</div>
+    <h2 style="font-size:20px">放更多照片是付費功能</h2>
+    <div class="muted">免費帳號可以在雲端放 ${q.limit} 張照片，你已經用了 ${q.used} 張。付費方案準備中，推出後就能放更多照片。</div>
+    <div class="small muted">刪掉用不到的照片（或清空「最近刪除」）就能空出位置。</div>
+    <button class="btn small" id="pw-yes">我有興趣，推出時想用</button>
+    <button class="btn small secondary" id="pw-no">先不用</button>
+  </div>`;
+  document.body.appendChild(box);
+  const close = () => box.remove();
+  box.querySelector('#pw-no').addEventListener('click', close);
+  box.addEventListener('click', (ev) => { if (ev.target === box) close(); });
+  box.querySelector('#pw-yes').addEventListener('click', async () => {
+    try { await CloudDB.noteUpgradeInterest(); } catch (e) { /* 記不到也沒關係 */ }
+    close();
+    toast('謝謝！已經記下你有興趣');
+  });
+}
+
 // ---------- 印章冊：像集點卡一樣，達到里程碑就蓋一個章 ----------
 // 每一組：怎麼算數量、各階段的門檻、每個章的圖案和名字
 const STAMP_GROUPS = [
@@ -1169,7 +1192,17 @@ async function viewForm(mode, arg) {
       const room = LIMITS.photosPerRecord - rec.photoIds.length;
       if (room <= 0) { toast(`每則最多 ${LIMITS.photosPerRecord} 張照片`); return; }
       if (files.length > room) { toast(`每則最多 ${LIMITS.photosPerRecord} 張，只加入前 ${room} 張`); files = files.slice(0, room); }
-      toast('照片處理中…');
+      // 雲端免費帳號的照片額度（這次要新增的也要算進去）
+      let quotaNote = '';
+      if (usingCloud()) {
+        const q = await CloudDB.photoQuota();
+        if (q && q.limit != null) {
+          const left = q.limit - q.used - newPhotos.size;
+          if (left <= 0) { ev.target.value = ''; showPaywall(q); return; }
+          if (files.length > left) { quotaNote = `免費帳號的雲端照片只剩 ${left} 張，先加入前 ${left} 張`; files = files.slice(0, left); }
+        }
+      }
+      toast(quotaNote || '照片處理中…');
       for (const f of files) {
         try {
           if (f.size > LIMITS.photoFileMB * 1024 * 1024) { toast(`照片超過 ${LIMITS.photoFileMB} MB，換一張試試`); continue; }
@@ -1343,6 +1376,7 @@ ${all.length ? '' : '<p>還沒有任何紀錄。</p>'}
 async function viewSettings() {
   const cats = await getCategories();
   const everything = await DB.allRecords();
+  const quota = usingCloud() ? await CloudDB.photoQuota() : null;
   const all = everything.filter((r) => !r.deletedAt);
   const trash = everything.filter((r) => r.deletedAt).sort((a, b) => b.deletedAt - a.deletedAt);
   const tagCount = new Map();
@@ -1369,6 +1403,9 @@ async function viewSettings() {
     ${usingCloud() ? `<div class="card">
       <div class="bold">雲端帳號</div>
       <div class="muted">已登入 ${esc(CloudDB.currentEmail())}，紀錄和照片都存在雲端，換手機只要登入同一個帳號就能看到。目前共 ${all.length} 則紀錄。</div>
+      ${quota ? `<div class="small">雲端照片：${quota.used}${quota.limit != null ? ` / ${quota.limit} 張（免費帳號）` : ' 張（不限張數）'}</div>
+        ${quota.limit != null ? `<div class="progress" style="height:6px"><div style="width:${Math.min(100, (quota.used / quota.limit) * 100)}%"></div></div>
+        <button class="btn small secondary" id="more-photos">${ICON.lockSmall} 想放更多照片？</button>` : ''}` : ''}
       <button class="btn small secondary" id="logout">登出</button>
     </div>
     ${localCount ? `<div class="card" style="background:var(--progress-bg);border-color:transparent">
@@ -1439,6 +1476,8 @@ async function viewSettings() {
   `;
 
   if (usingCloud()) bindShareCard();
+  const more = document.getElementById('more-photos');
+  if (more) more.addEventListener('click', () => showPaywall(quota));
   app.querySelectorAll('[data-restore]').forEach((b) => b.addEventListener('click', () => withBusy(b, '', async () => {
     await restoreRecord(b.dataset.restore);
     toast('已救回來');
@@ -1553,7 +1592,7 @@ async function viewSettings() {
     migrate.disabled = true;
     try {
       const n = await migrateLocalToCloud((t) => { migrate.textContent = t; });
-      toast(`已搬上雲端：${n.records} 則紀錄、${n.photos} 張照片`);
+      toast(`已搬上雲端：${n.records} 則紀錄、${n.photos} 張照片${n.skipped ? `；另外 ${n.skipped} 張超過免費雲端額度，還留在這支手機裡` : ''}`);
       viewSettings();
     } catch (e) {
       migrate.disabled = false;
@@ -1941,8 +1980,15 @@ async function migrateLocalToCloud(progress = () => {}) {
   const records = await LocalDB.allRecords();
   const photos = await LocalDB.allPhotos();
   let done = 0;
+  let skipped = 0;
   for (const p of photos) {
-    await CloudDB.putPhoto(p);
+    // 超過免費帳號的雲端照片額度時，剩下的照片留在手機裡，紀錄照樣搬
+    if (skipped) { skipped++; continue; }
+    try { await CloudDB.putPhoto(p); } catch (e) {
+      if (!/row-level security|policy|quota/i.test(e.message)) throw e;
+      skipped = 1;
+      continue;
+    }
     progress(`搬照片中… ${++done} / ${photos.length}`);
   }
   done = 0;
@@ -1955,7 +2001,7 @@ async function migrateLocalToCloud(progress = () => {}) {
   const localCats = await LocalDB.getSetting('categories', null);
   if (localCats) await CloudDB.setSetting('categories', [...new Set([...(await getCategories()), ...localCats])]);
   await LocalDB.setSetting('migratedAt', Date.now());
-  return { records: records.length, photos: photos.length };
+  return { records: records.length, photos: photos.length - skipped, skipped };
 }
 
 // 自己的帳號登入後：記住這支手機登入過，第一次登入時自動把試用的紀錄搬上雲端
@@ -1969,7 +2015,7 @@ async function afterOwnerLogin() {
   toast(`正在把手機裡的 ${count} 則紀錄搬上雲端…`);
   try {
     const n = await migrateLocalToCloud();
-    toast(`已搬上雲端：${n.records} 則紀錄、${n.photos} 張照片`);
+    toast(`已搬上雲端：${n.records} 則紀錄、${n.photos} 張照片${n.skipped ? `；另外 ${n.skipped} 張超過免費雲端額度，還留在這支手機裡` : ''}`);
   } catch (e) {
     toast('搬上雲端失敗，可以到設定頁再試一次：' + e.message);
   }
