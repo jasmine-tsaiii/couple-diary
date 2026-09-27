@@ -313,3 +313,12 @@ a.card:active { transform: scale(0.99); }
 /* 手機連續點按鈕時不要放大畫面（iPhone 點兩下會縮放） */
 button, .btn, .chip, .pin-keys, .pin-lock { touch-action: manipulation; }
 .pin-keys button { -webkit-user-select: none; user-select: none; -webkit-tap-highlight-color: transparent; }
+
+/* 回到最上面 */
+.to-top {
+  position: fixed; right: 16px; bottom: calc(84px + env(safe-area-inset-bottom)); z-index: 11;
+  width: 46px; height: 46px; border-radius: 99px; border: 1px solid var(--line); background: var(--card); color: var(--accent);
+  display: flex; align-items: center; justify-content: center; box-shadow: 0 6px 18px rgba(43, 35, 32, .15); padding: 0;
+}
+.to-top[hidden] { display: none; }
+body.no-tabbar .to-top { bottom: calc(20px + env(safe-area-inset-bottom)); }

@@ -3326,6 +3326,34 @@ function bindPinCard(refresh) {
   });
 }
 
+// ---------- 回到頂端、從左邊滑回上一頁 ----------
+const toTop = document.createElement('button');
+toTop.className = 'to-top';
+toTop.type = 'button';
+toTop.setAttribute('aria-label', '回到最上面');
+toTop.innerHTML = '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 19V5"/><path d="m5 12 7-7 7 7"/></svg>';
+toTop.hidden = true;
+toTop.addEventListener('click', () => window.scrollTo({ top: 0, behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' }));
+document.body.appendChild(toTop);
+window.addEventListener('scroll', () => { toTop.hidden = window.scrollY < 500; }, { passive: true });
+window.addEventListener('hashchange', () => { toTop.hidden = true; });
+// 從畫面左邊往右滑：等於按左上角的返回（加到主畫面後沒有瀏覽器的返回鍵，這樣比較方便）
+let swipe = null;
+document.addEventListener('touchstart', (ev) => {
+  const t = ev.touches[0];
+  swipe = ev.touches.length === 1 && t.clientX < 30 && !document.querySelector('.celebrate, .pin-lock') ? { x: t.clientX, y: t.clientY } : null;
+}, { passive: true });
+document.addEventListener('touchend', (ev) => {
+  if (!swipe) return;
+  const t = ev.changedTouches[0];
+  const dx = t.clientX - swipe.x;
+  const dy = Math.abs(t.clientY - swipe.y);
+  swipe = null;
+  if (dx < 80 || dy > 60) return;
+  const back = document.querySelector('.topbar .icon-btn[aria-label="返回"]');
+  if (back) back.click();
+}, { passive: true });
+
 window.addEventListener('hashchange', route);
 requestPersist();
 (async () => {
