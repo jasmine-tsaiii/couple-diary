@@ -141,6 +141,11 @@ const CloudDB = CLOUD_ENABLED ? (() => {
       if (!res || !res.ok) throw new Error((res && res.error) || '沒辦法加入');
       await loadPartner();
     },
+    // 另一半結束這段關係：自己離開，主人下次打開會收到通知
+    async partnerEndRelationship() {
+      check(await client.rpc('partner_end_relationship'));
+      partner = null;
+    },
     async leaveShare() {
       check(await client.from('partners').delete().eq('uid', userId()));
       await this.signOut();

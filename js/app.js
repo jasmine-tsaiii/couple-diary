@@ -744,6 +744,12 @@ async function viewHome() {
   let myTasks = [];
   if (usingCloud()) { try { myTasks = await CloudDB.partnerTasks(); } catch (e) { myTasks = []; } }
   const myTodo = myTasks.filter((t) => !t.submission || t.submission.status !== 'pending').length;
+  let partnerLeft = null;
+  let endedWith = null;
+  if (usingCloud()) {
+    try { partnerLeft = await DB.getSetting('partnerLeft', null); } catch (e) { partnerLeft = null; }
+    try { endedWith = localStorage.getItem(`endedWith:${CloudDB.myId()}`); } catch (e) { endedWith = null; }
+  }
   let joinReqs = [];
   if (usingCloud()) { try { joinReqs = (await CloudDB.listPartners()).filter((p) => p.approved === false); } catch (e) { joinReqs = []; } }
   // 「一年前的今天」只挑美好時刻，免得一打開就看到舊的烏雲
@@ -817,6 +823,16 @@ async function viewHome() {
       <div class="bold" style="color:var(--happy-dark)">${all.length ? '註冊，把紀錄存到雲端' : '歡迎！直接開始記錄吧'}</div>
       <div class="small" style="color:var(--happy-dark)">${all.length ? `目前 ${all.length} 則紀錄只存在這支手機。` : '不用註冊就能先用，紀錄會先存在這支手機。'}在這支手機註冊或登入後會自動搬上雲端，換手機不會不見，也能分享給另一半。</div>
     </a>` : ''}
+    ${partnerLeft ? `<div class="card" id="partner-left" style="background:var(--lock-bg);border-color:transparent;gap:6px">
+      <div class="bold" style="color:var(--lock)">${esc(partnerLeft.name)}結束了這段關係</div>
+      <div class="small" style="color:var(--lock)">${esc(partnerLeft.name)}已經看不到你的紀錄了。之前的紀錄要封存（收起來，只有你看得到）還是刪除？之後分享給新的人，對方就看不到這些。</div>
+      <div class="btn-row"><a class="btn small" href="#/end">封存或刪除</a><button class="btn small secondary" id="partner-left-ok">先保留</button></div>
+    </div>` : ''}
+    ${endedWith ? `<div class="card" id="ended-with" style="gap:6px">
+      <div class="bold">和${esc(endedWith)}的分享已經結束了</div>
+      <div class="small muted">這裡是你自己的空間，可以開始記自己的紀錄，也可以匯入之前匯出的備份。</div>
+      <button class="btn small secondary" id="ended-with-ok" style="align-self:flex-start">知道了</button>
+    </div>` : ''}
     ${joinReqs.length ? `<a class="card" href="#/settings" style="background:var(--lock-bg);border-color:transparent;gap:4px">
       <div class="bold" style="color:var(--lock)">${esc(joinReqs[0].name)} 想用分享碼加入</div>
       <div class="small" style="color:var(--lock)">點這裡到設定頁按「同意」或「拒絕」。如果不是你認識的人，請拒絕並換新的分享碼。</div>
@@ -867,6 +883,10 @@ async function viewHome() {
       document.getElementById('names-card').remove();
     });
   }
+  const plOk = document.getElementById('partner-left-ok');
+  if (plOk) plOk.addEventListener('click', () => withBusy(plOk, '', async () => { await DB.setSetting('partnerLeft', null); document.getElementById('partner-left').remove(); }));
+  const ewOk = document.getElementById('ended-with-ok');
+  if (ewOk) ewOk.addEventListener('click', () => { try { localStorage.removeItem(`endedWith:${CloudDB.myId()}`); } catch (e) { /* 略過 */ } document.getElementById('ended-with').remove(); });
   const box = document.getElementById('recent');
   for (const r of recent) box.appendChild(await listItem(r));
 }
@@ -2094,8 +2114,11 @@ async function viewSettings() {
     go('#/');
   });
   const delAcc = document.getElementById('delete-account');
-  if (delAcc) delAcc.addEventListener('click', () => {
-    const typed = prompt('刪除帳號會刪掉雲端上所有紀錄、照片、分享和這個帳號本身，沒辦法復原。建議先匯出備份。\n確定的話請輸入「刪除」兩個字：');
+  if (delAcc) delAcc.addEventListener('click', async () => {
+    // 另一半寫的紀錄也存在你的空間裡，刪帳號會一起刪掉，先講清楚
+    let others = 0;
+    try { others = (await DB.allRecords()).filter((r) => !isMine(r)).length; } catch (e) { others = 0; }
+    const typed = prompt(`刪除帳號會刪掉雲端上所有紀錄、照片、分享和這個帳號本身，沒辦法復原。建議先匯出備份。${others ? `\n${partnerName()}寫的 ${others} 則紀錄也會一起刪掉，可以先請${partnerName()}到設定頁「匯出我寫的紀錄」。` : ''}\n確定的話請輸入「刪除」兩個字：`);
     if ((typed || '').trim() !== '刪除') return;
     withBusy(delAcc, '刪除中…', async () => {
       try { await CloudDB.deleteShare(); } catch (e) { /* 沒有分享碼就略過 */ }
@@ -2108,6 +2131,19 @@ async function viewSettings() {
       go('#/login');
     });
   });
+}
+
+// 另一半匯出自己寫的紀錄（格式和「匯出還原用備份」一樣，可以匯入自己的帳號或手機版）
+async function exportMyRecords() {
+  const records = (await DB.allRecords()).filter((r) => isMine(r) && !r.deletedAt);
+  const photos = [];
+  for (const r of records) for (const pid of r.photoIds || []) {
+    const ph = await DB.getPhoto(pid);
+    if (ph) photos.push({ id: pid, recordId: r.id, data: await blobToDataUrl(ph.blob) });
+  }
+  const data = { app: 'couple-diary', version: 1, exportedAt: new Date().toISOString(), records, categories: [], photos };
+  downloadFile(new Blob([JSON.stringify(data)], { type: 'application/json' }), `our-records-MINE-backup-${today()}.json`);
+  toast(`匯出好了：${records.length} 則紀錄、${photos.length} 張照片`);
 }
 
 // ---------- 結束這段關係 ----------
@@ -2421,21 +2457,47 @@ function viewPartnerSettings() {
       <button class="btn small secondary" id="logout">登出</button>
     </div>` : ''}
     ${pinCardHtml()}
+    ${CloudDB.isBoundPartner() ? `<div class="card">
+      <div class="bold">匯出我寫的紀錄</div>
+      <div class="muted">把你自己寫的紀錄和照片存成備份檔。之後用自己的帳號或手機版「匯入備份」就能還原。</div>
+      <button class="btn small secondary" id="export-mine">匯出我寫的紀錄</button>
+    </div>` : ''}
     ${feedbackCard()}
     <div class="card">
       <div class="bold">離開</div>
-      <div class="muted">離開後這支手機就看不到了，之後要再輸入分享碼和密碼才能回來。</div>
-      <button class="btn small danger" id="leave">離開</button>
+      <div class="muted">只是不想在這支手機上看，選「這支手機登出」；要分開了，選「結束這段關係」，${esc(ownerName())}下次打開 App 會收到通知。</div>
+      ${CloudDB.isBoundPartner() ? '' : '<div class="small muted">還沒綁定帳號的話，登出後要重新用分享碼加入。</div>'}
+      <button class="btn small secondary" id="leave">這支手機登出</button>
+      <button class="btn small danger" id="end-rel">結束這段關係</button>
     </div>
   `;
   const logout = document.getElementById('logout');
   bindPinCard(viewPartnerSettings);
   if (logout) logout.addEventListener('click', async () => { await CloudDB.signOut(); photoUrlCache.clear(); go('#/login'); });
   document.getElementById('leave').addEventListener('click', async () => {
-    if (!confirm(`確定要離開嗎？離開後就看不到${ownerName()}的紀錄，要重新用分享碼加入、等${ownerName()}同意。`)) return;
+    if (CloudDB.isBoundPartner()) {
+      if (!confirm('登出這支手機？之後用綁定的帳號登入就能回來。')) return;
+      await CloudDB.signOut(); photoUrlCache.clear(); go('#/login');
+      return;
+    }
+    if (!confirm(`確定要登出嗎？還沒綁定帳號，登出後要重新用分享碼加入、等${ownerName()}同意。`)) return;
     await CloudDB.leaveShare();
     photoUrlCache.clear();
     go('#/join');
+  });
+  const exportMine = document.getElementById('export-mine');
+  if (exportMine) exportMine.addEventListener('click', () => withBusy(exportMine, '準備中…', () => exportMyRecords()));
+  document.getElementById('end-rel').addEventListener('click', async () => {
+    const mineCount = (await DB.allRecords()).filter((r) => isMine(r) && !r.deletedAt).length;
+    const bound = CloudDB.isBoundPartner();
+    const msg = `結束和${ownerName()}的這段關係？你會看不到${ownerName()}的紀錄，${ownerName()}會收到通知。`
+      + (mineCount ? `\n你寫的 ${mineCount} 則紀錄會留在${ownerName()}那邊、之後你就看不到了${bound ? '，建議先按「匯出我寫的紀錄」' : ''}。` : '');
+    if (!confirm(msg)) return;
+    const name = ownerName();
+    await CloudDB.partnerEndRelationship();
+    try { localStorage.setItem(`endedWith:${CloudDB.myId()}`, name); } catch (e) { /* 略過 */ }
+    photoUrlCache.clear(); thumbUrlCache.clear();
+    if (bound) { location.hash = '#/'; location.reload(); } else { await CloudDB.signOut(); go('#/login'); }
   });
 }
 
@@ -2883,7 +2945,7 @@ async function route() {
     // 臨時帳號但不是（或已經不是）另一半：分享被停止、被移除，或加入沒成功
     if (CLOUD_ENABLED && CloudDB.isAnonymous() && !isPartner()) {
       renderTabbar(null);
-      viewJoin(page === 'join' ? '' : '目前沒有閱讀權限，可能是分享已經停止或被移除了。請再輸入一次分享碼和密碼。', page === 'join' ? arg : '');
+      viewJoin(page === 'join' ? '' : '這段分享已經結束了，或這支手機的加入資料不見了。如果還要一起用，請對方給你分享碼和密碼，再加入一次。', page === 'join' ? arg : '');
       return;
     }
     if (!isGuest() && (page === 'login' || page === 'join')) { go('#/'); return; }

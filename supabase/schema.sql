@@ -1401,7 +1401,7 @@ begin
   end if;
   delete from public.partners where owner = auth.uid() and (p_keep is null or uid <> p_keep);
   if p_keep is null then delete from public.shares where owner = auth.uid(); end if;
-  delete from public.settings where owner = auth.uid() and key in ('lastNo', 'sharePaused');
+  delete from public.settings where owner = auth.uid() and key in ('lastNo', 'sharePaused', 'partnerLeft');
   update public.settings set value = value || '{"partner": "", "since": ""}'::jsonb
     where owner = auth.uid() and key = 'names' and jsonb_typeof(value) = 'object';
 end $$;
@@ -1422,3 +1422,19 @@ begin
 end $$;
 revoke all on function public.delete_archive() from public, anon;
 grant execute on function public.delete_archive() to authenticated;
+
+-- 另一半結束這段關係：自己離開，並留一個通知給主人（主人下次打開 App 會看到，並被帶去封存或刪除）
+create or replace function public.partner_end_relationship() returns void
+language plpgsql security definer set search_path = public as $$
+declare
+  p public.partners;
+begin
+  select * into p from public.partners where uid = auth.uid() and approved;
+  if not found then raise exception '你目前沒有加入任何分享'; end if;
+  delete from public.partners where uid = auth.uid();
+  insert into public.settings (owner, key, value)
+  values (p.owner, 'partnerLeft', jsonb_build_object('name', p.name, 'at', (extract(epoch from now()) * 1000)::bigint))
+  on conflict (owner, key) do update set value = excluded.value;
+end $$;
+revoke all on function public.partner_end_relationship() from public, anon;
+grant execute on function public.partner_end_relationship() to authenticated;
