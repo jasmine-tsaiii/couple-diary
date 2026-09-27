@@ -11,14 +11,14 @@ const U = (process.env.U || 'http://localhost:8770/');
   const fb = () => p.evaluate(() => (JSON.parse(localStorage.getItem('mockState') || localStorage.getItem('mock2') || '{}').t || {}).feedback);
   // 訪客
   await p.goto(U + '#/'); await p.waitForTimeout(500);
-  await p.goto(U + '#/settings'); await p.waitForTimeout(600);
+  await p.goto(U + '#/settings'); await p.waitForSelector('a[href="#/feedback"]', { timeout: 15000 });
   log('settings card', await p.isVisible('a[href="#/feedback"]'));
-  await p.click('a[href="#/feedback"]'); await p.waitForTimeout(400);
+  await p.click('a[href="#/feedback"]'); await p.waitForSelector('[data-fbkind="建議"]', { timeout: 15000 });
   await p.click('[data-fbkind="建議"]'); await p.fill('#fb-msg', '希望可以換主題顏色');
   await p.screenshot({ path: 'fb1.png' });
-  await p.goto(U + '#/'); await p.goto(U + '#/feedback'); await p.waitForTimeout(400);
+  await p.goto(U + '#/'); await p.waitForTimeout(300); await p.goto(U + '#/feedback'); await p.waitForSelector('#fb-msg', { timeout: 15000 });
   log('draft kept', await p.inputValue('#fb-msg'));
-  await p.click('[data-fbkind="建議"]'); await p.fill('#fb-contact', 'ig: jas'); await p.click('#fb-send'); await p.waitForTimeout(700);
+  await p.click('[data-fbkind="建議"]'); await p.fill('#fb-contact', 'ig: jas'); await p.click('#fb-send'); await p.waitForSelector('text=謝謝你！已經收到了', { timeout: 15000 }).catch(() => {});
   log('thanks', await p.isVisible('text=謝謝你！已經收到了'));
   log('stored', JSON.stringify(await p.evaluate(() => JSON.parse(localStorage.mockServer).t.feedback)), 'draft cleared', await p.evaluate(() => localStorage.getItem('fbDraft')));
   console.log('errors', errs); await b.close();
