@@ -670,17 +670,22 @@ function showA2hs() {
   const box = document.createElement('div');
   box.className = 'celebrate a2hs-dlg';
   const steps = a2hsSteps();
+  // 還沒登入的人：iPhone 主畫面和 Safari 的資料是分開的，先存上雲端再加，紀錄才不會像不見了
+  const guestFirst = isGuest() && /iphone|ipad|ipod|Macintosh/i.test(navigator.userAgent) && !IN_APP;
   box.innerHTML = `<div class="celebrate-box" role="dialog" aria-modal="true" aria-label="加到主畫面">
     ${mascotHtml('celebrate', 130)}
     <h2 style="font-size:20px">把啾啾日記放到主畫面</h2>
     <div class="muted">像 App 一樣，點圖示就能打開，想記的時候不用再找網址。${/iphone|ipad|ipod/i.test(navigator.userAgent) ? '放在主畫面，手機也比較不會自動清掉資料。' : ''}</div>
+    ${guestFirst ? '<div class="small" style="background:var(--progress-bg);color:var(--progress-ink);border-radius:12px;padding:10px 12px;text-align:left">要先註冊或登入喔！iPhone 從主畫面打開時，看不到在 Safari 裡寫的紀錄。登入後紀錄會存到雲端，兩邊登入同一個帳號就都看得到。</div><a class="btn" href="#/login" id="a2hs-login">先註冊或登入</a>' : ''}
     ${installEvt && !IN_APP ? '<button class="btn" id="a2hs-install">加到主畫面</button>' : `<ol class="a2hs-steps">${steps.map((x) => `<li>${x}</li>`).join('')}</ol>`}
-    <button class="btn ${installEvt && !IN_APP ? 'secondary' : ''}" id="a2hs-ok">${installEvt && !IN_APP ? '之後再說' : '知道了'}</button>
+    <button class="btn ${(installEvt && !IN_APP) || guestFirst ? 'secondary' : ''}" id="a2hs-ok">${installEvt && !IN_APP ? '之後再說' : '知道了'}</button>
     <button class="btn secondary small" id="a2hs-never">不要再提醒</button>
   </div>`;
   document.body.appendChild(box);
   const close = () => box.remove();
   box.querySelector('#a2hs-ok').addEventListener('click', close);
+  const lg = box.querySelector('#a2hs-login');
+  if (lg) lg.addEventListener('click', close);
   box.querySelector('#a2hs-never').addEventListener('click', () => { try { localStorage.setItem('a2hsNever', '1'); } catch (e) { /* 略過 */ } close(); });
   const inst = box.querySelector('#a2hs-install');
   if (inst) inst.addEventListener('click', async () => {
@@ -952,6 +957,7 @@ async function viewHome() {
     ${isGuest() ? `<a class="card" href="#/login" style="background:var(--happy-bg);border-color:transparent;gap:4px">
       <div class="bold" style="color:var(--happy-dark)">${all.length ? '註冊，把紀錄存到雲端' : '歡迎！直接開始記錄吧'}</div>
       <div class="small" style="color:var(--happy-dark)">${all.length ? `目前 ${all.length} 則紀錄只存在這支手機。` : '不用註冊就能先用，紀錄會先存在這支手機。'}在這支手機註冊或登入後會自動搬上雲端，換手機不會不見，也能分享給另一半。</div>
+      ${isIOS && standalone && !all.length ? '<div class="small" style="color:var(--happy-dark)">之前在 Safari 寫過的話：從主畫面打開的和 Safari 是分開存的。請回 Safari 打開網址、註冊或登入，紀錄就會搬上雲端，再回來這裡登入同一個帳號就看得到。</div>' : ''}
     </a>` : ''}
     ${partnerLeft ? `<div class="card" id="partner-left" style="background:var(--lock-bg);border-color:transparent;gap:6px">
       <div class="bold" style="color:var(--lock)">${esc(partnerLeft.name)}結束了這段關係</div>
@@ -2743,7 +2749,7 @@ async function shareCardHtml() {
     <div class="bold">分享給另一半</div>
     <div class="muted">按下面的按鈕複製邀請連結傳給對方，密碼另外告訴他。對方點連結就會看到加入畫面，分享碼已經幫他填好。</div>
     <div class="share-code">${esc(share.code)}</div>
-    <button class="btn small secondary" id="s-copy">複製邀請連結（不含密碼）</button>
+    <button class="btn small secondary" id="s-copy">分享邀請連結（不含密碼）</button>
     <div class="field"><label for="s-name">你的名字（對方會看到）</label>
       <div class="row"><input id="s-name" class="input grow" maxlength="20" value="${esc(share.owner_name)}"><button class="btn small" id="s-save-name">儲存</button></div></div>
     <div class="field"><label for="s-pass">改分享密碼</label>
@@ -2794,8 +2800,14 @@ function bindShareCard() {
   });
   if ($('s-copy')) $('s-copy').addEventListener('click', async () => {
     const code = document.querySelector('.share-code').textContent;
-    const text = `點這個連結，一起用啾啾日記：${location.origin + location.pathname}#/join/${code}（密碼我另外告訴你）`;
-    try { await navigator.clipboard.writeText(text); toast('已複製'); } catch (e) { prompt('複製下面這段文字', text); }
+    const url = `${location.origin + location.pathname}#/join/${code}`;
+    const text = `點這個連結，一起用啾啾日記：${url}（密碼我另外告訴你）`;
+    // 手機會跳出分享畫面（LINE、訊息…）；不支援或按取消時改成複製
+    try { await navigator.clipboard.writeText(text); } catch (e) { /* 有些瀏覽器不給複製 */ }
+    if (navigator.share) {
+      try { await navigator.share({ title: '一起用啾啾日記', text }); return; } catch (e) { if (e && e.name === 'AbortError') { toast('邀請連結已複製'); return; } }
+    }
+    try { await navigator.clipboard.writeText(text); toast('已複製，貼給另一半就可以了'); } catch (e) { prompt('複製下面這段文字', text); }
   });
   if ($('s-save-name')) $('s-save-name').addEventListener('click', async () => {
     const name = $('s-name').value.trim();
@@ -2876,9 +2888,11 @@ async function putImportedRecord(r) {
   }
 }
 
-async function migrateLocalToCloud(progress = () => {}) {
-  const records = await LocalDB.allRecords();
-  const photos = await LocalDB.allPhotos();
+// since：只搬這個時間之後新增或改過的（登入過又登出、在手機裡寫了新的，下次登入時補搬）
+async function migrateLocalToCloud(progress = () => {}, since = 0) {
+  const records = (await LocalDB.allRecords()).filter((r) => (r.updatedAt || r.createdAt || 0) > since);
+  const ids = new Set(records.map((r) => r.id));
+  const photos = (await LocalDB.allPhotos()).filter((p) => ids.has(p.recordId) || (p.createdAt || 0) > since);
   let done = 0;
   let skipped = 0;
   for (const p of photos) {
@@ -2909,12 +2923,13 @@ async function afterOwnerLogin() {
   if (!usingCloud() || CloudDB.isAnonymous() || isPartner()) return;
   await LocalDB.setSetting('hasAccount', true);
   numbersChecked = false; // 換成雲端資料後重新檢查舊紀錄的編號
-  if (await LocalDB.getSetting('migratedAt', null)) return;
-  const count = (await LocalDB.allRecords()).length;
+  // 第一次登入搬全部；之後登出時在手機裡寫的新紀錄，下次登入也會自動補搬
+  const since = (await LocalDB.getSetting('migratedAt', null)) || 0;
+  const count = (await LocalDB.allRecords()).filter((r) => (r.updatedAt || r.createdAt || 0) > since).length;
   if (!count) { await LocalDB.setSetting('migratedAt', Date.now()); return; }
   toast(`正在把手機裡的 ${count} 則紀錄搬上雲端…`);
   try {
-    const n = await migrateLocalToCloud();
+    const n = await migrateLocalToCloud(() => {}, since);
     toast(`已搬上雲端：${n.records} 則紀錄、${n.photos} 張照片${n.skipped ? `；另外 ${n.skipped} 張超過免費雲端額度，還留在這支手機裡` : ''}`);
   } catch (e) {
     toast('搬上雲端失敗，可以到設定頁再試一次：' + e.message);

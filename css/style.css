@@ -309,3 +309,7 @@ a.card:active { transform: scale(0.99); }
 /* 加到主畫面的引導 */
 .a2hs-dlg .btn { width: 100%; }
 .a2hs-steps { text-align: left; margin: 0; padding-left: 22px; display: flex; flex-direction: column; gap: 6px; }
+
+/* 手機連續點按鈕時不要放大畫面（iPhone 點兩下會縮放） */
+button, .btn, .chip, .pin-keys, .pin-lock { touch-action: manipulation; }
+.pin-keys button { -webkit-user-select: none; user-select: none; -webkit-tap-highlight-color: transparent; }
