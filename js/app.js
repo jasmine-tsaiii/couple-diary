@@ -450,7 +450,7 @@ async function viewWishes(show = 'todo') {
       <div class="grow" style="display:flex;flex-direction:column;gap:4px">
         <div class="bold" style="${w.done ? 'text-decoration:line-through;color:var(--muted)' : ''}">${esc(w.title)}</div>
         ${w.note ? `<div class="small muted">${esc(w.note)}</div>` : ''}
-        <div class="small muted">${[w.category ? esc(w.category) : '', who(w), w.done ? `${shortDate(dateOf(Date.parse(w.done_at)))} ${w.done_by_name ? `${esc(w.done_by_name)}打勾` : '完成'}` : ''].filter(Boolean).join('・')}</div>
+        <div class="small muted">${[Date.parse(w.created_at) ? `${shortDate(dateOf(Date.parse(w.created_at)))} 建立` : '', w.category ? esc(w.category) : '', who(w), w.done ? `${Date.parse(w.done_at) ? shortDate(dateOf(Date.parse(w.done_at))) : ''} ${w.done_by_name ? `${esc(w.done_by_name)}打勾` : '完成'}` : ''].filter(Boolean).join('・')}</div>
         ${!partner && w.done && !w.record_id ? `<button class="btn small secondary" data-wrec="${esc(w.id)}" style="align-self:flex-start">記成美好時刻</button>` : ''}
         ${!partner && w.record_id ? `<a class="small" href="#/view/${esc(w.record_id)}" style="color:var(--happy-dark)">❤️ 看那則美好時刻</a>` : ''}
       </div>
@@ -701,8 +701,8 @@ async function viewHome() {
     const h = count('happy');
     const c = count('cloud');
     const ratio = c ? h / c : 0;
-    const label = !c ? (h ? '還沒有烏雲，繼續保持 ☀️' : '還沒有紀錄') : `美好 : 烏雲 = ${ratio >= 10 ? Math.round(ratio) : Math.round(ratio * 10) / 10} : 1`;
-    const pct = h + c ? (h / (h + c)) * 100 : 50;
+    const label = !c ? (h ? '還沒有烏雲，繼續保持 ☀️' : '記下不開心的時刻，這裡會顯示美好和烏雲的比例') : `美好 : 烏雲 = ${ratio >= 10 ? Math.round(ratio) : Math.round(ratio * 10) / 10} : 1`;
+    const pct = h + c ? (h / (h + c)) * 100 : 0;
     const hint = !c ? '' : ratio >= 5 ? '已經達到幸福情侶的 5 : 1 了！' : `再 ${Math.ceil(c * 5 - h)} 個美好時刻就到 5 : 1（研究說幸福的情侶大約是這個比例）`;
     return `<a class="card theme-cloud" href="#/list/cloud">
       <div class="row between"><div class="bold" style="color:var(--cloud)">烏雲時刻</div><div class="count"><b>${c}</b> 則</div></div>
@@ -2307,6 +2307,22 @@ function viewResetPassword() {
 }
 
 // ---------- 登入（雲端模式） ----------
+// 登入頁下方的介紹：第一次來的人知道這個 App 能做什麼
+const INTRO = [
+  ['❤️', '美好時刻', '把約會、驚喜、小確幸記下來，目標是一起集滿 100 個。'],
+  ['☁️', '烏雲時刻', '不開心的時刻也記下來，事後寫反思，心情過去了就按「放晴」。'],
+  ['⚡', '吵架議題', '分類、原因、後續進度，和好了就標成已解決，不再重複吵同一件事。'],
+  ['✅', '一起完成的事', '寫下想一起做的事，兩個人都能打勾，完成後變成美好時刻。'],
+  ['🔒', '上鎖與任務', '想給對方看的可以分享，也可以上鎖，出一個任務讓對方完成才解鎖。'],
+  ['🏅', '印章冊', '美好時刻、和好、放晴達到里程碑就蓋一個章，像集點卡一樣。'],
+];
+function introFeatures() {
+  return `<section class="card" style="gap:12px;margin-top:8px" aria-labelledby="intro-h">
+    <h2 id="intro-h" class="bold" style="font-size:17px;font-family:inherit;margin:0">這個 App 可以做什麼</h2>
+    ${INTRO.map(([icon, t, d]) => `<div class="row" style="align-items:flex-start;gap:12px"><div style="font-size:22px;line-height:1.2" aria-hidden="true">${icon}</div><div style="display:flex;flex-direction:column;gap:2px"><div class="bold">${t}</div><div class="small muted">${d}</div></div></div>`).join('')}
+    <div class="small muted">不用註冊就能先用，紀錄只存在這支手機；登入後存到雲端，換手機也不會不見，還能用分享碼給另一半看。紀錄只有你和你分享的人看得到。</div>
+  </section>`;
+}
 function viewLogin(mode = 'signin') {
   app.className = '';
   const isUp = mode === 'signup';
@@ -2334,6 +2350,7 @@ function viewLogin(mode = 'signin') {
     <button class="btn secondary small" id="switch">${isUp ? '已經有帳號？登入' : '第一次使用？建立帳號'}</button>
     <a class="btn secondary small" href="#/join">我是另一半，用分享碼加入</a>
     <a class="btn secondary small" href="#/" id="try-first" hidden>先不登入，直接開始用</a>
+    ${isUp ? '' : introFeatures()}
   `;
   hasAccountHere().then((has) => { const b = document.getElementById('try-first'); if (b && !has) b.hidden = false; });
   document.getElementById('switch').addEventListener('click', () => viewLogin(isUp ? 'signin' : 'signup'));
