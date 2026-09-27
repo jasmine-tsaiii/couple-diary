@@ -1028,7 +1028,7 @@ async function viewDetail(id) {
   const catDeleted = r.type === 'fight' && r.category && !partner && mine && !(await getCategories()).includes(r.category);
   const authorText = usingCloud() && r.author ? `${authorLabel(r)}新增的` : '';
   const canDelete = partner ? bound && mine : mine;
-  const backHref = r.type === 'fight' ? '#/fights' : `#/list/${r.type}`;
+  const backHref = r.archivedAt ? '#/archive' : r.type === 'fight' ? '#/fights' : `#/list/${r.type}`;
   const urls = [];
   for (const pid of r.photoIds || []) { const u = await photoUrl(pid); if (u) urls.push(u); }
 
@@ -1161,8 +1161,9 @@ async function viewDetail(id) {
     <div class="topbar">
       <a class="icon-btn" href="${backHref}" aria-label="返回">${ICON.back}</a>
       <div class="grow"></div>
-      ${(mine && (!partner || bound)) || fightEdit ? `<a class="btn small secondary" href="#/edit/${esc(r.id)}">編輯</a>` : ''}
+      ${r.archivedAt ? '' : (mine && (!partner || bound)) || fightEdit ? `<a class="btn small secondary" href="#/edit/${esc(r.id)}">編輯</a>` : ''}
     </div>
+    ${r.archivedAt ? `<div class="card" style="background:var(--lock-bg);border-color:transparent"><div class="small" style="color:var(--lock)">這是 ${shortDate(dateOf(r.archivedAt))} 封存的紀錄，只有你看得到。</div></div>` : ''}
     <div class="field" style="gap:6px">
       <div class="row" style="gap:8px">
         <span class="badge" style="background:var(--accent-bg);color:var(--accent-dark)">${r.type === 'fight' ? esc(r.category || '未分類') + (catDeleted ? '（已刪除的分類）' : '') : conf.label}</span>
@@ -1253,7 +1254,9 @@ async function viewDetail(id) {
   }
   if (!mine) return;
 
-  const delBtn = partner ? null : document.getElementById('delete');
+  // 封存的紀錄在「封存的回憶」頁一起刪，這裡不單獨刪（刪了會找不到）
+  if (r.archivedAt) { const d = document.getElementById('delete'); if (d) d.remove(); }
+  const delBtn = partner || r.archivedAt ? null : document.getElementById('delete');
   if (delBtn) delBtn.addEventListener('click', async () => {
     if (!confirm(`要刪除這則嗎？會先移到設定頁的「最近刪除」，${TRASH_DAYS} 天內都可以救回來${usingCloud() ? '，這段時間對方也看不到' : ''}。`)) return;
     await updateRecord(r.id, (x) => { x.deletedAt = Date.now(); });
@@ -1759,6 +1762,8 @@ async function viewSettings() {
   const cats = await getCategories();
   const everything = await DB.allRecords();
   const quota = usingCloud() ? await CloudDB.photoQuota() : null;
+  let archivedCount = 0;
+  if (usingCloud()) { try { archivedCount = (await CloudDB.archivedRecords()).length; } catch (e) { archivedCount = 0; } }
   const all = everything.filter((r) => !r.deletedAt);
   const trash = everything.filter((r) => r.deletedAt).sort((a, b) => b.deletedAt - a.deletedAt);
   const tagCount = new Map();
@@ -1856,6 +1861,12 @@ async function viewSettings() {
         }).join('')}</div></div>`).join('')}
     </div>
     ${feedbackCard()}
+    ${usingCloud() ? `<div class="card" id="end-card">
+      <div class="bold">結束這段關係</div>
+      <div class="muted">分開了、或要和新的對象開始，可以把目前的紀錄封存（收起來，只有你看得到）或刪除。另一半會被移除，分享碼也會作廢。</div>
+      <a class="btn small secondary" href="#/end">結束這段關係…</a>
+      ${archivedCount ? `<a class="btn small secondary" href="#/archive">封存的回憶（${archivedCount} 則）</a>` : ''}
+    </div>` : ''}
     <div class="card">
       <div class="bold">重新編號</div>
       <div class="muted">每則紀錄的 No. 在新增時就固定，刪除後會留下空號。想讓號碼重新連續的話，可以依日期從 1 重新排一次${usingCloud() ? '，另一半看到的號碼也會一起更新' : ''}。</div>
@@ -2046,6 +2057,85 @@ async function viewSettings() {
       photoUrlCache.clear(); thumbUrlCache.clear();
       toast('帳號已刪除');
       go('#/login');
+    });
+  });
+}
+
+// ---------- 結束這段關係 ----------
+async function viewEnd() {
+  const all = await liveRecords();
+  const other = partnerName();
+  app.className = '';
+  app.innerHTML = `
+    <div class="topbar">
+      <a class="icon-btn" href="#/settings" aria-label="返回">${ICON.back}</a>
+      <h1>結束這段關係</h1>
+    </div>
+    <div class="muted">目前這段關係有 ${all.length} 則紀錄。兩種做法都會移除${esc(other)}、讓分享碼作廢，首頁的數字和編號會從頭開始；之後分享給新的人，對方看不到這段的任何紀錄。</div>
+    <div class="card" style="gap:8px">
+      <div class="bold">封存（建議）</div>
+      <div class="small muted">紀錄、照片、一起完成的事都收進設定頁的「封存的回憶」，只有你看得到，之後想刪再刪。${esc(other)}寫的、上鎖的紀錄你還是看不到。</div>
+      <button class="btn small" id="end-archive">封存並結束</button>
+    </div>
+    <div class="card" style="gap:8px">
+      <div class="bold" style="color:#9B2C1F">全部刪除</div>
+      <div class="small muted">這段關係的紀錄（包含${esc(other)}寫的）、照片和一起完成的事全部刪掉，沒辦法復原。建議先到設定頁匯出備份。之前封存的不會動。</div>
+      <button class="btn small danger" id="end-delete">刪除並結束</button>
+    </div>
+  `;
+  const done = async (msg) => {
+    photoUrlCache.clear(); thumbUrlCache.clear();
+    await loadNames();
+    toast(msg);
+    go('#/');
+  };
+  const archiveBtn = document.getElementById('end-archive');
+  archiveBtn.addEventListener('click', () => {
+    if (!confirm(`封存目前的 ${all.length} 則紀錄，並移除${other}？封存的紀錄只有你看得到。`)) return;
+    withBusy(archiveBtn, '封存中…', async () => {
+      await CloudDB.endRelationship('archive');
+      await done('已封存，這段回憶收在設定頁的「封存的回憶」');
+    });
+  });
+  const delBtn = document.getElementById('end-delete');
+  delBtn.addEventListener('click', () => {
+    const typed = prompt(`會刪掉這段關係的 ${all.length} 則紀錄和照片（包含${other}寫的），沒辦法復原。\n確定的話請輸入「刪除」兩個字：`);
+    if ((typed || '').trim() !== '刪除') return;
+    withBusy(delBtn, '刪除中…', async () => {
+      // 先刪你資料夾裡的照片和任務照片（紀錄刪掉後就找不到了）
+      for (const r of await DB.allRecords()) {
+        for (const pid of r.photoIds || []) if (CloudDB.photoIsMine(pid)) { try { await DB.deletePhoto(pid); } catch (e) { /* 之後再清 */ } }
+      }
+      try { for (const sub of await CloudDB.submissions()) if (sub.photo_path) await CloudDB.removeTaskPhoto(sub.photo_path); } catch (e) { /* 略過 */ }
+      await CloudDB.endRelationship('delete');
+      await done('已刪除這段關係的紀錄');
+    });
+  });
+}
+
+async function viewArchive() {
+  const list = (await CloudDB.archivedRecords()).filter((r) => !r.deletedAt).sort(byDateDesc);
+  app.className = '';
+  app.innerHTML = `
+    <div class="topbar">
+      <a class="icon-btn" href="#/settings" aria-label="返回">${ICON.back}</a>
+      <h1>封存的回憶</h1>
+    </div>
+    <div class="muted">結束上一段關係時封存的紀錄，只有你看得到，不算在首頁的數字裡。</div>
+    <div class="list" id="archive-list"></div>
+    ${list.length ? '<button class="btn small danger" id="purge-archive">永久刪除全部封存</button>' : '<div class="empty">沒有封存的紀錄</div>'}
+  `;
+  const box = document.getElementById('archive-list');
+  for (const r of list) box.appendChild(await listItem(r));
+  const purge = document.getElementById('purge-archive');
+  if (purge) purge.addEventListener('click', () => {
+    const typed = prompt(`會永久刪除 ${list.length} 則封存的紀錄和照片，沒辦法復原。\n確定的話請輸入「刪除」兩個字：`);
+    if ((typed || '').trim() !== '刪除') return;
+    withBusy(purge, '刪除中…', async () => {
+      for (const r of list) for (const pid of r.photoIds || []) if (CloudDB.photoIsMine(pid)) { try { await DB.deletePhoto(pid); } catch (e) { /* 之後再清 */ } }
+      await CloudDB.deleteArchive();
+      toast('已刪除封存的紀錄');
+      go('#/settings');
     });
   });
 }
@@ -2758,6 +2848,8 @@ async function route() {
     else if (page === 'wishes') { renderTabbar(null); await viewWishes(); }
     else if (page === 'feedback') { renderTabbar(null); viewFeedback(); }
     else if (page === 'tasks' && usingCloud()) { renderTabbar(null); await viewPartnerTasks(); }
+    else if (page === 'end' && usingCloud()) { renderTabbar(null); await viewEnd(); }
+    else if (page === 'archive' && usingCloud()) { renderTabbar(null); await viewArchive(); }
     else if (page === 'task' && usingCloud()) { renderTabbar(null); await viewPartnerTaskForm(arg); }
     else go('#/');
     if (!page || page === 'view') checkNewStamps().catch(() => {});

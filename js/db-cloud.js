@@ -209,7 +209,8 @@ const CloudDB = CLOUD_ENABLED ? (() => {
     async listWishes() {
       const { data, error } = await client.from('wishes').select('*').eq('owner', dataOwner()).order('created_at');
       if (error) { if (/wishes/.test(error.message)) throw new Error('要先到 Supabase 重新執行最新的 schema.sql，才能使用「一起完成的事」'); throw new Error(error.message); }
-      return data || [];
+      // 封存的（上一段關係的）不顯示
+      return (data || []).filter((w) => !w.archived);
     },
     async addWish(w) {
       if (partner) { check(await client.rpc('partner_add_wish', { p_title: w.title, p_note: w.note, p_category: w.category })); return; }
@@ -256,7 +257,10 @@ const CloudDB = CLOUD_ENABLED ? (() => {
     },
 
     // ---- 紀錄 ----
-    async allRecords() {
+    // 目前這段關係的紀錄（封存的另外用 archivedRecords 拿）
+    async allRecords() { return (await this.everyRecord()).filter((r) => !r.archivedAt); },
+    async archivedRecords() { return (await this.everyRecord()).filter((r) => r.archivedAt); },
+    async everyRecord() {
       const rows = [];
       for (let from = 0; ; from += 1000) {
         const page = check(await client.from('records').select('data').eq('owner', dataOwner()).order('created_at').range(from, from + 999));
@@ -283,6 +287,13 @@ const CloudDB = CLOUD_ENABLED ? (() => {
         data: rec,
         updated_at: new Date().toISOString(),
       }));
+    },
+    // 結束這段關係：'archive' 封存或 'delete' 刪除；另一半會被移除、分享碼作廢
+    async endRelationship(mode) {
+      check(await client.rpc('end_relationship', { p_mode: mode }));
+    },
+    async deleteArchive() {
+      check(await client.rpc('delete_archive'));
     },
     async partnerDeleteRecord(id) {
       check(await client.rpc('partner_delete_record', { p_id: id }));

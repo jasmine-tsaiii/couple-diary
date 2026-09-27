@@ -515,7 +515,7 @@ begin
     done = p_done,
     done_at = case when p_done then now() else null end,
     done_by_name = case when p_done then p.name else '' end
-  where id = p_id and owner = p.owner;
+  where id = p_id and owner = p.owner and not archived;
   if not found then raise exception '找不到這件事'; end if;
 end $$;
 
@@ -527,7 +527,7 @@ declare
 begin
   select * into p from public.partners where uid = auth.uid() and approved;
   if not found then raise exception '你還沒有用分享碼加入'; end if;
-  delete from public.wishes where id = p_id and owner = p.owner and created_by = 'partner';
+  delete from public.wishes where id = p_id and owner = p.owner and created_by = 'partner' and not archived;
   if not found then raise exception '只能刪除你自己加的'; end if;
 end $$;
 
@@ -542,6 +542,9 @@ grant execute on function public.partner_delete_wish(uuid) to authenticated;
 -- ---------- 雙人版：兩個人各記各的，吵架議題共用 ----------
 -- 每則紀錄記下「誰寫的」；舊紀錄都是主人寫的
 alter table public.records add column if not exists author uuid;
+-- 結束一段關係時「封存」的紀錄和清單：主人自己還看得到，之後的新另一半看不到
+alter table public.records add column if not exists archived boolean not null default false;
+alter table public.wishes add column if not exists archived boolean not null default false;
 update public.records set author = owner where author is null;
 alter table public.records alter column author set default auth.uid();
 create index if not exists records_owner_author_idx on public.records (owner, author);
@@ -605,7 +608,7 @@ begin
     coalesce(max((data ->> 'no')::int), 0),
     coalesce((select (value ->> p_type)::int from public.settings where owner = p_owner and key = 'lastNo'), 0)
   ) + 1 into v_no
-  from public.records where owner = p_owner and type = p_type;
+  from public.records where owner = p_owner and type = p_type and not archived;
   insert into public.settings (owner, key, value) values (p_owner, 'lastNo', jsonb_build_object(p_type, v_no))
   on conflict (owner, key) do update set value = coalesce(public.settings.value, '{}'::jsonb) || jsonb_build_object(p_type, v_no);
   return v_no;
@@ -625,13 +628,13 @@ begin
   if not public.is_real_user() then raise exception '請先登入'; end if;
   with n as (
     select id, row_number() over (partition by type order by data ->> 'date', coalesce((data ->> 'createdAt')::bigint, 0), id) as no
-    from public.records where owner = auth.uid() and (data ->> 'deletedAt') is null
+    from public.records where owner = auth.uid() and (data ->> 'deletedAt') is null and not archived
   )
   update public.records r set data = r.data || jsonb_build_object('no', n.no)
   from n where r.id = n.id and (r.data ->> 'no') is distinct from n.no::text;
   insert into public.settings (owner, key, value)
   select auth.uid(), 'lastNo', coalesce(jsonb_object_agg(type, c), '{}'::jsonb)
-  from (select type, count(*) as c from public.records where owner = auth.uid() and (data ->> 'deletedAt') is null group by type) x
+  from (select type, count(*) as c from public.records where owner = auth.uid() and (data ->> 'deletedAt') is null and not archived group by type) x
   on conflict (owner, key) do update set value = excluded.value;
 end $$;
 
@@ -721,7 +724,7 @@ begin
   end if;
 
   if r.id is not null then
-    if r.owner <> p.owner or (r.data ->> 'deletedAt') is not null then raise exception '找不到這則紀錄'; end if;
+    if r.owner <> p.owner or (r.data ->> 'deletedAt') is not null or r.archived then raise exception '找不到這則紀錄'; end if;
     if v_type = 'fight' and r.visibility <> 'shared' then raise exception '找不到這個議題，或它沒有分享給你'; end if;
     if v_type = 'fight' and r.author is distinct from auth.uid() and public.space_paused(p.owner) then raise exception '對方暫停分享中，等對方打開再更新'; end if;
     if v_type <> 'fight' and r.author is distinct from auth.uid() then raise exception '只能修改你自己寫的紀錄'; end if;
@@ -757,7 +760,7 @@ declare
 begin
   if not public.is_real_user() then raise exception '要先綁定帳號'; end if;
   select * into r from public.records
-  where id = p_id and owner = public.my_owner() and author = auth.uid() and (data ->> 'deletedAt') is null for update;
+  where id = p_id and owner = public.my_owner() and author = auth.uid() and (data ->> 'deletedAt') is null and not archived for update;
   if not found then raise exception '只能刪除你自己寫的紀錄'; end if;
   if r.type = 'fight' then
     update public.records set data = data || jsonb_build_object('deletedAt', v_now, 'updatedAt', v_now), updated_at = now() where id = p_id;
@@ -1142,7 +1145,7 @@ declare
 begin
   if v_space is null then raise exception '你還沒有用分享碼加入，或還在等對方同意'; end if;
   select * into r from public.records
-  where id = p_record_id and owner = v_space and author is distinct from auth.uid()
+  where id = p_record_id and owner = v_space and author is distinct from auth.uid() and not archived
     and visibility = 'task' and not unlocked and (data ->> 'deletedAt') is null;
   if not found then raise exception '找不到這個任務，可能已經解鎖了'; end if;
   if public.my_owner() is not null and public.space_paused(v_space) then raise exception '對方暫停分享中，等對方打開再送出'; end if;
@@ -1301,3 +1304,113 @@ create policy "photos: owner reads partner photos" on storage.objects
         and r.data -> 'photoIds' ? split_part(storage.filename(name), '.', 1)
     )
   );
+
+-- ============================================================
+-- 結束這段關係：封存（紀錄收起來，只有你看得到）或刪除；兩種都會移除另一半、停止分享
+-- ============================================================
+drop policy if exists "records: partner read" on public.records;
+create policy "records: partner read" on public.records
+  for select to authenticated
+  using (
+    owner = public.my_owner() and not archived
+    and (author = auth.uid()
+         or (not public.space_paused(owner)
+             and (data ->> 'deletedAt') is null and (visibility = 'shared' or (visibility = 'task' and unlocked))))
+  );
+drop policy if exists "wishes: partner read" on public.wishes;
+create policy "wishes: partner read" on public.wishes
+  for select to authenticated using (owner = public.my_owner() and not archived and not public.space_paused(owner));
+
+create or replace function public.member_tasks() returns jsonb
+language sql stable security definer set search_path = public as $$
+  select coalesce(jsonb_agg(jsonb_build_object(
+    'id', r.id,
+    'type', r.type,
+    'task', jsonb_build_object('text', r.data -> 'task' ->> 'text', 'mode', r.data -> 'task' ->> 'mode'),
+    'submission', (
+      select jsonb_build_object('status', t.status, 'created_at', t.created_at, 'review_note', t.review_note)
+      from public.task_submissions t
+      where t.record_id = r.id and t.partner = auth.uid()
+      order by t.created_at desc limit 1
+    )
+  ) order by r.created_at desc), '[]'::jsonb)
+  from public.records r
+  where r.owner = coalesce(public.my_owner(), case when public.is_real_user() then auth.uid() end)
+    and r.author is distinct from auth.uid() and not r.archived
+    and (public.my_owner() is null or not public.space_paused(r.owner))
+    and r.visibility = 'task' and not r.unlocked and (r.data ->> 'deletedAt') is null
+$$;
+create or replace function public.others_locked() returns jsonb
+language sql stable security definer set search_path = public as $$
+  select coalesce(jsonb_agg(jsonb_build_object('id', r.id, 'type', r.type, 'no', r.data -> 'no') order by r.created_at desc), '[]'::jsonb)
+  from public.records r
+  where r.owner = coalesce(public.my_owner(), case when public.is_real_user() then auth.uid() end)
+    and r.author is distinct from auth.uid() and not r.archived
+    and r.visibility = 'locked' and (r.data ->> 'deletedAt') is null
+    and (public.my_owner() is null or not public.space_paused(r.owner))
+$$;
+create or replace function public.member_can_see(p_record_id text) returns public.records
+language sql stable security definer set search_path = public as $$
+  select r.* from public.records r
+  where r.id = p_record_id and not r.archived
+    and r.owner = coalesce(public.my_owner(), case when public.is_real_user() then auth.uid() end)
+    and r.author is distinct from auth.uid()
+    and (r.data ->> 'deletedAt') is null
+    and (r.visibility = 'shared' or (r.visibility = 'task' and r.unlocked))
+    and (public.my_owner() is null or not public.space_paused(r.owner))
+$$;
+revoke all on function public.member_can_see(text) from public, anon, authenticated;
+
+drop policy if exists "photos: partner read" on storage.objects;
+create policy "photos: partner read" on storage.objects
+  for select to authenticated
+  using (
+    bucket_id = 'photos'
+    and (storage.foldername(name))[1] = public.my_owner()::text
+    and not public.space_paused(public.my_owner())
+    and exists (
+      select 1 from public.records r
+      where r.owner = public.my_owner() and r.author = r.owner and not r.archived
+        and (r.visibility = 'shared' or (r.visibility = 'task' and r.unlocked))
+        and (r.data ->> 'deletedAt') is null
+        and r.data -> 'photoIds' ? split_part(storage.filename(name), '.', 1)
+    )
+  );
+
+-- p_mode：'archive' 封存、'delete' 刪除（只動目前這段關係的，之前封存的不動）
+-- 刪除時照片請 App 先刪（App 會先刪你資料夾裡這些紀錄的照片）
+create or replace function public.end_relationship(p_mode text) returns void
+language plpgsql security definer set search_path = public as $$
+declare
+  v_now bigint := (extract(epoch from now()) * 1000)::bigint;
+begin
+  if not public.is_real_user() or public.my_owner() is not null then raise exception '只有建立分享的人可以結束這段關係'; end if;
+  if p_mode not in ('archive', 'delete') then raise exception '請選擇封存或刪除'; end if;
+  if p_mode = 'archive' then
+    update public.records set archived = true, updated_at = now(),
+      data = data || jsonb_build_object('archivedAt', v_now, 'updatedAt', v_now)
+      where owner = auth.uid() and not archived;
+    update public.wishes set archived = true where owner = auth.uid() and not archived;
+  else
+    delete from public.records where owner = auth.uid() and not archived;
+    delete from public.wishes where owner = auth.uid() and not archived;
+  end if;
+  delete from public.partners where owner = auth.uid();
+  delete from public.shares where owner = auth.uid();
+  delete from public.settings where owner = auth.uid() and key in ('lastNo', 'sharePaused');
+  update public.settings set value = value || '{"partner": "", "since": ""}'::jsonb
+    where owner = auth.uid() and key = 'names' and jsonb_typeof(value) = 'object';
+end $$;
+revoke all on function public.end_relationship(text) from public, anon;
+grant execute on function public.end_relationship(text) to authenticated;
+
+-- 永久刪除封存的紀錄（照片請 App 先刪）
+create or replace function public.delete_archive() returns void
+language plpgsql security definer set search_path = public as $$
+begin
+  if not public.is_real_user() or public.my_owner() is not null then raise exception '請先登入'; end if;
+  delete from public.records where owner = auth.uid() and archived;
+  delete from public.wishes where owner = auth.uid() and archived;
+end $$;
+revoke all on function public.delete_archive() from public, anon;
+grant execute on function public.delete_archive() to authenticated;
