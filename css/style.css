@@ -132,6 +132,14 @@ a.card:active { transform: scale(0.99); }
   width: 100%; border: 1px solid var(--field); border-radius: 12px; background: var(--card);
   padding: 0 14px; height: 46px; font-size: 16px;
 }
+/* iPhone 的日期框：選完日期後會自己變寬、變高、文字置中而跑版，固定成跟其他輸入框一樣 */
+input.input[type="date"] {
+  -webkit-appearance: none; appearance: none; display: block;
+  box-sizing: border-box; min-width: 0; max-width: 100%; min-height: 46px;
+  line-height: 44px; text-align: left;
+}
+input.input[type="date"]::-webkit-date-and-time-value { text-align: left; margin: 0; min-height: 44px; line-height: 44px; }
+input.input[type="date"]::-webkit-datetime-edit { padding: 0; }
 .textarea { height: auto; min-height: 96px; padding: 12px 14px; resize: vertical; line-height: 1.5; }
 .input:focus, .textarea:focus { outline: 2px solid var(--accent); outline-offset: 0; border-color: transparent; }
 .seg { display: grid; gap: 6px; background: #F1E9E1; border-radius: 14px; padding: 4px; }
