@@ -395,3 +395,8 @@ body::before { content: ''; position: fixed; top: 0; left: 0; right: 0; height: 
 .btn.danger-solid { background: #9B2C1F; color: #fff; border: none; }
 .role-card { text-align: left; font: inherit; color: inherit; cursor: pointer; gap: 6px; width: 100%; }
 .role-card:active { background: #FAF6F1; }
+
+/* 新帳號的範例紀錄 */
+.example-card { gap: 6px; border-style: dashed; background: transparent; }
+.example-badge { background: var(--accent-bg); color: var(--accent-dark); }
+.example-note { padding: 0 4px; }

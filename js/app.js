@@ -1004,6 +1004,7 @@ async function viewHome() {
   const count = (t) => all.filter((r) => r.type === t).length + lockedOthers.filter((x) => x.type === t).length;
   const fights = all.filter((r) => r.type === 'fight');
   const recent = all.slice().sort(byDateDesc).slice(0, 5);
+  const examples = await showExamples(all);
   const lastBackup = await DB.getSetting('lastBackupAt', null);
   // 手機版 14 天提醒一次；雲端版免費方案沒有自動備份，30 天提醒一次
   const remindDays = usingCloud() ? CLOUD_BACKUP_REMIND_DAYS : BACKUP_REMIND_DAYS;
@@ -1127,7 +1128,7 @@ async function viewHome() {
     <div class="section-title">所有功能</div>
     <div class="home-tiles">${tilesHtml}</div>
     <div class="section-title">最近的紀錄</div>
-    <div class="list" id="recent">${recent.length ? '' : `<div class="empty">還沒有任何紀錄<a class="btn small" href="#/new/happy">寫下第一個美好時刻</a></div>`}</div>
+    <div class="list" id="recent">${recent.length ? '' : examples ? examplesBlock(['happy', 'cloud', 'fight']) : `<div class="empty">還沒有任何紀錄<a class="btn small" href="#/new/happy">寫下第一個美好時刻</a></div>`}</div>
   `;
   if (askNames) {
     document.getElementById('n-save').addEventListener('click', async () => {
@@ -1198,6 +1199,36 @@ function newFromOtherCard(all) {
   </a>`;
 }
 
+// ---------- 新帳號的範例紀錄：還沒寫過任何一則時顯示，寫下第一則後就不再出現 ----------
+const EXAMPLES = {
+  happy: { title: '一起去淡水看夕陽', date: '範例', text: '他偷偷買了我最愛的雞蛋糕，坐在河堤邊吃，風很大但很開心。', tags: ['驚喜', '幸福'], emoji: '🥰' },
+  cloud: { title: '約好的時間又遲到 40 分鐘', date: '範例', text: '等到手機快沒電，他只說塞車。其實我只是希望他早點說一聲。', tags: ['被忽略'], emoji: '😮‍💨', extra: '心情過去之後按「已放晴」，還可以補寫反思。' },
+  fight: { title: '回訊息太慢', date: '範例', category: '溝通', status: 'progress', text: '我覺得被忽略；他覺得上班時不方便看手機。', extra: '後續：約好忙的時候先回一個貼圖。', emoji: '🤔' },
+};
+async function showExamples(all) {
+  if (isPartner()) return false;
+  try {
+    if (await DB.getSetting('examplesGone', false)) return false;
+    if (all.length) { await DB.setSetting('examplesGone', true); return false; }
+  } catch (e) { return false; }
+  return true;
+}
+function exampleCard(type) {
+  const x = EXAMPLES[type];
+  const st = x.status ? STATUS[x.status] : null;
+  return `<a class="card example-card ${TYPES[type].theme}" href="#/new/${type}" data-example="${type}">
+    <div class="row between"><span class="badge example-badge">範例・${TYPES[type].short}</span>${st ? `<span class="badge ${st.cls}">${st.label}</span>` : ''}</div>
+    <div class="bold" style="font-size:16px">${x.category ? `<span class="small" style="color:var(--fight)">${esc(x.category)}・</span>` : ''}${esc(x.title)} ${esc(x.emoji)}</div>
+    <div class="small muted">${esc(x.text)}</div>
+    ${x.extra ? `<div class="small" style="color:var(--accent-dark)">${esc(x.extra)}</div>` : ''}
+    ${x.tags ? `<div class="small muted">${x.tags.map((t) => '#' + esc(t)).join(' ')}</div>` : ''}
+    <div class="small bold" style="color:var(--accent)">寫一則自己的 ›</div>
+  </a>`;
+}
+function examplesBlock(types) {
+  return `<div class="example-note small muted">這些是範例，看看可以怎麼寫。寫下你的第一則之後，範例就會自動消失。</div>${types.map(exampleCard).join('')}`;
+}
+
 async function listItem(r) {
   const a = document.createElement('a');
   a.className = `card item ${TYPES[r.type].theme}`;
@@ -1234,6 +1265,7 @@ async function viewList(type, tagFilter) {
   const tags = [...new Set(mine.flatMap((r) => r.tags || []))];
   const shown = tagFilter ? mine.filter((r) => (r.tags || []).includes(tagFilter)) : mine;
   const pct = Math.min(100, (total / conf.goal) * 100);
+  const examples = await showExamples(all);
 
   app.className = conf.theme;
   app.innerHTML = `
@@ -1251,7 +1283,7 @@ async function viewList(type, tagFilter) {
       ${tags.map((t) => `<button class="chip ${t === tagFilter ? 'on' : ''}" data-tag="${esc(t)}">#${esc(t)}</button>`).join('')}
     </div>` : ''}
     <div class="grid2" id="grid"></div>
-    ${mine.length || (who !== 'mine' && lockedOthers.length) ? '' : partner && !CloudDB.isBoundPartner() ? `<div class="empty">${esc(ownerName())}還沒有分享${conf.label}<a class="btn small secondary" href="#/bind">綁定帳號，自己也來寫</a></div>` : `<div class="empty">還沒有${who === 'other' ? `${esc(otherName())}分享的` : ''}${conf.label}${who === 'other' ? '' : `<a class="btn small" href="#/new/${type}">新增第一則</a>`}</div>`}
+    ${!mine.length && examples ? examplesBlock([type]) : mine.length || (who !== 'mine' && lockedOthers.length) ? '' : partner && !CloudDB.isBoundPartner() ? `<div class="empty">${esc(ownerName())}還沒有分享${conf.label}<a class="btn small secondary" href="#/bind">綁定帳號，自己也來寫</a></div>` : `<div class="empty">還沒有${who === 'other' ? `${esc(otherName())}分享的` : ''}${conf.label}${who === 'other' ? '' : `<a class="btn small" href="#/new/${type}">新增第一則</a>`}</div>`}
   `;
   app.querySelectorAll('[data-tag]').forEach((b) => b.addEventListener('click', () => viewList(type, b.dataset.tag || null)));
   app.querySelectorAll('[data-who]').forEach((b) => b.addEventListener('click', () => { listWho = b.dataset.who; viewList(type, tagFilter); }));
@@ -1301,6 +1333,7 @@ async function viewList(type, tagFilter) {
 async function viewFights(catFilter, statusFilter) {
   const all = await liveRecords();
   const fights = all.filter((r) => r.type === 'fight').sort(byDateDesc);
+  const examples = await showExamples(all);
   const cats = await getCategories();
   const usedCats = [...new Set([...cats, ...fights.map((f) => f.category).filter(Boolean)])];
   const counts = usedCats.map((c) => ({
@@ -1350,7 +1383,7 @@ async function viewFights(catFilter, statusFilter) {
       }).join('')}
     </div>
     ${lockedFights ? `<div class="card" style="background:var(--lock-bg);border-color:transparent;gap:4px;flex-direction:row;align-items:center">${ICON.lockSmall}<span class="small" style="color:var(--lock)">另外還有 ${lockedFights} 則上鎖的吵架議題</span></div>` : ''}
-    ${fights.length ? (shown.length ? '' : '<div class="empty">這個條件下沒有議題</div>') : isPartner() ? (lockedFights ? '' : '<div class="empty">還沒有吵架議題</div>') : `<div class="empty">還沒有吵架議題，很棒！<a class="btn small" href="#/new/fight">新增一個議題</a></div>`}
+    ${!fights.length && examples ? examplesBlock(['fight']) : fights.length ? (shown.length ? '' : '<div class="empty">這個條件下沒有議題</div>') : isPartner() ? (lockedFights ? '' : '<div class="empty">還沒有吵架議題</div>') : `<div class="empty">還沒有吵架議題，很棒！<a class="btn small" href="#/new/fight">新增一個議題</a></div>`}
   `;
   app.querySelectorAll('[data-cat]').forEach((b) => b.addEventListener('click', () => viewFights(b.dataset.cat || null, statusFilter)));
   app.querySelectorAll('[data-st]').forEach((b) => b.addEventListener('click', () => viewFights(catFilter, b.dataset.st || null)));
