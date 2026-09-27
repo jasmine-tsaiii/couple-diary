@@ -389,7 +389,7 @@ function wishCard(list) {
   const done = list.filter((w) => w.done).length;
   const next = list.find((w) => !w.done);
   return `<a class="card theme-happy" href="#/wishes" style="gap:6px">
-    <div class="row between"><div class="bold" style="color:var(--accent)">一起完成的事</div><div class="count"><b>${done}</b> / ${list.length}</div></div>
+    <div class="row between"><div><div class="bold" style="color:var(--accent)">📝 一起完成的事</div><div class="small muted">情侶待辦清單</div></div><div class="count"><b>${done}</b> / ${list.length}</div></div>
     <div class="small muted">${list.length ? (next ? `下一件：${esc(next.title)}` : '全部完成了！再加幾件吧') : '寫下想和對方一起做的事，兩個人都能打勾'}</div>
   </a>`;
 }
