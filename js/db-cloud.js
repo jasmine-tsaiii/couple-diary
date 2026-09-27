@@ -367,6 +367,28 @@ const CloudDB = CLOUD_ENABLED ? (() => {
       if (folderOf(id) !== userId()) return;
       check(await client.storage.from(BUCKET).upload(thumbPath(id), blob, { contentType: 'image/jpeg', upsert: true }));
     },
+    // 自己資料夾裡、沒有任何紀錄在用的照片（例如選「刪除這段關係」後留下的）。
+    // 剛傳上去不到一天的先不算，免得刪到正在存的紀錄的照片
+    async unusedPhotos(usedIds) {
+      const out = [];
+      for (let offset = 0; ; offset += 1000) {
+        const page = check(await client.storage.from(BUCKET).list(userId(), { limit: 1000, offset }));
+        for (const f of page) {
+          if (!f.name.endsWith('.jpg') || f.name.startsWith('task-')) continue;
+          const id = f.name.replace(/\.jpg$/, '');
+          const age = Date.now() - Date.parse(f.created_at || 0);
+          if (!usedIds.has(id) && age > 86400000) out.push(id);
+        }
+        if (page.length < 1000) return out;
+      }
+    },
+    async removePhotos(ids) {
+      const uid = userId();
+      for (let i = 0; i < ids.length; i += 100) {
+        const batch = ids.slice(i, i + 100);
+        check(await client.storage.from(BUCKET).remove(batch.map((n) => `${uid}/${n}.jpg`).concat(batch.map((n) => `${uid}/t/${n}.jpg`))));
+      }
+    },
     async allPhotos() {
       const out = [];
       for (const name of await listPhotoNames()) {

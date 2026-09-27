@@ -2290,6 +2290,7 @@ async function viewSettings() {
       ${quota ? `<div class="small">雲端照片：${quota.used}${quota.limit != null ? ` / ${quota.limit} 張（免費帳號，兩個人共用）` : ' 張（不限張數）'}${quota.mine != null && quota.used > quota.mine ? `・你 ${quota.mine} 張、${esc(partnerName())} ${quota.used - quota.mine} 張` : ''}</div>
         ${quota.limit != null ? `<div class="progress" style="height:6px"><div style="width:${Math.min(100, (quota.used / quota.limit) * 100)}%"></div></div>
         <button class="btn small secondary" id="more-photos">${ICON.lockSmall} 想放更多照片？</button>` : ''}` : ''}
+      ${isPartner() ? '' : '<button class="btn small secondary" id="clean-photos">整理雲端照片</button>'}
       <button class="btn small secondary" id="logout">登出</button>
     </div>
     ${localCount ? `<div class="card" style="background:var(--progress-bg);border-color:transparent">
@@ -2457,6 +2458,19 @@ async function viewSettings() {
   app.querySelectorAll('[data-rm-cat]').forEach((b) => b.addEventListener('click', async () => {
     if (!confirm(`刪除分類「${b.dataset.rmCat}」？已經用這個分類的議題會保留原本的分類，並標示「已刪除的分類」。`)) return;
     await DB.setSetting('categories', cats.filter((c) => c !== b.dataset.rmCat));
+    viewSettings();
+  }));
+  // 找出雲端上沒有任何紀錄在用的照片，確認後刪掉，空出免費額度
+  const cleanBtn = document.getElementById('clean-photos');
+  if (cleanBtn) cleanBtn.addEventListener('click', () => withBusy(cleanBtn, '檢查中…', async () => {
+    const used = new Set();
+    const recs = [...await DB.allRecords(), ...await CloudDB.archivedRecords().catch(() => [])];
+    for (const r of recs) for (const id of r.photoIds || []) used.add(id);
+    const unused = await CloudDB.unusedPhotos(used);
+    if (!unused.length) { toast('雲端照片都有紀錄在用，不用整理'); return; }
+    if (!(await confirmDanger('刪除用不到的照片？', `找到 ${unused.length} 張沒有任何紀錄在用的照片（例如刪掉的紀錄或結束關係後留下的）。刪掉可以空出雲端照片的額度，刪了就救不回來。`, `刪除 ${unused.length} 張照片`))) return;
+    await CloudDB.removePhotos(unused);
+    toast(`已刪除 ${unused.length} 張用不到的照片`);
     viewSettings();
   }));
   const logout = document.getElementById('logout');
@@ -2887,6 +2901,7 @@ function viewPartnerSettings() {
   const logout = document.getElementById('logout');
   bindPinCard(viewPartnerSettings);
   if (logout) logout.addEventListener('click', async () => { await CloudDB.signOut(); photoUrlCache.clear(); go('#/login'); });
+
   document.getElementById('leave').addEventListener('click', async () => {
     if (CloudDB.isBoundPartner()) {
       if (!confirm('登出這支手機？之後用綁定的帳號登入就能回來。')) return;
