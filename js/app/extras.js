@@ -420,23 +420,25 @@ function confirmDanger(title, text, okLabel) {
 
 // ---------- 6 位數字的分享密碼：一個輸入框疊在 6 個格子上（可以貼上、自動填入） ----------
 const SHARE_PASS_RE = /^\d{6}$/;
+// 6 位數分享密碼輸入框。
+// 以前是「透明輸入框疊在六個格子上」，但部分 Android（LINE、IG 內建瀏覽器、中文輸入法）點了打不進去，
+// 所以改成看得到的一般輸入框，字距拉開像格子，哪台手機都能打。
 function digitBoxes(id, label) {
   return `<div class="field"><label for="${id}">${label}</label>
-    <div class="digits"><input id="${id}" class="digits-input" inputmode="numeric" pattern="[0-9]*" maxlength="6" autocomplete="off" aria-describedby="${id}-hint">
-      <div class="digit-cells" aria-hidden="true">${'<span></span>'.repeat(6)}</div></div>
+    <input id="${id}" class="input digits-input" type="tel" inputmode="numeric" pattern="[0-9]*" maxlength="6" autocomplete="off" placeholder="000000" aria-describedby="${id}-hint">
     <div class="small muted" id="${id}-hint">6 位數字</div></div>`;
 }
 function bindDigitBoxes(root = document) {
   root.querySelectorAll('.digits-input').forEach((inp) => {
     if (inp.dataset.bound) return;
     inp.dataset.bound = '1';
-    const cells = inp.parentElement.querySelectorAll('.digit-cells span');
-    const paint = () => {
-      inp.value = inp.value.replace(/\D/g, '').slice(0, 6);
-      cells.forEach((c, i) => { c.textContent = inp.value[i] || ''; c.classList.toggle('on', i === Math.min(inp.value.length, 5) && document.activeElement === inp); });
-    };
-    ['input', 'focus', 'blur'].forEach((e) => inp.addEventListener(e, paint));
-    paint();
+    let composing = false;
+    // 中文輸入法組字中不要改內容，不然打的字會被吃掉
+    const clean = () => { if (composing) return; const v = inp.value.replace(/[０-９]/g, (d) => String.fromCharCode(d.charCodeAt(0) - 0xFEE0)).replace(/\D/g, '').slice(0, 6); if (v !== inp.value) inp.value = v; };
+    inp.addEventListener('compositionstart', () => { composing = true; });
+    inp.addEventListener('compositionend', () => { composing = false; clean(); });
+    inp.addEventListener('input', clean);
+    clean();
   });
 }
 

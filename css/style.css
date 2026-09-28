@@ -399,11 +399,8 @@ body.reading { overflow: hidden; }
 body::before { content: ''; position: fixed; top: 0; left: 0; right: 0; height: env(safe-area-inset-top); background: var(--bg); z-index: 20; pointer-events: none; }
 
 /* 6 格數字密碼 */
-.digits { position: relative; width: 100%; max-width: 330px; height: 52px; }
-.digit-cells { position: absolute; inset: 0; display: grid; grid-template-columns: repeat(6, 1fr); gap: 8px; pointer-events: none; }
-.digit-cells span { border: 1.5px solid var(--field); border-radius: 12px; background: var(--card); display: flex; align-items: center; justify-content: center; font-size: 22px; font-weight: 700; color: var(--ink); }
-.digit-cells span.on { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-bg); }
-.digits-input { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; font-size: 16px; border: 0; padding: 0; caret-color: transparent; }
+.digits-input { max-width: 330px; height: 52px; font-size: 24px; font-weight: 700; letter-spacing: .5em; text-align: center; font-variant-numeric: tabular-nums; padding-left: .5em; }
+.digits-input::placeholder { color: var(--dash); letter-spacing: .5em; }
 .gear-btn { flex-direction: column; width: auto; min-width: 44px; height: auto; gap: 0; font-size: 11px; color: var(--soft); }
 
 /* 首頁：今天想記下什麼（三個大按鈕） */

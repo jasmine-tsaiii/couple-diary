@@ -510,12 +510,12 @@ async function shareCardHtml() {
   const waiting = partners.filter((p) => p.approved === false);
   return `<div class="card" id="share-card">
     <div class="bold">分享給另一半</div>
-    <div class="muted">按下面的按鈕把邀請連結傳給對方，6 位數分享密碼另外告訴對方。對方點連結就會看到加入畫面，分享碼已經幫忙填好。</div>
+    <div class="muted">對方加入要兩樣東西：下面這組 8 碼<b>分享碼</b>（邀請連結裡已經帶了，對方點開就自動填好），和你自己設的 6 位數<b>分享密碼</b>（私下告訴對方，不會放在連結裡）。</div>
     <div class="share-code">${esc(share.code)}</div>
     <button class="btn small secondary" id="s-copy">分享邀請連結（不含密碼）</button>
     <div class="field"><label for="s-name">你的名字（對方會看到）</label>
       <div class="row"><input id="s-name" class="input grow" maxlength="20" value="${esc(share.owner_name)}"><button class="btn small" id="s-save-name">儲存</button></div></div>
-    ${digitBoxes('s-pass', '改分享密碼（6 位數字）')}
+    ${digitBoxes('s-pass', '分享密碼（6 位數字，想換的話在這裡重設）')}
     <button class="btn small secondary" id="s-save-pass">更改分享密碼</button>
     ${waiting.length ? `<div class="field" id="join-requests"><div class="label">想加入的人（要你同意）</div>
       <div class="muted small">另一半換手機或清掉瀏覽器重新加入時，也會出現在這裡；是同一個人的話，同意後會接回原本分享的紀錄。按「同意」時會再問你是同一個人還是新的對象。</div>
