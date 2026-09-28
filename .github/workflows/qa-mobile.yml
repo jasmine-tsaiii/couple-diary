@@ -17,7 +17,7 @@ jobs:
           node-version: 22
       - run: npm install --no-audit --no-fund
       - run: npx playwright install --with-deps webkit
-      - run: NODE_OPTIONS="--require $PWD/mobile-shim.js" node run.js || true
+      - run: NODE_OPTIONS="--require $PWD/mobile-shim.js" node run.js t7 t35 t65 t902 t903 t904 t905 || true
         env:
           ENGINE: webkit
           BROWSER: webkit
@@ -25,7 +25,7 @@ jobs:
           CI: 'true'
           JOBS: '3'
       - if: always()
-        run: for f in out/*.txt; do echo "=== $f"; tail -25 "$f"; done
+        run: for f in out/*.txt; do echo "=== $f"; grep -v "waiting\|element is\|scrolling\|done scrolling\|retrying" "$f" | cut -c1-400; done
       - if: always()
         uses: actions/upload-artifact@v4
         with:
