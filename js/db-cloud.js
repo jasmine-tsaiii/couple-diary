@@ -393,6 +393,12 @@ const CloudDB = CLOUD_ENABLED ? (() => {
       }));
     },
     // 結束這段關係：'archive' 封存或 'delete' 刪除；另一半會被移除、分享碼作廢
+    // 封存的紀錄全部還原（要先重跑 schema.sql 才有這個函式）
+    async restoreArchive() {
+      const { data, error } = await client.rpc('restore_archive');
+      if (error) throw new Error(/restore_archive|function/i.test(error.message) ? '還原功能還沒開好，請稍後再試' : error.message);
+      return data || 0;
+    },
     async endRelationship(mode, keepUid = null) {
       // keepUid：結束後要讓哪個還在等同意的新對象加入（分享碼保留）
       check(await client.rpc('end_relationship', keepUid ? { p_mode: mode, p_keep: keepUid } : { p_mode: mode }));

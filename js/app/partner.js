@@ -637,7 +637,10 @@ function bindShareCard() {
 // 先分清楚是「同一個人換手機」還是「新的對象」：新的對象要先結束上一段（封存或刪除），不然他會看到之前所有分享的紀錄
 async function approveJoin(btn, uid, name) {
   const current = (await CloudDB.listPartners()).find((p) => p.approved !== false && p.uid !== uid);
-  const hasRecords = (await liveRecords()).length > 0;
+  // 只有「以前真的有過另一半」才需要問同一個人還是新對象：目前有人、或有對方寫過的紀錄。
+  // 第一次邀請另一半時不要問（以前會預設選「新的對象」，把自己寫好的紀錄都封存起來，看起來像不見了）
+  const myId = CloudDB.myId();
+  const hadPartner = (await liveRecords()).some((r) => r.author && r.author !== myId);
   const accounts = await CloudDB.partnerAccounts();
   const acc = (u) => accounts.find((a) => a.uid === u) || {};
   const joiner = acc(uid);
@@ -656,12 +659,12 @@ async function approveJoin(btn, uid, name) {
     if (!pick) return false;
     if (pick === 'reject') { await CloudDB.removePartner(uid); toast(`已拒絕，請${current.name}用原本的帳號登入再加入`); return true; }
     if (pick === 'new') { go(`#/end/${encodeURIComponent(uid)}`); return false; }
-  } else if (current || hasRecords) {
+  } else if (current || hadPartner) {
     const before = current ? current.name : (NAMES.partner || '');
     const same = before && before === name;
-    const pick = await choose(`${name} 想加入`, current ? `目前的另一半是「${before}」。如果是${before}換手機，同意後會接回原本分享的紀錄；如果是新的對象，請選下面的「是新的對象」。` : '你已經有一些紀錄了。', [
-      { key: 'same', label: `是${before || '同一個人'}換手機或重新加入`, hint: '照舊看得到之前分享的紀錄', primary: same },
-      { key: 'new', label: '是新的對象', hint: '先把之前的紀錄封存或刪除，新的人才看不到', primary: !same },
+    const pick = await choose(`${name} 想加入`, current ? `目前的另一半是「${before}」。如果是${before}換手機，同意後會接回原本分享的紀錄；如果是新的對象，請選下面的「是新的對象」。` : '這本日記裡有之前另一半寫的紀錄。', [
+      { key: 'same', label: `是${before || '同一個人'}換手機或重新加入`, hint: '照舊看得到之前分享的紀錄', primary: true },
+      { key: 'new', label: '是新的對象', hint: '先把之前的紀錄封存或刪除，新的人才看不到（之後可以在「封存的回憶」還原）' },
     ]);
     if (!pick) return false;
     if (pick === 'new') { go(`#/end/${encodeURIComponent(uid)}`); return false; }

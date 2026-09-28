@@ -1415,6 +1415,24 @@ begin
   update public.settings set value = value || '{"partner": "", "since": ""}'::jsonb
     where owner = auth.uid() and key = 'names' and jsonb_typeof(value) = 'object';
 end $$;
+-- 把封存的紀錄全部還原回目前這段（例如按錯「是新的對象」封存了）。還原後重新編號
+create or replace function public.restore_archive() returns integer
+language plpgsql security definer set search_path = public as $$
+declare
+  v_now bigint := (extract(epoch from now()) * 1000)::bigint;
+  v_count integer;
+begin
+  if not public.is_real_user() or public.my_owner() is not null then raise exception '只有建立分享的人可以還原封存'; end if;
+  update public.records set archived = false, updated_at = now(),
+    data = (data - 'archivedAt') || jsonb_build_object('updatedAt', v_now)
+    where owner = auth.uid() and archived;
+  get diagnostics v_count = row_count;
+  update public.wishes set archived = false where owner = auth.uid() and archived;
+  perform public.renumber_all();
+  return v_count;
+end $$;
+revoke all on function public.restore_archive() from public, anon;
+grant execute on function public.restore_archive() to authenticated;
 create or replace function public.end_relationship(p_mode text) returns void
 language sql security definer set search_path = public as $$ select public.end_relationship(p_mode, null::uuid) $$;
 revoke all on function public.end_relationship(text) from public, anon;

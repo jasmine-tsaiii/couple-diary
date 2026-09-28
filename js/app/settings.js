@@ -589,10 +589,21 @@ async function viewArchive() {
     </div>
     <div class="muted">結束上一段關係時封存的紀錄，只有你看得到，不算在首頁的數字裡。</div>
     <div class="list" id="archive-list"></div>
-    ${list.length ? '<button class="btn small danger" id="purge-archive">永久刪除全部封存</button>' : '<div class="empty">沒有封存的紀錄</div>'}
+    ${list.length ? `<div class="btn-row"><button class="btn small" id="restore-archive">全部還原</button><button class="btn small danger" id="purge-archive">永久刪除全部封存</button></div>
+      <div class="small muted">還原後會回到首頁和列表，另一半也會照原本的設定看得到；編號會依日期重新排。</div>` : '<div class="empty">沒有封存的紀錄</div>'}
   `;
   const box = document.getElementById('archive-list');
   for (const r of list) box.appendChild(await listItem(r));
+  const restore = document.getElementById('restore-archive');
+  if (restore) restore.addEventListener('click', async () => {
+    if (!confirm(`把 ${list.length} 則封存的紀錄全部還原？還原後會回到首頁，另一半也看得到你原本設定給對方看的紀錄。`)) return;
+    withBusy(restore, '還原中…', async () => {
+      const n = await CloudDB.restoreArchive();
+      numbersChecked = false;
+      toast(`已還原 ${n} 則紀錄`);
+      go('#/');
+    });
+  });
   const purge = document.getElementById('purge-archive');
   if (purge) purge.addEventListener('click', async () => {
     if (!(await confirmDanger('刪除封存的回憶？', `會永久刪除 ${list.length} 則封存的紀錄和照片，沒辦法復原。`, '永久刪除'))) return;

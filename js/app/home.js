@@ -150,6 +150,7 @@ async function viewHome() {
     ${showGuestCard ? `<div class="card" id="guest-account" style="background:var(--happy-bg);border-color:transparent;gap:4px">
       <div class="bold" style="color:var(--happy-dark)">${all.length ? '註冊，把紀錄存到雲端' : '免費註冊，保存你們的紀錄'}</div>
       <div class="small" style="color:var(--happy-dark)">${all.length ? `目前 ${all.length} 則紀錄只存在這支手機。` : '現在是試用，紀錄只存在這支手機。'}在這支手機註冊或登入後會自動搬上雲端，換手機不會不見，也能分享給另一半。</div>
+      ${all.length ? '<div class="small bold" style="color:var(--happy-dark)">建議先註冊再多寫，東西才不會遺失。註冊確認信如果在別的 App 打開，記得回到這裡再登入一次，試用寫的紀錄才會搬上去。</div>' : ''}
       ${isIOS && standalone && !all.length ? '<div class="small" style="color:var(--happy-dark)">之前在 Safari 寫過的話：從主畫面打開的和 Safari 是分開存的。請回 Safari 打開網址、註冊或登入，紀錄就會搬上雲端，再回來這裡登入同一個帳號就看得到。</div>' : ''}
     <div class="btn-row"><a class="btn small" href="#/signup" id="guest-signup">免費註冊</a><a class="btn small secondary" href="#/login" id="guest-login">已經有帳號？登入</a></div>
     </div>` : ''}
