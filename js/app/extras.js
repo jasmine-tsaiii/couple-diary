@@ -423,9 +423,10 @@ const SHARE_PASS_RE = /^\d{6}$/;
 // 6 位數分享密碼輸入框。
 // 以前是「透明輸入框疊在六個格子上」，但部分 Android（LINE、IG 內建瀏覽器、中文輸入法）點了打不進去，
 // 所以改成看得到的一般輸入框，字距拉開像格子，哪台手機都能打。
-function digitBoxes(id, label) {
+function digitBoxes(id, label, button = '') {
+  const input = `<input id="${id}" class="input digits-input" type="tel" inputmode="numeric" pattern="[0-9]*" maxlength="6" autocomplete="off" placeholder="000000" aria-describedby="${id}-hint">`;
   return `<div class="field"><label for="${id}">${label}</label>
-    <input id="${id}" class="input digits-input" type="tel" inputmode="numeric" pattern="[0-9]*" maxlength="6" autocomplete="off" placeholder="000000" aria-describedby="${id}-hint">
+    ${button ? `<div class="row" style="gap:10px">${input}${button}</div>` : input}
     <div class="small muted" id="${id}-hint">6 位數字</div></div>`;
 }
 function bindDigitBoxes(root = document) {

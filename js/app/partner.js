@@ -509,7 +509,7 @@ async function shareCardHtml() {
   const joined = partners.filter((p) => p.approved !== false);
   const waiting = partners.filter((p) => p.approved === false);
   // 還沒有人加入：邀請步驟攤開；已經有人加入：收進「再邀請／改設定」
-  const inviteSteps = `<div class="invite-steps">
+  const inviteSteps = `<div class="invite-steps share-sec">
       <div class="invite-step"><span class="step-no">1</span><div class="grow">
         <div class="bold">傳邀請連結給對方</div>
         <div class="small muted">連結裡已經帶著分享碼 <b class="share-code mono">${esc(share.code)}</b>，對方點開就自動填好，不用自己打。</div>
@@ -518,11 +518,11 @@ async function shareCardHtml() {
         <div class="bold">私下告訴對方「分享密碼」</div>
         <div class="small muted">就是你建立分享時自己設的 6 位數字（為了安全，不會放在連結裡，這裡也不會顯示）。忘記了就在下面重設一組新的，再告訴對方。</div></div></div>
     </div>`;
-  const settings = `<div class="field"><label for="s-name">你的名字（對方會看到）</label>
-      <div class="row"><input id="s-name" class="input grow" maxlength="20" value="${esc(share.owner_name)}"><button class="btn small" id="s-save-name">儲存</button></div></div>
-    ${digitBoxes('s-pass', '重設分享密碼（新的 6 位數字）')}
-    <button class="btn small secondary" id="s-save-pass">儲存新密碼</button>
-    <div class="field"><div class="label">換新分享碼</div>
+  const settings = `<div class="share-sec"><label class="bold" for="s-name">你的名字</label>
+      <div class="small muted">對方看到的是這個名字</div>
+      <div class="row" style="gap:10px"><input id="s-name" class="input grow" maxlength="20" value="${esc(share.owner_name)}"><button class="btn small" id="s-save-name">儲存</button></div></div>
+    <div class="share-sec">${digitBoxes('s-pass', '重設分享密碼', '<button class="btn small secondary" id="s-save-pass">儲存</button>')}</div>
+    <div class="share-sec"><div class="bold">換新分享碼</div>
       <div class="small muted">舊的邀請連結和分享碼就不能用了，已經加入的人不受影響。擔心連結外流時再用。</div>
       <button class="btn small secondary" id="s-renew" style="align-self:flex-start">換新分享碼</button></div>`;
   return `<div class="card" id="share-card">
@@ -530,18 +530,18 @@ async function shareCardHtml() {
     ${joined.length ? `<details class="share-more"><summary>再邀請一次、忘記密碼、改設定</summary>${inviteSteps}${settings}</details>`
       : `<div class="muted small">對方加入需要兩樣東西：<b>分享碼</b>（8 碼，在邀請連結裡）和<b>分享密碼</b>（6 位數字，你私下告訴對方）。</div>${inviteSteps}
     <details class="share-more"><summary>忘記密碼、改名字、換新分享碼</summary>${settings}</details>`}
-    ${waiting.length ? `<div class="field" id="join-requests"><div class="label">想加入的人（要你同意）</div>
+    ${waiting.length ? `<div class="field share-sec" id="join-requests"><div class="bold">想加入的人（要你同意）</div>
       <div class="muted small">另一半換手機或清掉瀏覽器重新加入時，也會出現在這裡；是同一個人的話，同意後會接回原本分享的紀錄。按「同意」時會再問你是同一個人還是新的對象。</div>
       ${waiting.map((p) => `<div class="row between"><span>${esc(p.name)}<span class="muted small">・${shortDate(p.joined_at.slice(0, 10))} 送出</span></span>
         <span class="row" style="gap:6px"><button class="btn small" data-approve-partner="${esc(p.uid)}" data-name="${esc(p.name)}">同意</button>
         <button class="btn small secondary" data-rm-partner="${esc(p.uid)}" data-name="${esc(p.name)}" data-pending="1">拒絕</button></span></div>`).join('')}
     </div>` : ''}
-    <div class="field"><div class="label">已加入的人</div>
+    <div class="field share-sec"><div class="bold">已加入的人</div>
       ${joined.length ? joined.map((p) => `<div class="row between"><span>${esc(p.name)}<span class="muted small">・${shortDate(p.joined_at.slice(0, 10))} 加入</span></span>
         <button class="btn small secondary" data-rm-partner="${esc(p.uid)}" data-name="${esc(p.name)}">移除</button></div>`).join('') : '<div class="muted">還沒有人加入</div>'}
     </div>
-    ${joined.length ? `<div class="field" id="pause-box" style="background:${paused ? 'var(--lock-bg)' : 'transparent'};border-radius:12px;padding:${paused ? '10px' : '0'}">
-      <div class="row between"><div class="label" style="margin:0">暫停分享</div>
+    ${joined.length ? `<div class="field share-sec" id="pause-box"${paused ? ' style="background:var(--lock-bg)"' : ''}>
+      <div class="row between"><div class="bold">暫停分享</div>
         <button class="btn small ${paused ? '' : 'secondary'}" id="s-pause" aria-pressed="${paused}">${paused ? '恢復分享' : '暫停'}</button></div>
       <div class="small muted">${paused ? `暫停中：${esc(joined[0].name)}現在看不到你寫的任何紀錄、照片和任務，對方自己寫的照舊。按「恢復分享」就回來，資料都不會動。` : `想先冷靜一下時可以暫停，${esc(joined[0].name)}會暫時看不到你寫的紀錄，隨時可以恢復。`}</div>
     </div>` : ''}

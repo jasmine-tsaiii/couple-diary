@@ -44,7 +44,7 @@ const U = (process.env.U || 'http://localhost:8770/');
   // 分享 + 伴侶 + 改密碼時移除
   await p.fill('#s-name', 'Jasmine'); await p.fill('#s-pass', '123456'); answers = [true]; await p.click('#s-create'); await p.waitForTimeout(600);
   const code = (await p.textContent('.share-code')).trim();
-  if (process.env.SHOT_DIR) { await p.locator('#share-card').scrollIntoViewIfNeeded(); await p.locator('#share-card').screenshot({ path: process.env.SHOT_DIR + '/share-card.png' }); }
+  if (process.env.SHOT_DIR) { await p.locator('#share-card').scrollIntoViewIfNeeded(); await p.locator('#share-card').screenshot({ path: process.env.SHOT_DIR + '/share-card.png' }); await p.click('.share-more summary'); await p.locator('#share-card').screenshot({ path: process.env.SHOT_DIR + '/share-card-open.png' }); await p.click('.share-more summary'); }
   await p.evaluate(() => sessionStorage.removeItem('mockUid')); await p.goto(U + '#/login'); await p.reload(); await p.waitForTimeout(500);
   await p.click('text=我是另一半，用分享碼加入'); await p.waitForTimeout(300);
   await p.fill('#j-code', code); await p.fill('#j-pass', '123456'); await p.fill('#j-name', '小明'); await p.click('#join-btn'); await p.waitForTimeout(700);

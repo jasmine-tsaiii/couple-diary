@@ -480,3 +480,12 @@ body.is-offline { padding-top: calc(30px + env(safe-area-inset-top)); }
 .share-more summary { cursor: pointer; color: var(--soft); font-size: 14px; padding: 4px 0; }
 .share-more[open] { display: flex; flex-direction: column; gap: 12px; }
 .invite-step .share-code { display: inline; font-size: inherit; padding: 0; background: none; border: 0; margin: 0; color: var(--ink); }
+.share-sec { display: flex; flex-direction: column; gap: 8px; padding: 14px; border-radius: 14px; background: var(--press); border: 1px solid var(--line); }
+.share-sec .field { gap: 8px; margin: 0; }
+.share-sec .digits-input { flex: 1; min-width: 0; max-width: none; height: 46px; font-size: 20px; }
+#share-card { gap: 14px; }
+.share-more[open] { gap: 14px; }
+.share-more summary { padding: 6px 0; }
+.share-more > .share-sec { margin-top: 12px; }
+.share-sec .field > label { font-size: 16px; font-weight: 700; color: var(--ink); }
+.invite-steps { gap: 18px; }
