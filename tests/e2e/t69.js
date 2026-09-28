@@ -28,7 +28,9 @@ const FAKE_GSI = `window.google = { accounts: { id: {
   console.log('google usable', await p.locator('.login-methods #link-google').count() === 0 && await p.locator('.login-methods .fake-gsi').count() === 0);
   // Email 帳號連結 Google
   await p.evaluate(() => { sessionStorage.clear(); location.hash = '#/login'; });
-  await p.reload(); await p.waitForSelector('#email', { timeout: 15000 });
+  await p.waitForTimeout(300);
+  // WebKit 有時會取消剛換網址後的重新整理，再試一次
+  await p.reload().catch(async () => { await p.waitForTimeout(500); await p.reload(); }); await p.waitForSelector('#email', { timeout: 15000 });
   await p.fill('#email', 'jas@x.com'); await p.fill('#password', 'secret123'); await p.click('#login-btn');
   await p.waitForSelector('#role-owner', { timeout: 15000 }); await p.click('#role-owner'); await p.waitForTimeout(500);
   await p.goto(U + '#/settings'); await p.waitForSelector('.login-methods .fake-gsi', { timeout: 15000 });
