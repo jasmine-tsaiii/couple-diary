@@ -1,0 +1,21 @@
+const pw = require('playwright');
+const fs = require('fs');
+const U = process.env.U;
+(async () => {
+  const b = await pw.chromium.launch(require('./_launch'));
+  const ua = pw.devices['iPhone 13'].userAgent.replace('Safari/', 'Safari Line/14.10.0 ');
+  const ctx = await b.newContext({ ...pw.devices['Pixel 7'], userAgent: ua });
+  await ctx.addInitScript(() => { localStorage.setItem('tourDone', '1'); localStorage.setItem('guestStarted', '1'); localStorage.setItem('a2hsNever', '1'); });
+  const p = await ctx.newPage();
+  const errs = []; p.on('pageerror', (e) => errs.push(e.message)); p.on('dialog', (d) => d.accept());
+  await p.goto(U + '#/'); await p.waitForTimeout(800);
+  await p.evaluate(async () => { await DB.putRecord({ id: 'r1', no: 1, type: 'happy', title: '看海', description: '好開心', emojis: [], tags: [], date: '2026-09-20', createdAt: 1, updatedAt: 1, photoIds: [], visibility: 'shared' }); });
+  await p.goto(U + '#/card/record/r1'); await p.waitForTimeout(1500);
+  console.log('in-app hint on card page', await p.evaluate(() => document.body.innerText.includes('瀏覽器')));
+  const dl = p.waitForEvent('download', { timeout: 4000 }).then(() => 'download event').catch(() => 'no download');
+  await p.click('#card-share'); await p.waitForTimeout(1500);
+  console.log('card share in LINE:', await dl, 'toast', await p.textContent('.toast').catch(() => ''));
+  await p.screenshot({ path: `${process.env.SHOT}/qa3-card-line.png` });
+  console.log('errors', JSON.stringify(errs));
+  await b.close();
+})();
