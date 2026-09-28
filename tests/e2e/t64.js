@@ -1,8 +1,10 @@
-const { chromium } = require('playwright');
+const pw = require('playwright');
+// BROWSER=webkit 用 Safari 的引擎跑（GitHub 上的 cards-safari 工作流程）
+const chromium = process.env.BROWSER === 'webkit' ? pw.webkit : pw.chromium;
 const U = process.env.U || 'http://localhost:8770/';
 const OUT = (process.env.SHOT_DIR || '.') + '/';
 (async () => {
-  const b = await chromium.launch(require('./_launch'));
+  const b = await chromium.launch(process.env.BROWSER === 'webkit' ? {} : require('./_launch'));
   const errs = [];
   const ctx = await b.newContext({ viewport: { width: 390, height: 844 }, acceptDownloads: true });
   await ctx.addInitScript(() => { localStorage.setItem('tourDone', '1'); localStorage.setItem('a2hsNever', '1'); window.__noCelebrate = 1; new MutationObserver(() => document.querySelectorAll('.celebrate:not(.wish-dlg):not(.danger-dlg)').forEach((e) => e.remove())).observe(document, { childList: true, subtree: true }); });

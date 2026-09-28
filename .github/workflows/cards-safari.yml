@@ -1,0 +1,35 @@
+# 用 Safari 的引擎（WebKit）畫一次回憶小卡，截圖放在這次執行的 Artifacts（cards-safari）
+name: cards-safari
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths: ['js/cards.js']
+jobs:
+  webkit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: tests
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm install --no-audit --no-fund
+      - run: npx playwright install --with-deps webkit
+      - run: mkdir -p shots && node run.js t64
+        env:
+          BROWSER: webkit
+          CI: 'true'
+          KEEP: '1'
+      - if: always()
+        run: cp /tmp/diary-t64-*/*.png shots/ || true
+      - if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cards-safari
+          path: |
+            tests/shots/
+            tests/out/
