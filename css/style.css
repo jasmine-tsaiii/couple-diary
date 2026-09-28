@@ -489,3 +489,15 @@ body.is-offline { padding-top: calc(30px + env(safe-area-inset-top)); }
 .share-more > .share-sec { margin-top: 12px; }
 .share-sec .field > label { font-size: 16px; font-weight: 700; color: var(--ink); }
 .invite-steps { gap: 18px; }
+/* 登入頁：間距拉開、次要動作改成文字連結 */
+#app.login-page { gap: 18px; }
+.login-page .gsi-box, .login-page #google-btn { width: 100%; }
+.or-divider { display: flex; align-items: center; gap: 12px; color: var(--muted); font-size: 14px; margin: 4px 0; }
+.or-divider::before, .or-divider::after { content: ""; flex: 1; height: 1px; background: var(--line); }
+.link-btn { background: none; border: 0; padding: 6px 2px; color: var(--soft); font-size: 15px; text-decoration: none; cursor: pointer; font-family: inherit; }
+.link-btn b { color: var(--accent-text); font-weight: 700; }
+.link-btn.small { font-size: 14px; }
+#forgot { align-self: flex-end; color: var(--muted); }
+.login-more { display: flex; flex-direction: column; align-items: center; gap: 10px; margin-top: 6px; padding-top: 18px; border-top: 1px solid var(--line); }
+.login-more .btn { width: 100%; }
+#login-msg:empty { display: none; }

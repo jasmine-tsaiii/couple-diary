@@ -35,7 +35,7 @@ function rememberLogin(kind) {
 }
 function lastLogin() { try { return localStorage.getItem('lastLogin'); } catch (e) { return null; } }
 function viewLogin(mode = 'signin') {
-  app.className = '';
+  app.className = 'login-page';
   const isUp = mode === 'signup';
   const last = lastLogin();
   app.innerHTML = `
@@ -54,18 +54,20 @@ function viewLogin(mode = 'signin') {
       <svg width="20" height="20" viewBox="0 0 48 48" aria-hidden="true"><path fill="#EA4335" d="M24 9.5c3.5 0 6.6 1.2 9.1 3.6l6.8-6.8C35.8 2.4 30.3 0 24 0 14.6 0 6.6 5.4 2.7 13.3l7.9 6.1C12.5 13.6 17.8 9.5 24 9.5z"/><path fill="#4285F4" d="M46.5 24.5c0-1.6-.1-3.1-.4-4.5H24v9h12.7c-.6 3-2.3 5.5-4.8 7.2l7.7 6c4.5-4.2 6.9-10.3 6.9-17.7z"/><path fill="#FBBC05" d="M10.6 28.6c-.5-1.4-.8-3-.8-4.6s.3-3.2.8-4.6l-7.9-6.1C1 16.6 0 20.2 0 24s1 7.4 2.7 10.7l7.9-6.1z"/><path fill="#34A853" d="M24 48c6.5 0 11.9-2.1 15.9-5.8l-7.7-6c-2.1 1.4-4.9 2.3-8.2 2.3-6.2 0-11.5-4.1-13.4-9.9l-7.9 6.1C6.6 42.6 14.6 48 24 48z"/></svg>
       ${isUp ? '用 Google 註冊／登入' : '用 Google 登入'}
     </button>
-    <div class="muted" style="text-align:center">或用 Email</div>
+    <div class="or-divider"${IN_APP ? ' hidden' : ''}><span>或用 Email</span></div>
     <form id="login-form" style="display:flex;flex-direction:column;gap:14px">
       <div class="field"><label for="email">Email</label>
         <input id="email" class="input" type="email" autocomplete="email" required></div>
       <div class="field"><label for="password">帳號密碼${isUp ? '（至少 8 個字）' : ''}</label>
-        <input id="password" class="input" type="password" autocomplete="${isUp ? 'new-password' : 'current-password'}" minlength="${isUp ? 8 : 6}" maxlength="72" required></div>
+        <input id="password" class="input" type="password" autocomplete="${isUp ? 'new-password' : 'current-password'}" minlength="${isUp ? 8 : 6}" maxlength="72" required>
+        ${isUp ? '' : '<button type="button" class="link-btn small" id="forgot">忘記密碼？</button>'}</div>
       <button class="btn" type="submit" id="login-btn">${isUp ? '免費註冊，開始我們的日記' : '登入'}</button>
     </form>
     <div id="login-msg" class="muted" style="text-align:center"></div>
-    ${isUp ? '' : '<button class="btn secondary small" id="forgot">忘記密碼？</button>'}
-    <button class="btn ${isUp ? 'secondary small' : 'secondary'}" id="switch">${isUp ? '已經有帳號？登入' : '第一次使用？免費註冊'}</button>
-    <a class="btn secondary small" href="#/join">我是另一半，用分享碼加入</a>
+    <div class="login-more">
+      ${isUp ? '<button type="button" class="link-btn" id="switch">已經有帳號？<b>登入</b></button>' : '<button class="btn secondary" id="switch">第一次使用？免費註冊</button>'}
+      <a class="link-btn" href="#/join">我是另一半，<b>用分享碼加入</b></a>
+    </div>
     <a class="text-link small" href="#/" id="try-first" hidden>先看看，之後再註冊</a>
     ${isUp || !last ? introFeatures() : ''}
     <div class="small muted legal-links">${isUp ? '註冊就代表你同意' : ''}<a href="terms.html" target="_blank" rel="noopener">使用條款</a>${isUp ? '和' : '・'}<a href="privacy.html" target="_blank" rel="noopener">隱私權政策</a></div>
