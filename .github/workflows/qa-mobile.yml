@@ -1,0 +1,33 @@
+# 測試用分支：用 Safari 引擎（WebKit）+ iPhone 模式跑全部畫面測試。不併回 main。
+name: qa-mobile
+on:
+  push:
+    branches: [qa/mobile-webkit]
+jobs:
+  webkit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    defaults:
+      run:
+        working-directory: tests
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm install --no-audit --no-fund
+      - run: npx playwright install --with-deps webkit
+      - run: NODE_OPTIONS="--require $PWD/mobile-shim.js" node run.js || true
+        env:
+          ENGINE: webkit
+          BROWSER: webkit
+          DEVICE: iphone
+          CI: 'true'
+          JOBS: '3'
+      - if: always()
+        run: for f in out/*.txt; do echo "=== $f"; tail -25 "$f"; done
+      - if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: qa-mobile-out
+          path: tests/out/
