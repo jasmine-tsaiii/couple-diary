@@ -50,8 +50,8 @@ async function viewPartnerHome() {
       <div class="small" style="color:var(--lock)">${esc(ownerName())}完成了你出的任務，點這裡去看看，確認後那則紀錄就會解鎖給${esc(ownerName())}看。</div>
     </a>` : ''}
     ${CloudDB.isAnonymous() ? `<a class="card" href="#/bind" style="background:var(--fight-bg);border-color:transparent;gap:4px">
-      <div class="bold" style="color:var(--fight-dark)">綁定帳號，你也可以寫紀錄</div>
-      <div class="small muted">現在是用分享碼暫時登入。綁定 Email 或 Google 後，就能記自己的美好、烏雲時刻，一起寫吵架議題，換手機也不用重新加入 ›</div>
+      <div class="bold" style="color:var(--fight-dark)">建立我的帳號，你也可以寫紀錄</div>
+      <div class="small muted">你現在是用分享碼加入的，還沒有自己的帳號：只能看、做任務。用 Email 或 Google 建立帳號後，就能寫自己的美好和烏雲，也能一起寫吵架議題，換手機也不會不見 ›</div>
     </a>` : ''}
     <div class="section-title">所有功能</div>
     <div class="home-tiles">${tilesHtml}</div>
@@ -148,17 +148,16 @@ let bindError = '';
 let bindErrorExists = false;
 let rejoinNotice = false;
 function googleBindErrorText(err) {
-  const o = esc(ownerName());
   const t = `${(err && err.code) || ''} ${(err && err.message) || ''}`;
   bindErrorExists = false;
   if (/identity_already_exists|already linked|already (been )?registered|already exists|already in use/i.test(t)) {
     bindErrorExists = true;
-    return '這個 Google 帳號已經有啾啾日記的帳號了（如果你之前綁定過，就是它）。按下面的「改用這個 Google 帳號登入」回到原本的帳號就好，不用再綁一次；之前寫的紀錄都還在。如果登入後又要你輸入分享碼，再輸入一次、等對方按同意就好。';
+    return '這個 Google 帳號已經有啾啾日記的帳號了（如果你之前用它建立過帳號，就是它）。按下面的「改用這個 Google 帳號登入」回到原本的帳號就好，不用再建立一次；之前寫的紀錄都還在。如果登入後又要你輸入分享碼，再輸入一次、等對方按同意就好。';
   }
-  if (/manual_linking_disabled|manual linking|linking is disabled/i.test(t)) return `Google 綁定還沒開通。請${o}到 Supabase 後台的 Authentication → Sign In / Providers，打開「Allow manual linking」。現在可以先用下面的 Email 綁定。`;
-  if (/access_denied|not.*test user|unverified|blocked/i.test(t)) return `Google 擋下了這次登入。如果 Google 畫面寫「存取遭封鎖」或「應用程式未經驗證」，是 Google Cloud 的 OAuth 同意畫面還在「測試」模式：請${o}到 Google Cloud Console → OAuth 同意畫面按「發布應用程式」，或把這個 Gmail 加進「測試使用者」。現在可以先用下面的 Email 綁定。`;
-  if (!err) return `從 Google 回來了，但綁定沒有完成。可能是網址設定還沒更新：請${o}到 Supabase 的 Authentication → URL Configuration，確認 Redirect URLs 有 https://diary.jas-soul.com/**。現在可以先用下面的 Email 綁定。`;
-  return `Google 綁定沒有成功：${esc(err.message || err.code || '不知道的錯誤')}。可以改用下面的 Email 綁定。`;
+  if (/manual_linking_disabled|manual linking|linking is disabled|綁定暫時不能用/i.test(t)) { console.warn('Google 綁定：Supabase 要開啟 Allow manual linking', t); return '用 Google 建立帳號現在暫時不能用。先用下面的 Email 建立，效果一樣。'; }
+  if (/access_denied|not.*test user|unverified|blocked/i.test(t)) { console.warn('Google 綁定被擋：OAuth 同意畫面可能還在測試模式', t); return 'Google 沒有讓這次通過（可能是按了取消，或 Google 擋下來了）。可以再試一次，或改用下面的 Email 建立。'; }
+  if (!err) { console.warn('Google 綁定沒完成：檢查 Supabase Redirect URLs'); return '從 Google 回來了，但帳號沒有建立完成。可以再試一次，或改用下面的 Email 建立。'; }
+  console.warn('Google 綁定失敗', t); return '用 Google 建立帳號沒有成功。可以再試一次，或改用下面的 Email 建立。';
 }
 function viewBind(sentTo = '') {
   app.className = 'theme-fight';
@@ -166,22 +165,23 @@ function viewBind(sentTo = '') {
   app.innerHTML = `
     <div class="topbar">
       <a class="icon-btn" href="#/" aria-label="返回">${ICON.back}</a>
-      <h1>綁定帳號</h1>
+      <h1>建立我的帳號</h1>
     </div>
     ${bound ? `<div class="card" style="gap:6px">
-      <div class="bold">已經綁定 ${esc(CloudDB.currentEmail() || '')}</div>
-      <div class="muted">現在可以和${esc(ownerName())}一起新增、更新吵架議題。換手機時用這個帳號登入就好，不用再輸入分享碼。</div>
-      <a class="btn small" href="#/fights" style="align-self:flex-start">去看吵架議題</a>
+      <div class="bold">帳號建立好了：${esc(CloudDB.currentEmail() || '')}</div>
+      <div class="muted">現在可以寫自己的美好和烏雲，也能和${esc(ownerName())}一起寫吵架議題。換手機時用這個帳號登入就好，不用再輸入分享碼。</div>
+      <a class="btn small" href="#/" style="align-self:flex-start">回首頁開始寫</a>
     </div>
     <form class="card" id="pw-form" style="gap:10px">
-      <div class="bold">設定登入密碼</div>
-      <div class="small muted">用 Email 綁定的話，設定密碼後就能在別的手機用 Email 和密碼登入。用 Google 綁定的可以略過。</div>
+      <div class="bold">設定帳號密碼</div>
+      <div class="small muted">用 Email 建立帳號的話，設定帳號密碼後就能在別的手機用 Email 和密碼登入。這和加入時的 6 位數分享密碼不一樣。用 Google 建立的可以略過。</div>
       <input id="b-pass" class="input" type="password" autocomplete="new-password" minlength="8" maxlength="72" required placeholder="至少 8 個字" aria-label="新密碼">
       <button class="btn small" id="b-pass-save" type="submit">儲存密碼</button>
     </form>` : `
-    <div class="muted">你現在是用分享碼暫時登入，身分只存在這個瀏覽器裡。綁定之後：</div>
+    <div class="muted">你現在是用分享碼加入的，還沒有自己的帳號，身分只存在這個瀏覽器裡，所以只能看、做任務。用 Email 或 Google 建立帳號之後：</div>
     <div class="card" style="gap:6px">
-      <div>・可以和${esc(ownerName())}一起新增、更新吵架議題</div>
+      <div>・可以寫自己的美好和烏雲時刻</div>
+      <div>・可以和${esc(ownerName())}一起寫吵架議題</div>
       <div>・換手機或清掉瀏覽器資料，登入就回來了，不用${esc(ownerName())}再同意一次</div>
     </div>
     ${sentTo ? `<div class="card" style="background:var(--resolved-bg);border-color:transparent;gap:8px">
@@ -190,13 +190,13 @@ function viewBind(sentTo = '') {
       <button class="btn small secondary" id="b-check" style="align-self:flex-start">我已經點了連結</button>
     </div>` : ''}
     ${bindError ? `<div class="card" id="bind-error" role="alert" style="background:var(--open-bg);border-color:transparent;gap:4px">
-      <div class="bold" style="color:var(--open-ink)">Google 綁定沒有成功</div>
+      <div class="bold" style="color:var(--open-ink)">用 Google 建立帳號沒有成功</div>
       <div class="small" style="color:var(--open-ink)">${bindError}</div>
       ${bindErrorExists ? '<button class="btn small" id="b-login-google" style="align-self:flex-start">改用這個 Google 帳號登入</button>' : ''}
     </div>` : ''}
-    <button class="btn secondary" id="b-google"${IN_APP ? ' hidden' : ''}>用 Google 綁定</button>
+    <button class="btn secondary" id="b-google"${IN_APP ? ' hidden' : ''}>用 Google 建立</button>
     <form class="card" id="b-form" style="gap:10px">
-      <label for="b-email" class="bold">用 Email 綁定</label>
+      <label for="b-email" class="bold">用 Email 建立</label>
       <input id="b-email" class="input" type="email" autocomplete="email" required placeholder="you@example.com">
       <button class="btn" id="b-send" type="submit">寄確認信</button>
     </form>`}
@@ -237,7 +237,7 @@ function viewBind(sentTo = '') {
   const chk = document.getElementById('b-check');
   if (chk) chk.addEventListener('click', () => withBusy(chk, '確認中…', async () => {
     await CloudDB.refreshUser();
-    if (CloudDB.isBoundPartner()) { toast('綁定完成！'); viewBind(); } else toast('還沒收到確認，請到信箱點連結（也看看垃圾信件匣）');
+    if (CloudDB.isBoundPartner()) { toast('帳號建立好了！'); viewBind(); } else toast('還沒收到確認，請到信箱點連結（也看看垃圾信件匣）');
   }));
 }
 
@@ -255,11 +255,11 @@ function viewPartnerSettings() {
     </div>
     <a class="card" href="#/bind" style="gap:4px">
       <div class="row between"><div class="bold">帳號</div><div class="muted">›</div></div>
-      <div class="small muted">${CloudDB.isBoundPartner() ? `已綁定 ${esc(CloudDB.currentEmail() || '')}` : '還沒綁定：綁定後可以一起寫吵架議題，換手機也不會不見'}</div>
+      <div class="small muted">${CloudDB.isBoundPartner() ? `已建立帳號：${esc(CloudDB.currentEmail() || '')}` : '還沒建立帳號：建立後可以寫自己的美好和烏雲，也能一起寫吵架議題，換手機也不會不見'}</div>
     </a>
     ${CloudDB.isBoundPartner() ? `<div class="card">
       <div class="bold">登出</div>
-      <div class="muted">登出後用綁定的帳號登入就能回來。</div>
+      <div class="muted">登出後用你的帳號登入就能回來。</div>
       <button class="btn small secondary" id="logout">登出</button>
     </div>` : ''}
     ${pinCardHtml()}
@@ -275,7 +275,7 @@ function viewPartnerSettings() {
     <div class="card">
       <div class="bold">離開</div>
       <div class="muted">只是不想在這支手機上看，選「這支手機登出」；要分開了，選「結束這段關係」，${esc(ownerName())}下次打開 App 會收到通知。</div>
-      ${CloudDB.isBoundPartner() ? '' : '<div class="small muted">還沒綁定帳號的話，登出後要重新用分享碼加入。</div>'}
+      ${CloudDB.isBoundPartner() ? '' : '<div class="small muted">還沒建立帳號的話，登出後要重新用分享碼加入。</div>'}
       <button class="btn small secondary" id="leave">這支手機登出</button>
       <button class="btn small danger" id="end-rel">結束這段關係</button>
     </div>
@@ -286,11 +286,11 @@ function viewPartnerSettings() {
 
   document.getElementById('leave').addEventListener('click', async () => {
     if (CloudDB.isBoundPartner()) {
-      if (!confirm('登出這支手機？之後用綁定的帳號登入就能回來。')) return;
+      if (!confirm('登出這支手機？之後用你的帳號登入就能回來。')) return;
       await CloudDB.signOut(); photoUrlCache.clear(); go('#/login');
       return;
     }
-    if (!confirm(`確定要登出嗎？還沒綁定帳號，登出後要重新用分享碼加入、等${ownerName()}同意。`)) return;
+    if (!confirm(`確定要登出嗎？還沒建立帳號，登出後要重新用分享碼加入、等${ownerName()}同意。`)) return;
     await CloudDB.leaveShare();
     photoUrlCache.clear();
     go('#/join');
@@ -317,19 +317,19 @@ function viewJoin(notice, code = '') {
     <div style="display:flex;flex-direction:column;align-items:center;gap:10px;text-align:center;margin-top:40px">
       <div class="thumb" style="width:72px;height:72px;border-radius:99px">${ICON.lock}</div>
       <h1 class="title-xl">用分享碼加入</h1>
-      <div class="muted">輸入對方給你的分享碼和密碼，就能看對方分享的紀錄</div>
+      <div class="muted">輸入對方給你的分享碼和分享密碼，對方按「同意」後就能看對方分享的紀錄、做任務。之後建立自己的帳號，也能一起寫。</div>
     </div>
     ${notice ? `<div class="card" style="background:var(--progress-bg);border-color:transparent;color:var(--progress-ink)">${esc(notice)}</div>` : ''}
     <form id="join-form" style="display:flex;flex-direction:column;gap:14px">
       <div class="field"><label for="j-code">分享碼</label>
         <input id="j-code" class="input" autocapitalize="characters" autocomplete="off" required value="${esc(/^[A-Za-z0-9]{6,12}$/.test(code) ? code.toUpperCase() : '')}" style="letter-spacing:4px;text-transform:uppercase"></div>
-      ${digitBoxes('j-pass', '密碼')}
+      ${digitBoxes('j-pass', '分享密碼（對方告訴你的 6 位數字）')}
       <div class="field"><label for="j-name">你的名字</label>
         <input id="j-name" class="input" maxlength="20" required placeholder="對方會看到這個名字"></div>
       <button class="btn" type="submit" id="join-btn">加入</button>
     </form>
     <div id="join-msg" class="muted" style="text-align:center"></div>
-    <a class="btn secondary small" href="#/login" id="to-login">${rejoinNotice ? '回到首頁' : '我是紀錄的主人，或已經綁定過帳號，去登入'}</a>
+    <a class="btn secondary small" href="#/login" id="to-login">${rejoinNotice ? '回到首頁' : '我已經有帳號了，去登入'}</a>
   `;
   bindDigitBoxes(app);
   document.getElementById('to-login').addEventListener('click', async (ev) => {
@@ -343,7 +343,7 @@ function viewJoin(notice, code = '') {
     const msg = document.getElementById('join-msg');
     // 錯誤訊息放在按鈕旁邊也用小提示跳出來，手機鍵盤擋住時也看得到
     const fail = (t) => { msg.textContent = t; toast(t); msg.scrollIntoView({ block: 'center' }); };
-    if (!SHARE_PASS_RE.test(document.getElementById('j-pass').value)) { fail('密碼是 6 位數字，再檢查一下'); return; }
+    if (!SHARE_PASS_RE.test(document.getElementById('j-pass').value)) { fail('分享密碼是 6 位數字，再檢查一下'); return; }
     if (document.activeElement) document.activeElement.blur();
     btn.disabled = true;
     btn.textContent = '加入中…';
@@ -364,7 +364,7 @@ function viewJoin(notice, code = '') {
       btn.disabled = false;
       btn.textContent = '加入';
       fail(/anonymous sign-ins are disabled|signups not allowed/i.test(e.message)
-        ? '對方的 App 還沒開放分享碼加入，請對方到 Supabase 開啟「Allow anonymous sign-ins」。'
+        ? '分享碼加入暫時不能用，請稍後再試。一直不行的話，請對方到設定頁的「意見回饋」告訴我們。'
         : /captcha/i.test(e.message) ? '加入時被安全驗證擋住了，請把這個畫面截圖給對方。'
         : cloudErrorText(e));
     }
@@ -408,7 +408,7 @@ function viewRoleChoice() {
     </button>
     <button class="card role-card" id="role-partner">
       <div class="bold" style="font-size:17px">我是另一半，要加入對方的日記</div>
-      <div class="small muted">對方已經在用啾啾日記、給了你分享碼。之前綁定過帳號的話，選這個再輸入一次分享碼，之前寫的紀錄都會回來。</div>
+      <div class="small muted">對方已經在用啾啾日記、給了你分享碼。之前在對方的日記建立過帳號的話，選這個再輸入一次分享碼，之前寫的紀錄都會回來。</div>
     </button>
     <button class="text-link small" id="role-logout" style="background:none;border:none;cursor:pointer">登出，換別的帳號</button>
   `;
@@ -430,11 +430,11 @@ function viewWaitingApproval() {
     <div style="display:flex;flex-direction:column;align-items:center;gap:10px;text-align:center;margin-top:40px">
       <div class="thumb" style="width:72px;height:72px;border-radius:99px">${ICON.heart}</div>
       <h1 class="title-xl">等 ${esc(info.owner_name || '對方')} 同意</h1>
-      <div class="muted">已經送出加入要求了。請 ${esc(info.owner_name || '對方')} 打開 App，到設定頁按「同意」，你就看得到分享的紀錄。</div>
+      <div class="muted">已經送出加入要求了。請 ${esc(info.owner_name || '對方')} 打開 App，首頁就會看到你的加入要求，按「同意」之後你就看得到分享的紀錄。</div>
     </div>
     ${boundHint ? `<div class="card" id="bound-hint" style="background:var(--progress-bg);border-color:transparent;gap:8px">
       <div class="bold" style="color:var(--progress-ink)">你是「${esc(boundHint)}」嗎？</div>
-      <div class="small" style="color:var(--progress-ink)">這本日記已經有一位綁定帳號的「${esc(boundHint)}」。如果那就是你，請改用原本的 Google 或 Email 登入，之前寫的紀錄才接得回來；用現在這個臨時身分加入，對方同意後會把原本的帳號擠掉。</div>
+      <div class="small" style="color:var(--progress-ink)">這本日記已經有一位建立過帳號的「${esc(boundHint)}」。如果那就是你，請改用原本的 Google 或 Email 登入，之前寫的紀錄才接得回來。用現在這樣加入的話，對方同意後，原本的帳號就不能再寫了。</div>
       <button class="btn small" id="w-use-account">我是${esc(boundHint)}，改用原本的帳號登入</button>
     </div>` : ''}
     <button class="btn${boundHint ? ' secondary' : ''}" id="w-check">對方同意了，重新看看</button>
@@ -470,12 +470,12 @@ async function shareCardHtml() {
     if (share) paused = (await DB.getSetting('sharePaused', false)) === true;
   } catch (e) {
     return `<div class="card"><div class="bold">分享給另一半</div>
-      <div class="muted">要先到 Supabase 的 SQL Editor 重新貼上最新的 supabase/schema.sql 並按 Run，才能使用分享碼。</div></div>`;
+      <div class="muted">分享功能暫時載入不了，請稍後再打開一次。一直不行的話，可以到下面的「意見回饋」告訴我們。</div></div>`;
   }
   if (!share) {
     return `<div class="card" id="share-card">
       <div class="bold">分享給另一半</div>
-      <div class="muted">產生分享碼和密碼給對方，對方就能看你「給對方看」和任務解鎖後的紀錄，也能做任務，但不能修改任何東西。</div>
+      <div class="muted">產生分享碼和密碼給對方，對方就能看你「給對方看」和任務解鎖後的紀錄、做任務。對方用 Email 或 Google 建立自己的帳號後，還能寫自己的美好和烏雲，也能和你一起寫吵架議題；你寫的美好和烏雲，對方不能改。</div>
       <div class="field"><label for="s-name">你的名字（對方會看到）</label><input id="s-name" class="input" maxlength="${LIMITS.name}" value="${esc(NAMES.me)}"></div>
       ${digitBoxes('s-pass', '分享密碼（自己設 6 位數字，再告訴對方）')}
       <button class="btn small" id="s-create">產生分享碼</button>
@@ -485,15 +485,15 @@ async function shareCardHtml() {
   const waiting = partners.filter((p) => p.approved === false);
   return `<div class="card" id="share-card">
     <div class="bold">分享給另一半</div>
-    <div class="muted">按下面的按鈕複製邀請連結傳給對方，密碼另外告訴他。對方點連結就會看到加入畫面，分享碼已經幫他填好。</div>
+    <div class="muted">按下面的按鈕把邀請連結傳給對方，6 位數分享密碼另外告訴對方。對方點連結就會看到加入畫面，分享碼已經幫忙填好。</div>
     <div class="share-code">${esc(share.code)}</div>
     <button class="btn small secondary" id="s-copy">分享邀請連結（不含密碼）</button>
     <div class="field"><label for="s-name">你的名字（對方會看到）</label>
       <div class="row"><input id="s-name" class="input grow" maxlength="20" value="${esc(share.owner_name)}"><button class="btn small" id="s-save-name">儲存</button></div></div>
-    ${digitBoxes('s-pass', '改分享密碼')}
-    <button class="btn small secondary" id="s-save-pass">更改密碼</button>
+    ${digitBoxes('s-pass', '改分享密碼（6 位數字）')}
+    <button class="btn small secondary" id="s-save-pass">更改分享密碼</button>
     ${waiting.length ? `<div class="field" id="join-requests"><div class="label">想加入的人（要你同意）</div>
-      <div class="muted small">換手機或清掉瀏覽器重新加入的，也會出現在這裡。同意後會取代目前的另一半。</div>
+      <div class="muted small">另一半換手機或清掉瀏覽器重新加入時，也會出現在這裡；是同一個人的話，同意後會接回原本分享的紀錄。按「同意」時會再問你是同一個人還是新的對象。</div>
       ${waiting.map((p) => `<div class="row between"><span>${esc(p.name)}<span class="muted small">・${shortDate(p.joined_at.slice(0, 10))} 送出</span></span>
         <span class="row" style="gap:6px"><button class="btn small" data-approve-partner="${esc(p.uid)}" data-name="${esc(p.name)}">同意</button>
         <button class="btn small secondary" data-rm-partner="${esc(p.uid)}" data-name="${esc(p.name)}" data-pending="1">拒絕</button></span></div>`).join('')}
@@ -539,7 +539,7 @@ function bindShareCard() {
   if ($('s-copy')) $('s-copy').addEventListener('click', async () => {
     const code = document.querySelector('.share-code').textContent;
     const url = `${location.origin + location.pathname}?utm_source=invite&utm_medium=share#/join/${code}`;
-    const text = `點這個連結，一起用啾啾日記：${url}（密碼我另外告訴你）`;
+    const text = `點這個連結，一起用啾啾日記：${url}（6 位數分享密碼我另外告訴你）`;
     // 手機會跳出分享畫面（LINE、訊息…）。要在按下的當下馬上叫出來，先做別的事 iPhone 會擋掉；不支援或失敗時改成複製
     if (navigator.share) {
       try { await navigator.share({ title: '一起用啾啾日記', text }); track('share_invite', { how: 'share' }); return; } catch (e) { if (e && e.name === 'AbortError') return; }
@@ -559,13 +559,13 @@ function bindShareCard() {
     await CloudDB.saveShare(document.querySelector('.share-code').textContent, pass, $('s-name').value.trim());
     $('s-pass').value = ''; $('s-pass').dispatchEvent(new Event('input'));
     const joined = document.querySelectorAll('[data-rm-partner]');
-    if (joined.length && confirm('密碼已更改。要不要順便移除目前已加入的人？\n（如果是擔心密碼外流就按「確定」；按「取消」對方會照常看得到）')) {
+    if (joined.length && confirm('分享密碼已更改。要不要順便移除目前已加入的人？\n（如果是擔心分享密碼外流就按「確定」；按「取消」對方會照常看得到）')) {
       for (const b of joined) await CloudDB.removePartner(b.dataset.rmPartner);
-      toast('密碼已更改，也移除了已加入的人');
+      toast('分享密碼已更改，也移除了已加入的人');
       viewSettings();
       return;
     }
-    toast('密碼已更改，已加入的人不受影響');
+    toast('分享密碼已更改，已加入的人不受影響');
   });
   if ($('s-pause')) $('s-pause').addEventListener('click', () => withBusy($('s-pause'), '', async () => {
     const next = $('s-pause').getAttribute('aria-pressed') !== 'true';
@@ -611,8 +611,8 @@ async function approveJoin(btn, uid, name) {
     ]))) return false;
   } else if (current && acc(current.uid).bound && !joiner.bound) {
     // 目前的另一半已經綁定帳號，新的是臨時身分：多半是同一個人換了瀏覽器，請他用原本的帳號登入，不要擠掉帳號
-    const pick = await choose(`${name} 想加入`, `目前的另一半「${current.name}」已經綁定帳號。如果這是${current.name}換手機或換瀏覽器，請他用原本的 Google 或 Email 登入再加入，不要用臨時身分，不然會把原本的帳號擠掉。`, [
-      { key: 'reject', label: '先拒絕，請他用原本的帳號登入', hint: `${current.name}照舊看得到，不受影響`, primary: true },
+    const pick = await choose(`${name} 想加入`, `這可能是「${current.name}」換了手機或瀏覽器。建議先拒絕，請${current.name}用原本的 Email 或 Google 登入再加入，之前寫的紀錄才接得回來。`, [
+      { key: 'reject', label: `先拒絕，請${current.name}用原本的帳號登入`, hint: `${current.name}照舊看得到，不受影響`, primary: true },
       { key: 'new', label: '是新的對象', hint: '先把之前的紀錄封存或刪除，新的人才看不到' },
       { key: 'replace', label: `還是同意，取代「${current.name}」的帳號`, hint: '原本帳號寫的紀錄會留著，但那個帳號就不能再寫了' },
     ]);
@@ -622,7 +622,7 @@ async function approveJoin(btn, uid, name) {
   } else if (current || hasRecords) {
     const before = current ? current.name : (NAMES.partner || '');
     const same = before && before === name;
-    const pick = await choose(`${name} 想加入`, current ? `目前的另一半是「${before}」。同意後會取代「${before}」。` : '你已經有一些紀錄了。', [
+    const pick = await choose(`${name} 想加入`, current ? `目前的另一半是「${before}」。如果是${before}換手機，同意後會接回原本分享的紀錄；如果是新的對象，請選下面的「是新的對象」。` : '你已經有一些紀錄了。', [
       { key: 'same', label: `是${before || '同一個人'}換手機或重新加入`, hint: '照舊看得到之前分享的紀錄', primary: same },
       { key: 'new', label: '是新的對象', hint: '先把之前的紀錄封存或刪除，新的人才看不到', primary: !same },
     ]);

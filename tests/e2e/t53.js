@@ -17,7 +17,7 @@ const U = (process.env.U || 'http://localhost:8770/');
   await p.click('text=我是另一半，用分享碼加入'); await p.waitForTimeout(300);
   await p.fill('#j-code', code); await p.fill('#j-pass', '123456'); await p.fill('#j-name', '小明'); await p.click('#join-btn'); await p.waitForTimeout(1500);
   await p.goto(U + '#/'); await p.reload(); await p.waitForTimeout(900);
-  log('partner home', await p.isVisible('text=綁定帳號，你也可以寫紀錄'));
+  log('partner home', await p.isVisible('text=建立我的帳號，你也可以寫紀錄'));
   // 1) Google 回來帶錯誤：這個帳號已經被用過
   await p.evaluate(() => sessionStorage.setItem('linkPending', '1'));
   await p.goto(U + '?error=server_error&error_code=identity_already_exists&error_description=Identity+is+already+linked+to+another+user#/'); await p.waitForTimeout(1200);
@@ -26,14 +26,14 @@ const U = (process.env.U || 'http://localhost:8770/');
   // 2) 回來沒有錯誤但還是沒綁定（網址設定問題）
   await p.evaluate(() => sessionStorage.setItem('linkPending', '1'));
   await p.goto(U + '#/'); await p.reload(); await p.waitForTimeout(1200);
-  log('2 back on bind', p.url().endsWith('#/bind'), 'msg', (await p.textContent('#bind-error')).includes('Redirect URLs'));
+  log('2 back on bind', p.url().endsWith('#/bind'), 'msg', (await p.textContent('#bind-error')).includes('沒有建立完成'));
   // 3) Manual linking 沒開：按下去就顯示在頁面上
   await p.evaluate(() => localStorage.setItem('mockLinkErr', '1'));
   await p.click('#b-google'); await p.waitForTimeout(800);
-  log('3 msg', (await p.textContent('#bind-error')).includes('Allow manual linking'), 'no pending left', await p.evaluate(() => !sessionStorage.getItem('linkPending')));
+  log('3 msg', (await p.textContent('#bind-error')).includes('暫時不能用'), 'no pending left', await p.evaluate(() => !sessionStorage.getItem('linkPending')));
   // 4) 成功
   await p.evaluate(() => localStorage.removeItem('mockLinkErr'));
   await p.click('#b-google'); await p.waitForTimeout(1000);
-  log('4 bound', await p.isVisible('text=已經綁定'), 'error gone', !(await p.isVisible('#bind-error')));
+  log('4 bound', await p.isVisible('text=帳號建立好了'), 'error gone', !(await p.isVisible('#bind-error')));
   console.log('errors', errs); await b.close();
 })();

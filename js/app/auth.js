@@ -58,7 +58,7 @@ function viewLogin(mode = 'signin') {
     <form id="login-form" style="display:flex;flex-direction:column;gap:14px">
       <div class="field"><label for="email">Email</label>
         <input id="email" class="input" type="email" autocomplete="email" required></div>
-      <div class="field"><label for="password">密碼${isUp ? '（至少 8 個字）' : ''}</label>
+      <div class="field"><label for="password">帳號密碼${isUp ? '（至少 8 個字）' : ''}</label>
         <input id="password" class="input" type="password" autocomplete="${isUp ? 'new-password' : 'current-password'}" minlength="${isUp ? 8 : 6}" maxlength="72" required></div>
       <button class="btn" type="submit" id="login-btn">${isUp ? '免費註冊，開始我們的日記' : '登入'}</button>
     </form>
@@ -90,7 +90,7 @@ function viewLogin(mode = 'signin') {
     const msg = document.getElementById('login-msg');
     if (!/^[^@\s]+@[^@\s]+$/.test(email)) { msg.textContent = '先在上面填你的 Email，再按「忘記密碼」。'; document.getElementById('email').focus(); return; }
     withBusy(forgot, '寄送中…', async () => {
-      await CloudDB.resetPassword(email);
+      try { await CloudDB.resetPassword(email); } catch (e) { msg.textContent = authErrorText(e); return; }
       msg.textContent = `如果 ${email} 有註冊過，會收到一封重設密碼的信，點信裡的連結就能設定新密碼。`;
     });
   });
@@ -99,7 +99,7 @@ function viewLogin(mode = 'signin') {
     try { sessionStorage.setItem('googlePending', '1'); } catch (e) { /* 略過 */ }
     try { await CloudDB.signInWithGoogle(); } catch (e) {
       document.getElementById('login-msg').textContent = /provider is not enabled|Unsupported provider/i.test(e.message)
-        ? 'Google 登入還沒在 Supabase 開啟，先用 Email 登入吧。' : '沒辦法用 Google 登入：' + e.message;
+        ? 'Google 登入暫時不能用，先用 Email 登入吧。' : 'Google 登入沒有成功，請再試一次，或先用 Email 登入。';
     }
   });
   document.getElementById('login-form').addEventListener('submit', async (ev) => {
@@ -117,7 +117,6 @@ function viewLogin(mode = 'signin') {
         // 從「註冊」建立的新 Email 帳號就是日記主人，不用再問身分
         try { localStorage.setItem('newOwnerEmail', email.toLowerCase()); } catch (e) { /* 略過 */ }
         if (!session) {
-          msg.textContent = '帳號建立好了！請到信箱點確認連結，確認後回到這裡登入。';
           btn.disabled = false;
           viewLoginAfterSignup(email);
           return;
@@ -132,14 +131,28 @@ function viewLogin(mode = 'signin') {
       route();
     } catch (e) {
       btn.disabled = false;
-      msg.textContent = /invalid login/i.test(e.message) ? 'Email 或密碼不對，再試一次。'
-        : /not confirmed/i.test(e.message) ? '這個帳號還沒確認，請先到信箱點確認連結。'
-        : '沒辦法完成：' + e.message;
+      msg.textContent = authErrorText(e);
     }
   });
 }
 function viewLoginAfterSignup(email) {
   viewLogin('signin');
   document.getElementById('email').value = email;
-  document.getElementById('login-msg').textContent = '帳號建立好了！請到信箱點確認連結，確認後在這裡登入。';
+  document.getElementById('login-msg').textContent = SIGNUP_SENT_TEXT;
+}
+// 註冊後要收信確認。已經註冊過的 Email 再註冊一次，Supabase 不會報錯、也不會寄信，所以提醒一下
+const SIGNUP_SENT_TEXT = '帳號建立好了！請到信箱點確認連結，確認後在這裡登入。幾分鐘內都沒收到信（也看看垃圾信件匣）的話，可能這個 Email 之前就註冊過了，請直接登入，或按「忘記密碼？」。';
+// Supabase 登入、註冊的英文錯誤翻成中文；看不懂的就給一般的說法，不把英文原文丟給使用者
+function authErrorText(e) {
+  const m = (e && e.message) || '';
+  if ((e && e.offline) || /fetch|network|load failed|timeout/i.test(m)) return navigator.onLine === false ? '現在沒有網路，連上網路後再試一次。' : '連不上網路，請確認網路後再試一次。';
+  if (/invalid login|invalid credentials/i.test(m)) return 'Email 或密碼不對，再試一次。';
+  if (/not confirmed/i.test(m)) return '這個帳號還沒確認，請先到信箱點確認連結（也看看垃圾信件匣）。';
+  if (/already registered|already exists|already been registered/i.test(m)) return '這個 Email 已經註冊過了，請直接登入。忘記密碼的話，按「忘記密碼？」。';
+  if (/password.*(at least|short|characters|weak)|weak password/i.test(m)) return '密碼太短或太簡單，請用至少 8 個字，混合英文和數字。';
+  if (/rate limit|too many|only request this after|security purposes/i.test(m)) return '短時間內試太多次了，請過幾分鐘再試一次。';
+  if (/valid.*email|email.*invalid|invalid.*email|email address/i.test(m)) return 'Email 格式好像不對，再檢查一下。';
+  if (/signups? not allowed|signup.*disabled/i.test(m)) return '目前暫停開放註冊，請稍後再試。';
+  console.warn('登入／註冊錯誤', m);
+  return '沒有成功，請再試一次。一直不行的話，可以到「意見回饋」告訴我們。';
 }

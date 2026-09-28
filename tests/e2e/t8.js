@@ -12,6 +12,7 @@ const U = (process.env.U || 'http://localhost:8770/');
   const errs = []; p.on('pageerror', (e) => errs.push(e.message)); p.on('dialog', (d) => d.accept());
   const log = (...a) => console.log(...a);
   await p.goto(U + '#/'); await p.waitForTimeout(700);
+  if (await p.isVisible('#n-skip')) { await p.click('#n-skip'); await p.waitForTimeout(500); } // 首頁一次只放一張提醒卡，先略過填名字
   log('guest home', await p.isVisible('text=免費註冊，保存你們的紀錄'), 'add btn', !!(await p.$('.tab-add')));
   await p.screenshot({ path: 'g2-guest-home.png' });
   // 用畫面新增一則

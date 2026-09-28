@@ -18,16 +18,18 @@ const isoDay = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2,
 function lastWeekRange() {
   const d = new Date(`${today()}T00:00:00`);
   const dow = (d.getDay() + 6) % 7; // 週一 = 0
-  const end = new Date(d); end.setDate(d.getDate() - dow - 1);
+  // 星期日是一週的最後一天，當天就做這一週；其他天做上一週（週一到週日）
+  const thisWeek = dow === 6;
+  const end = new Date(d); end.setDate(d.getDate() - (thisWeek ? 0 : dow + 1));
   const start = new Date(end); start.setDate(end.getDate() - 6);
-  return { from: isoDay(start), to: isoDay(end), title: '我們的這一週', label: `${shortDate(isoDay(start))} – ${shortDate(isoDay(end))}` };
+  return { from: isoDay(start), to: isoDay(end), title: thisWeek ? '我們的這一週' : '我們的上一週', label: `${shortDate(isoDay(start))} – ${shortDate(isoDay(end))}` };
 }
 // 最近一個完整的月份
 function lastMonthRange() {
   const d = new Date(`${today()}T00:00:00`);
   const start = new Date(d.getFullYear(), d.getMonth() - 1, 1);
   const end = new Date(d.getFullYear(), d.getMonth(), 0);
-  return { from: isoDay(start), to: isoDay(end), title: `我們的 ${start.getMonth() + 1} 月`, label: `${start.getFullYear()} 年 ${start.getMonth() + 1} 月` };
+  return { from: isoDay(start), to: isoDay(end), title: `我們的 ${start.getMonth() + 1} 月`, label: `上個月・${start.getFullYear()} 年 ${start.getMonth() + 1} 月` };
 }
 const inRange = (iso, r) => !!iso && iso >= r.from && iso <= r.to;
 const tsIn = (ts, r) => !!ts && inRange(dateOf(ts), r);

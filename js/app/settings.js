@@ -79,7 +79,7 @@ async function buildReadableExport(onlyShared = false) {
     let fight = '';
     if (r.type === 'fight') {
       const st = STATUS[r.status || 'open'].label;
-      fight = `<div class="meta">分類：${esc(r.category || '未分類')}・狀態：${st}</div>
+      fight = `<div class="meta">分類：${esc(r.category || '沒選分類')}・狀態：${st}</div>
         ${r.reason ? `<h4>原因</h4><p>${esc(r.reason)}</p>` : ''}
         ${r.myView ? `<h4>${esc(myName())}的想法</h4><p>${esc(r.myView)}</p>` : ''}
         ${r.theirView ? `<h4>${esc(partnerName())}的想法</h4><p>${esc(r.theirView)}</p>` : ''}
@@ -179,7 +179,7 @@ async function viewSettings() {
     </div>
     <div class="card" style="gap:10px">
       <div class="bold">吉祥物顏色</div>
-      <div class="small muted">啾啾和啵啵的顏色可以自己挑${usingCloud() ? `，${esc(partnerName())}看到的也是這個顏色` : ''}。</div>
+      <div class="small muted">首頁的兩隻小鳥叫啾啾（左）和啵啵（右），代表你們兩個，顏色可以自己挑${usingCloud() ? `，${esc(partnerName())}看到的也是這個顏色` : ''}。</div>
       <div id="mascot-preview" style="align-self:center">${mascotHtml('happy', 150)}</div>
       ${[['left', '左邊（啾啾）'], ['right', '右邊（啵啵）']].map(([side, label]) => `<div class="field" style="gap:6px"><div class="label">${label}</div>
         <div class="swatches">${(window.Mascot ? window.Mascot.COLORS : []).map(([n, body]) => {

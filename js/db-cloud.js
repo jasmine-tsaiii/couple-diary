@@ -67,7 +67,7 @@ const CloudDB = CLOUD_ENABLED ? (() => {
   async function sendFeedback(f) {
     const uid = session ? session.user.id : null;
     const { error } = await client.from('feedback').insert({ ...f, user_id: uid });
-    if (error) throw new Error(/feedback|relation/i.test(error.message) ? '回饋功能還沒開通（要先更新 schema.sql）' : error.message);
+    if (error) throw new Error(/feedback|relation/i.test(error.message) ? '回饋暫時送不出去，請稍後再試一次' : error.message);
   }
 
   async function loadPartner() {
@@ -156,7 +156,7 @@ const CloudDB = CLOUD_ENABLED ? (() => {
     },
     async linkGoogle() {
       const { error } = await client.auth.linkIdentity({ provider: 'google', options: { redirectTo: location.origin + location.pathname } });
-      if (error) throw new Error(/manual linking|disabled/i.test(error.message) ? 'Google 綁定還沒開通（要先在 Supabase 開啟 Manual Linking），先用 Email 綁定吧' : error.message);
+      if (error) throw new Error(/manual linking|disabled/i.test(error.message) ? 'Google 綁定暫時不能用，先用 Email 綁定吧' : error.message);
     },
     // 在別的瀏覽器點了確認信：回到這裡重新拿一次登入狀態
     async refreshUser() {
@@ -281,7 +281,7 @@ const CloudDB = CLOUD_ENABLED ? (() => {
     async listWishes() {
       const data = await cached(`wishes:${dataOwner()}`, async () => {
         const { data: d, error } = await client.from('wishes').select('*').eq('owner', dataOwner()).order('created_at');
-        if (error) { if (netDown(error)) throw offlineError(); if (/wishes/.test(error.message)) throw new Error('要先到 Supabase 重新執行最新的 schema.sql，才能使用「一起完成的事」'); throw new Error(error.message); }
+        if (error) { if (netDown(error)) throw offlineError(); if (/wishes/.test(error.message)) throw new Error('「一起完成的事」暫時載入不了，請稍後再試一次'); throw new Error(error.message); }
         return d;
       });
       // 封存的（上一段關係的）不顯示

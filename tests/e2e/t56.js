@@ -9,6 +9,7 @@ const U = (process.env.U || 'http://localhost:8770/');
   await ctx.addInitScript(() => { localStorage.setItem('tourDone', '1'); localStorage.setItem('a2hsNever', '1'); });
   const p = await ctx.newPage(); p.on('pageerror', (e) => errs.push(e.message));
   await p.goto(U); await p.waitForTimeout(900);
+  if (await p.isVisible('#n-skip')) { await p.click('#n-skip'); await p.waitForTimeout(500); } // 首頁一次只放一張提醒卡，先略過填名字
   console.log('top login', await p.isVisible('#home-login'), 'card login', await p.isVisible('#guest-login'), 'card signup', await p.isVisible('#guest-signup'));
   await p.screenshot({ path: (process.env.SHOT_DIR || '.') + '/home-login-entry.png' });
   await p.click('#home-login'); await p.waitForTimeout(600);

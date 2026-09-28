@@ -165,7 +165,7 @@ async function viewDetail(id) {
       </div>
       ${partner && !bound && r.visibility === 'shared' ? `<a class="card" href="#/bind" style="background:var(--fight-bg);border-color:transparent;gap:4px">
         <div class="bold" style="color:var(--fight-dark)">想一起更新狀態、寫後續？</div>
-        <div class="small muted">綁定 Email 或 Google 帳號後，就能和${esc(ownerName())}一起編輯吵架議題 ›</div></a>` : ''}
+        <div class="small muted">用 Email 或 Google 建立你自己的帳號後，就能和${esc(ownerName())}一起更新吵架議題 ›</div></a>` : ''}
       ${!fightEdit ? '' : `<div class="field"><label for="fu-text">新增後續</label>
         <input id="fu-date" class="input" type="date" min="1970-01-01" max="${today()}" value="${today()}" aria-label="後續日期">
         <div class="row"><input id="fu-text" class="input grow" maxlength="${LIMITS.followUp}" placeholder="發生了什麼新進展？"><button class="btn small" id="fu-add">加入</button></div>
@@ -195,7 +195,8 @@ async function viewDetail(id) {
     ${r.archivedAt ? `<div class="card" style="background:var(--lock-bg);border-color:transparent"><div class="small" style="color:var(--lock)">這是 ${shortDate(dateOf(r.archivedAt))} 封存的紀錄，只有你看得到。</div></div>` : ''}
     <div class="field" style="gap:6px">
       <div class="row" style="gap:8px">
-        <span class="badge" style="background:var(--accent-bg);color:var(--accent-dark)">${r.type === 'fight' ? esc(r.category || '未分類') + (catDeleted ? '（已刪除的分類）' : '') : conf.label}</span>
+        <span class="badge" style="background:var(--accent-bg);color:var(--accent-dark)">${r.type === 'fight' ? esc(r.category || '沒選分類') + (catDeleted ? '（已刪除的分類）' : '') : conf.label}</span>
+        ${r.type === 'fight' ? `<span class="muted small">No. ${numberOf(r, all)}</span>` : ''}
         <span class="muted small">${longDate(r.date)}</span>
         ${authorText ? `<span class="muted small">・${authorText}</span>` : ''}
         ${r.editedAt ? `<span class="muted small">・${shortDate(new Date(r.editedAt - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 10))} 編輯過</span>` : ''}
@@ -432,6 +433,23 @@ async function viewForm(mode, arg) {
   let customEmojis = rec.emojis.filter((e) => !TYPES[rec.type].emojis.includes(e));
   let extraTags = [];
 
+  // 把「新標籤」輸入框裡打的字加進標籤。存檔時也會叫一次，打了字沒按「加入」也不會不見
+  function addTypedTag() {
+    const el = document.getElementById('f-tag');
+    const t = el ? el.value.trim().replace(/[#\s]/g, '').slice(0, LIMITS.tag) : '';
+    if (!t) return false;
+    if (!rec.tags.includes(t) && rec.tags.length >= LIMITS.tagsPerRecord) { toast(`標籤最多 ${LIMITS.tagsPerRecord} 個`); return false; }
+    collect();
+    if (!extraTags.includes(t)) extraTags.push(t);
+    if (!rec.tags.includes(t)) rec.tags.push(t);
+    el.value = '';
+    dirty = true;
+    return true;
+  }
+
+  // 還沒有另一半（試用、單人版）時不能出任務；已經是任務解鎖的舊紀錄照常顯示
+  const taskOff = !partner && !usingCloud() && rec.visibility !== 'task';
+
   function collect() {
     const v = (id) => { const el = document.getElementById(id); return el ? el.value : undefined; };
     if (v('f-title') !== undefined) rec.title = v('f-title');
@@ -487,7 +505,7 @@ async function viewForm(mode, arg) {
         <div class="field"><label for="f-desc">描述</label>
           <textarea id="f-desc" class="textarea" maxlength="${LIMITS.description}" placeholder="發生了什麼？">${esc(rec.description)}</textarea></div>
       `}
-      ${mode === 'edit' && !isMine(rec) ? `<div class="small muted">照片只有寫這則的${esc(otherName())}能改。</div>` : `<div class="field"><div class="label">照片${rec.type === 'happy' ? '（沒放會用預設圖）' : '（可不放）'}</div>
+      ${mode === 'edit' && !isMine(rec) ? `<div class="small muted">照片只有寫這則的${esc(otherName())}能改。</div>` : `<div class="field"><div class="label">照片${rec.type === 'happy' ? '（可不放，沒放會顯示愛心和編號）' : '（可不放）'}</div>
         <div class="photos">
           ${photoCells.join('')}
           <label class="photo-add">${ICON.camera}上傳<input type="file" accept="image/*" multiple class="visually-hidden" id="f-photos"></label>
@@ -505,9 +523,12 @@ async function viewForm(mode, arg) {
         <div class="chips">
           ${tagList.map((t) => `<button class="chip ${rec.tags.includes(t) ? 'on' : ''}" data-tag="${esc(t)}">#${esc(t)}</button>`).join('')}
         </div>
-        <input id="f-tag" class="input" maxlength="${LIMITS.tag}" placeholder="輸入新標籤，按 Enter 加入" enterkeyhint="done"></div>
+        <div class="row"><input id="f-tag" class="input grow" maxlength="${LIMITS.tag}" placeholder="自己打一個新標籤" enterkeyhint="done" aria-label="新標籤">
+        <button class="btn small secondary" id="f-tag-add" type="button">加入</button></div></div>
       ${fightAlwaysShared() ? `<div class="small muted">${partner ? `吵架議題是兩個人的事，${esc(ownerName())}也看得到、也能一起更新。` : usingCloud() ? `吵架議題是兩個人的事，${esc(partnerName())}也看得到、也能一起更新狀態和後續。` : '吵架議題是兩個人的事，開啟分享後兩個人都看得到。'}</div>` : `<div class="field"><div class="label">誰可以看</div>
-        <div class="opts cols-3">${Object.keys(VISIBILITY).map((k) => `<button class="opt ${k === rec.visibility ? 'on' : ''}" data-vis="${k}">${esc(visLabel(k))}</button>`).join('')}</div>
+        <div class="opts cols-3">${Object.keys(VISIBILITY).map((k) => (k === 'task' && taskOff
+          ? `<button class="opt" disabled aria-disabled="true">${esc(visLabel(k))}<span class="small muted" style="display:block">${isGuest() ? '註冊後可用' : '雙人版才有'}</span></button>`
+          : `<button class="opt ${k === rec.visibility ? 'on' : ''}" data-vis="${k}">${esc(visLabel(k))}</button>`)).join('')}</div>
         ${rec.visibility === 'task' ? `
           <label for="f-task" class="muted">對方要完成的任務</label>
           <input id="f-task" class="input" maxlength="${LIMITS.task}" value="${esc(rec.task.text)}" placeholder="例如：帶我去吃早午餐，拍一張合照給我">
@@ -517,7 +538,9 @@ async function viewForm(mode, arg) {
             <button class="opt ${rec.task.mode === 'photo' ? 'on' : ''}" data-taskmode="photo">要上傳照片</button>
           </div>
           ${mode === 'edit' && originalUnlocked && originalVisibility === 'task' ? `<div class="small muted">這則已經解鎖了，改任務內容不會重新上鎖，${esc(otherName())}還是看得到。想收回的話，改成「上鎖」。</div>` : ''}` : ''}
-        <div class="muted small">${partner ? `給${esc(ownerName())}看：${esc(ownerName())}看得到。上鎖：只有你看得到，${esc(ownerName())}只會看到「有一則上鎖」。任務解鎖：${esc(ownerName())}完成任務、你按通過後才看得到。` : usingCloud() ? '給對方看：對方用分享碼就看得到。上鎖：只有你看得到。任務解鎖：對方完成任務、你按通過後才看得到。' : (CLOUD_ENABLED ? '這個設定會先記下來；註冊登入並開啟分享碼後，對方就會依這個設定看到內容。' : '現在是單人版，這個設定會先記下來；換成雲端版並開啟分享碼後，對方就會依這個設定看到內容。') + '目前「上鎖」只是標記，拿到這支手機的人還是看得到。'}</div>
+        <div class="muted small vis-help">${partner ? `<div>給${esc(ownerName())}看：${esc(ownerName())}看得到。</div><div>上鎖：只有你看得到，${esc(ownerName())}只會看到「有一則上鎖」。</div><div>任務解鎖：${esc(ownerName())}完成你出的任務、你按通過後才看得到。</div>`
+          : usingCloud() ? `<div>給${esc(otherName())}看：${esc(otherName())}看得到。</div><div>上鎖：只有你看得到。</div><div>任務解鎖：${esc(otherName())}完成你出的任務、你按通過後才看得到。</div>`
+          : `<div>現在是${isGuest() ? '試用' : '單人版'}，紀錄只存在這支手機，還不會分享給任何人。</div>${isGuest() ? '<div>註冊並邀請另一半之後，「給對方看」的對方看得到，「上鎖」的只有你看得到。</div>' : ''}<div>拿到這支手機的人還是看得到所有紀錄，擔心的話可以到設定頁開「App 解鎖碼」。</div>`}</div>
       </div>`}
       <button class="btn" id="save">${partner ? '儲存' : usingCloud() && (rec.visibility === 'shared' || fightAlwaysShared()) && rec.type !== 'happy' ? `儲存並給${esc(partnerName())}看` : '儲存紀錄'}</button>
     `;
@@ -588,14 +611,9 @@ async function viewForm(mode, arg) {
     document.getElementById('f-tag').addEventListener('keydown', (ev) => {
       if (ev.key !== 'Enter' || ev.isComposing) return;
       ev.preventDefault();
-      const t = ev.target.value.trim().replace(/[#\s]/g, '').slice(0, LIMITS.tag);
-      if (!t) return;
-      if (!rec.tags.includes(t) && rec.tags.length >= LIMITS.tagsPerRecord) { toast(`標籤最多 ${LIMITS.tagsPerRecord} 個`); return; }
-      collect();
-      if (!extraTags.includes(t)) extraTags.push(t);
-      if (!rec.tags.includes(t)) rec.tags.push(t);
-      render();
+      if (addTypedTag()) render();
     });
+    document.getElementById('f-tag-add').addEventListener('click', () => { if (addTypedTag()) render(); });
     app.querySelectorAll('[data-vis]').forEach((b) => b.addEventListener('click', () => { collect(); rec.visibility = b.dataset.vis; visTouched = true; dirty = true; render(); }));
     // 有改過內容時，按返回要先確認，免得寫一半的長文不見
     app.oninput = () => { dirty = true; if (mode === 'new') { clearTimeout(draftTimer); draftTimer = setTimeout(() => { collect(); saveDraft(rec); }, 800); } };
@@ -645,6 +663,7 @@ async function viewForm(mode, arg) {
     }));
     const saveBtn = document.getElementById('save');
     saveBtn.addEventListener('click', () => withBusy(saveBtn, '儲存中…', async () => {
+      addTypedTag();
       collect();
       rec.title = rec.title.trim();
       if (!rec.title) { toast(rec.type === 'fight' ? '請填寫議題' : '請填寫標題'); document.getElementById('f-title').focus(); return; }

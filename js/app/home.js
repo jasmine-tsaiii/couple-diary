@@ -52,8 +52,13 @@ async function viewHome() {
   const lastBackup = await DB.getSetting('lastBackupAt', null);
   // 手機版 14 天提醒一次；雲端版免費方案沒有自動備份，30 天提醒一次
   const remindDays = usingCloud() ? CLOUD_BACKUP_REMIND_DAYS : BACKUP_REMIND_DAYS;
-  const needBackup = all.length > 0 && (!lastBackup || Date.now() - lastBackup > remindDays * 86400000);
-  const askNames = !NAMES.me && !NAMES.partner && !(await DB.getSetting('namesSkipped', false));
+  // 試用中（還沒註冊）不提備份，只留「註冊」一條路，免得兩種說法打架
+  const wantBackup = !isGuest() && all.length > 0 && (!lastBackup || Date.now() - lastBackup > remindDays * 86400000);
+  const wantNames = !NAMES.me && !NAMES.partner && !(await DB.getSetting('namesSkipped', false));
+  // 首頁一次只放一張提醒卡：先填名字，再來是註冊（試用中）或備份
+  const askNames = wantNames;
+  const showGuestCard = isGuest() && !askNames;
+  const needBackup = wantBackup && !askNames;
   let pending = [];
   if (usingCloud()) { try { pending = (await CloudDB.submissions({ status: 'pending' })).filter((t) => all.some((r) => r.id === t.record_id && isMine(r))); } catch (e) { pending = []; } }
   let myTasks = [];
@@ -84,7 +89,8 @@ async function viewHome() {
     const c = count('cloud');
     const ratio = c ? h / c : 0;
     if (!c) return h ? '還沒有烏雲，繼續保持 ☀️' : '記下不開心的時刻';
-    return `美好 : 烏雲 = ${ratio >= 10 ? Math.round(ratio) : Math.round(ratio * 10) / 10} : 1${ratio >= 5 ? '（達到 5 : 1 了！）' : ''}`;
+    const r = ratio >= 10 ? Math.round(ratio) : Math.round(ratio * 10) / 10;
+    return `${c} 則・每片烏雲有 ${r} 個美好${ratio >= 5 ? '，達標了！' : '（目標 5 個）'}`;
   };
   const wishes = await loadWishesSafe();
   const nHappy = count('happy');
@@ -137,11 +143,11 @@ async function viewHome() {
       <div class="btn-row"><button class="btn small" id="n-save">儲存</button><button class="btn small secondary" id="n-skip">之後再說</button></div>
     </div>` : ''}
     ${needBackup ? `<a class="card" href="#/settings" style="background:var(--progress-bg);border-color:transparent;gap:4px">
-      <div class="bold" style="color:var(--progress-ink)">該備份囉</div>
-      <div class="small" style="color:var(--progress-ink)">${lastBackup ? `上次備份是 ${daysAgo(lastBackup)} 天前` : '還沒有備份過'}，${usingCloud() ? '雲端免費方案沒有自動備份，' : ''}點這裡到設定頁匯出備份，再存到 iCloud 雲碟或 Google 雲端硬碟。</div>
+      <div class="bold" style="color:var(--progress-ink)">${usingCloud() ? '要不要多存一份備份？' : '該備份囉'}</div>
+      <div class="small" style="color:var(--progress-ink)">${usingCloud() ? `紀錄已經存在雲端${lastBackup ? `，上次另外備份是 ${daysAgo(lastBackup)} 天前` : ''}。想多一份保險，可以到設定頁匯出一份，存在自己的手機或雲端硬碟。` : `${lastBackup ? `上次備份是 ${daysAgo(lastBackup)} 天前` : '還沒有備份過'}。紀錄只存在這支手機，點這裡到設定頁匯出備份，再存到 iCloud 雲碟或 Google 雲端硬碟。`}</div>
     </a>` : ''}
     ${isGuest() ? inAppNotice() : ''}
-    ${isGuest() ? `<div class="card" id="guest-account" style="background:var(--happy-bg);border-color:transparent;gap:4px">
+    ${showGuestCard ? `<div class="card" id="guest-account" style="background:var(--happy-bg);border-color:transparent;gap:4px">
       <div class="bold" style="color:var(--happy-dark)">${all.length ? '註冊，把紀錄存到雲端' : '免費註冊，保存你們的紀錄'}</div>
       <div class="small" style="color:var(--happy-dark)">${all.length ? `目前 ${all.length} 則紀錄只存在這支手機。` : '現在是試用，紀錄只存在這支手機。'}在這支手機註冊或登入後會自動搬上雲端，換手機不會不見，也能分享給另一半。</div>
       ${isIOS && standalone && !all.length ? '<div class="small" style="color:var(--happy-dark)">之前在 Safari 寫過的話：從主畫面打開的和 Safari 是分開存的。請回 Safari 打開網址、註冊或登入，紀錄就會搬上雲端，再回來這裡登入同一個帳號就看得到。</div>' : ''}
@@ -187,7 +193,7 @@ async function viewHome() {
     });
     document.getElementById('n-skip').addEventListener('click', async () => {
       await DB.setSetting('namesSkipped', true);
-      document.getElementById('names-card').remove();
+      viewHome();
     });
   }
   const ts = document.getElementById('tile-share');
@@ -247,9 +253,9 @@ function newFromOtherCard(all) {
 
 // ---------- 新帳號的範例紀錄：還沒寫過任何一則時顯示，寫下第一則後就不再出現 ----------
 const EXAMPLES = {
-  happy: { title: '一起去淡水看夕陽', date: '範例', text: '他偷偷買了我最愛的雞蛋糕，坐在河堤邊吃，風很大但很開心。', tags: ['驚喜', '幸福'], emoji: '🥰' },
-  cloud: { title: '約好的時間又遲到 40 分鐘', date: '範例', text: '等到手機快沒電，他只說塞車。其實我只是希望他早點說一聲。', tags: ['被忽略'], emoji: '😮‍💨', extra: '心情過去之後按「已放晴」，還可以補寫反思。' },
-  fight: { title: '回訊息太慢', date: '範例', category: '溝通', status: 'progress', text: '我覺得被忽略；他覺得上班時不方便看手機。', extra: '後續：約好忙的時候先回一個貼圖。', emoji: '🤔' },
+  happy: { title: '一起去淡水看夕陽', date: '範例', text: '對方偷偷買了我最愛的雞蛋糕，坐在河堤邊吃，風很大但很開心。', tags: ['驚喜', '幸福'], emoji: '🥰' },
+  cloud: { title: '約好的時間又遲到 40 分鐘', date: '範例', text: '等到手機快沒電，對方只說塞車。其實我只是希望能早點說一聲。', tags: ['被忽略'], emoji: '😮‍💨', extra: '心情過去之後按「已放晴」，還可以補寫反思。' },
+  fight: { title: '回訊息太慢', date: '範例', category: '溝通', status: 'progress', text: '我覺得被忽略；對方覺得上班時不方便看手機。', extra: '後續：約好忙的時候先回一個貼圖。', emoji: '🤔' },
 };
 async function showExamples(all) {
   if (isPartner()) return false;
@@ -329,7 +335,7 @@ async function viewList(type, tagFilter) {
       ${tags.map((t) => `<button class="chip ${t === tagFilter ? 'on' : ''}" data-tag="${esc(t)}">#${esc(t)}</button>`).join('')}
     </div>` : ''}
     <div class="grid2" id="grid"></div>
-    ${!mine.length && examples ? examplesBlock([type]) : mine.length || (who !== 'mine' && lockedOthers.length) ? '' : partner && !CloudDB.isBoundPartner() ? `<div class="empty">${esc(ownerName())}還沒有分享${conf.label}<a class="btn small secondary" href="#/bind">綁定帳號，自己也來寫</a></div>` : `<div class="empty">還沒有${who === 'other' ? `${esc(otherName())}分享的` : ''}${conf.label}${who === 'other' ? '' : `<a class="btn small" href="#/new/${type}">新增第一則</a>`}</div>`}
+    ${!mine.length && examples ? examplesBlock([type]) : mine.length || (who !== 'mine' && lockedOthers.length) ? '' : partner && !CloudDB.isBoundPartner() ? `<div class="empty">${esc(ownerName())}還沒有分享${conf.label}<a class="btn small secondary" href="#/bind">建立帳號，自己也來寫</a></div>` : `<div class="empty">還沒有${who === 'other' ? `${esc(otherName())}分享的` : ''}${conf.label}${who === 'other' ? '' : `<a class="btn small" href="#/new/${type}">新增第一則</a>`}</div>`}
   `;
   app.querySelectorAll('[data-tag]').forEach((b) => b.addEventListener('click', () => viewList(type, b.dataset.tag || null)));
   app.querySelectorAll('[data-who]').forEach((b) => b.addEventListener('click', () => { listWho = b.dataset.who; viewList(type, tagFilter); }));
@@ -403,7 +409,7 @@ async function viewFights(catFilter, statusFilter) {
     </div>
     ${openCount ? `<div class="card mascot-hello" style="background:var(--fight-bg);border-color:transparent">${mascotHtml('fight', 120)}<div class="small" style="color:var(--fight-dark)">還有 ${openCount} 個沒解決。先深呼吸，再慢慢聊。</div></div>` : ''}
     ${partner ? `<a class="btn" href="${CloudDB.isBoundPartner() ? '#/new/fight' : '#/bind'}">＋ 新增議題</a>
-      ${CloudDB.isBoundPartner() ? '' : `<div class="small muted">綁定帳號後，就能和${esc(ownerName())}一起新增、更新吵架議題。</div>`}` : ''}
+      ${CloudDB.isBoundPartner() ? '' : `<div class="small muted">建立你自己的帳號後，就能寫自己的美好和烏雲，也能和${esc(ownerName())}一起寫吵架議題。</div>`}` : ''}
     ${counts.length ? `<div class="card">
       <div class="muted bold">按分類看</div>
       ${counts.map((x) => `<div class="bar-row"><div class="label">${esc(x.c)}</div><div class="bar"><div style="width:${(x.n / max) * 100}%"></div></div><div class="num">${x.n} 次・解決 ${x.done}</div></div>`).join('')}
@@ -420,9 +426,9 @@ async function viewFights(catFilter, statusFilter) {
       ${shown.map((f) => {
         const s = STATUS[f.status || 'open'];
         const n = (f.followUps || []).length;
-        const extra = f.status === 'resolved' && f.resolution ? `解法：${esc(f.resolution)}` : `${n} 則後續`;
+        const extra = f.status === 'resolved' && f.resolution ? `解法：${esc(f.resolution)}` : (n ? `${n} 則後續進展` : '還沒有後續進展');
         return `<a class="card" href="#/view/${esc(f.id)}" style="gap:6px">
-          <div class="row between"><span class="small bold" style="color:var(--fight)">${esc(f.category || '未分類')}</span><span class="badge ${s.cls}">${s.label}</span></div>
+          <div class="row between"><span class="small bold" style="color:var(--fight)">${esc(f.category || '沒選分類')}</span><span class="badge ${s.cls}">${s.label}</span></div>
           <div class="bold" style="font-size:16px">${isNewFromOther(f) ? '<span class="new-dot" aria-label="新的"></span> ' : ''}${esc(f.title)}</div>
           <div class="muted small">${shortDate(f.date)} · ${extra} ${esc((f.emojis || []).join(''))}${byOther(f) ? ` · ${esc(f.authorName || (partner ? ownerName() : partnerName()))}新增` : ''}</div>
         </a>`;

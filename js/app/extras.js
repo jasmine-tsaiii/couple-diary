@@ -125,9 +125,9 @@ async function viewWishes(show = 'todo') {
     <div class="topbar">
       <a class="icon-btn" href="#/" aria-label="返回">${ICON.back}</a>
       <h1>一起完成的事</h1>
-      <div class="count"><b style="font-size:16px;color:var(--accent)">${done.length}</b> / ${list.length}</div>
+      ${list.length ? `<div class="count"><b style="font-size:16px;color:var(--accent)">${done.length}</b> / ${list.length}</div>` : ''}
     </div>
-    <div class="muted small">想和${esc(partner ? ownerName() : partnerName())}一起做的事都寫在這裡，兩個人都能新增、打勾。</div>
+    <div class="muted small">想和${esc(partner ? ownerName() : partnerName())}一起做的事都寫在這裡。${usingCloud() ? '兩個人都能新增、打勾。' : isGuest() ? '註冊並邀請另一半之後，兩個人都能新增、打勾。' : ''}</div>
     <button class="btn" id="w-add">＋ 新增一件事</button>
     <div class="chips">
       <button class="chip ${show === 'todo' ? 'on' : ''}" data-wshow="todo">還沒完成 ${todo.length}</button>
@@ -187,7 +187,7 @@ function tourPages(kind) {
     const o = esc(ownerName());
     return [
       { mood: 'happy', title: '這是你們兩個人的紀錄', text: `這裡看得到${o}分享給你的美好時刻、烏雲時刻和吵架議題。上鎖的紀錄，完成${o}出的任務後就能打開。` },
-      { mood: 'celebrate', title: '你也可以寫', text: CloudDB.isBoundPartner() ? '在美好時刻或烏雲時刻按「＋」，就能記下你自己的。每一則都可以選要給對方看，還是先上鎖。' : '綁定 Email 或 Google 之後，你也能記自己的美好、烏雲時刻，一起寫吵架議題。首頁有「綁定帳號」可以按。' },
+      { mood: 'celebrate', title: '你也可以寫', text: CloudDB.isBoundPartner() ? '在美好時刻或烏雲時刻按「＋」，就能記下你自己的。每一則都可以選要給對方看，還是先上鎖。' : '用 Email 或 Google 建立你自己的帳號之後，就能記自己的美好、烏雲時刻，也能一起寫吵架議題。首頁有「建立我的帳號」可以按。' },
       { mood: 'clear', title: '回應對方的心意', text: `在${o}的美好時刻按愛心，在吵架議題寫下「我的補充」，讓${o}知道你看到了。` },
     ];
   }
@@ -536,7 +536,7 @@ function allStamps(all) {
 }
 // 下一個最接近的章：「再 2 個美好時刻，就能拿到『10 個美好』」
 function nextStamp(all) {
-  const left = allStamps(all).filter((s) => !s.got && s.group.key !== 'days').map((s) => ({ ...s, need: s.n - s.have }));
+  const left = allStamps(all).filter((s) => !s.got && s.group.key !== 'days' && (s.group.key !== 'task' || usingCloud())).map((s) => ({ ...s, need: s.n - s.have }));
   return left.sort((a, b) => a.need / a.n - b.need / b.n)[0] || null;
 }
 const stampFace = (s) => `<div class="stamp ${s.got ? 'got' : ''}"><div class="stamp-face">${s.icon}</div><div class="stamp-name">${esc(s.name)}</div></div>`;
@@ -600,6 +600,7 @@ async function viewStamps() {
           <div class="small muted">目前 ${list[0].have} ${g.u}</div></div>
         <div class="help-text small" id="help-${g.key}" hidden>${esc(g.help)}</div>
         ${g.key === 'days' && !NAMES.since ? '<div class="small muted">到設定頁填「在一起的日期」就能開始集這組章。</div>' : ''}
+        ${g.key === 'task' && !usingCloud() && !list[0].have ? '<div class="small muted">要兩個人一起用：註冊並邀請另一半之後，才能開始集這組章。</div>' : ''}
         <div class="stamp-grid">${list.map(stampFace).join('')}</div>
       </div>`;
     }).join('')}

@@ -34,7 +34,7 @@ const U = (process.env.U || 'http://localhost:8770/');
   await p.screenshot({ path: (process.env.SHOT_DIR || '.') + '/bound-hint.png' });
   // 主人按同意：預設建議拒絕
   await ownerApprove();
-  log('owner warned', await p.isVisible('text=已經綁定帳號'));
+  log('owner warned', await p.isVisible('text=換了手機或瀏覽器'));
   await p.screenshot({ path: (process.env.SHOT_DIR || '.') + '/approve-bound-warning.png' });
   await p.click('[data-choice="reject"]'); await p.waitForTimeout(900);
   const S1 = await p.evaluate(() => JSON.parse(localStorage.getItem('mockServer')).t.partners.map((x) => x.uid + ':' + x.approved));

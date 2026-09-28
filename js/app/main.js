@@ -100,7 +100,7 @@ async function requestPersist() {
 function cloudErrorText(e) {
   const m = (e && e.message) || '';
   if ((e && e.name === 'QuotaExceededError') || /quota|storage.*full|No space/i.test(m)) return '手機的儲存空間可能滿了，存不進去。先刪掉一些照片或 App，或先匯出備份，再試一次。';
-  if (/fetch|network|load failed|timeout/i.test(m)) return navigator.onLine === false ? '現在沒有網路，連上網路後再試一次。' : '連不上雲端。資料沒有不見，可能是網路不穩，或雲端太久沒人用被暫停了（到 Supabase 後台按 Restore 就會恢復）。';
+  if (/fetch|network|load failed|timeout/i.test(m)) return navigator.onLine === false ? '現在沒有網路，連上網路後再試一次。' : '連不上雲端。你的紀錄沒有不見，可能是網路不穩，請過一會兒再試一次。';
   return m || '出了一點問題，請再試一次';
 }
 // 沒接住的錯誤（例如雲端連不上）用提示告訴使用者
@@ -145,7 +145,7 @@ function pinPad({ title, sub, onDone, cancelable = false, forgot = null }) {
           <button data-pin="0">0</button>
           <button data-pin-back aria-label="刪除一個數字">⌫</button>
         </div>
-        ${forgot ? '<button class="btn small secondary" id="pin-forgot">忘記密碼？</button>' : ''}
+        ${forgot ? '<button class="btn small secondary" id="pin-forgot">忘記解鎖碼？</button>' : ''}
       </div>`;
     document.body.appendChild(el);
     let val = '';
@@ -182,8 +182,8 @@ async function showPinLock() {
   const fails = () => { try { return JSON.parse(localStorage.getItem('pinFails') || '{"n":0,"until":0}'); } catch (e) { return { n: 0, until: 0 }; } };
   const setFails = (f) => { try { localStorage.setItem('pinFails', JSON.stringify(f)); } catch (e) { /* 略過 */ } };
   await pinPad({
-    title: '輸入密碼',
-    sub: '這支手機設了 App 密碼鎖',
+    title: '輸入解鎖碼',
+    sub: '這支手機設了 App 解鎖碼',
     onDone: async (pin) => {
       const sub = document.getElementById('pin-sub');
       const f = fails();
@@ -195,17 +195,17 @@ async function showPinLock() {
       f.n += 1;
       f.until = f.n >= 10 ? Date.now() + 5 * 60000 : f.n % 5 === 0 ? Date.now() + 30000 : 0;
       setFails(f);
-      if (sub) sub.textContent = f.until ? `錯太多次了，請等 ${f.n >= 10 ? '5 分鐘' : '30 秒'}再試。忘記的話可以按「忘記密碼？」` : '密碼不對，再試一次';
+      if (sub) sub.textContent = f.until ? `錯太多次了，請等 ${f.n >= 10 ? '5 分鐘' : '30 秒'}再試。忘記的話可以按「忘記解鎖碼？」` : '解鎖碼不對，再試一次';
       return false;
     },
     forgot: (close) => {
       if (usingCloud() && CloudDB.isSignedIn() && !CloudDB.isAnonymous()) {
-        if (!confirm('忘記密碼的話，要登出再重新登入，登入後密碼鎖會解除。要登出嗎？')) return;
+        if (!confirm('忘記解鎖碼的話，要登出再重新登入，登入後就不用解鎖碼了。要登出嗎？')) return;
         pinClear();
         close(null);
         CloudDB.signOut().then(() => { go('#/login'); route(); });
       } else {
-        alert(usingCloud() ? '用分享碼加入的另一半忘記密碼，要清除這個網站的瀏覽器資料，再用分享碼重新加入。' : '手機版的紀錄只存在這支手機，忘記密碼只能清除這個網站的瀏覽器資料，紀錄也會一起不見。有匯出過備份的話，可以之後再匯入。');
+        alert(usingCloud() ? '用分享碼加入的另一半忘記解鎖碼，要清除這個網站的瀏覽器資料，再用分享碼重新加入。' : '手機版的紀錄只存在這支手機，忘記解鎖碼只能清除這個網站的瀏覽器資料，紀錄也會一起不見。有匯出過備份的話，可以之後再匯入。');
       }
     },
   });
@@ -220,10 +220,10 @@ document.addEventListener('visibilitychange', () => {
 function pinCardHtml() {
   const on = !!pinSaved();
   return `<div class="card" id="pin-card">
-    <div class="row between"><div class="bold">App 密碼鎖</div>
+    <div class="row between"><div class="bold">App 解鎖碼</div>
       <button class="btn small ${on ? 'secondary' : ''}" id="pin-toggle">${on ? '關閉' : '開啟'}</button></div>
-    <div class="muted small">${on ? '已開啟：打開 App、或離開超過 1 分鐘再回來時，要輸入 4 位數密碼。只鎖這支手機。' : '開啟後，打開 App 要先輸入 4 位數密碼，手機借別人看也不怕。只鎖這支手機，預設關閉。'}</div>
-    ${on ? '<button class="btn small secondary" id="pin-change">更改密碼</button>' : ''}
+    <div class="muted small">${on ? '已開啟：打開 App、或離開超過 1 分鐘再回來時，要輸入 4 位數解鎖碼。只鎖這支手機。' : '開啟後，打開 App 要先輸入 4 位數解鎖碼，手機借別人看也不怕。只鎖這支手機，預設關閉。'}</div>
+    ${on ? '<button class="btn small secondary" id="pin-change">更改解鎖碼</button>' : ''}
   </div>`;
 }
 function bindPinCard(refresh) {
@@ -231,37 +231,37 @@ function bindPinCard(refresh) {
   const toggle = document.getElementById('pin-toggle');
   if (toggle) toggle.addEventListener('click', async () => {
     if (pinSaved()) {
-      const cur = await pinPad({ title: '輸入目前的密碼', sub: '確認是你本人，才能關閉', cancelable: true, onDone: pinCheck });
+      const cur = await pinPad({ title: '輸入目前的解鎖碼', sub: '確認是你本人，才能關閉', cancelable: true, onDone: pinCheck });
       if (!cur) return;
-      pinClear(); toast('已關閉密碼鎖'); refresh();
+      pinClear(); toast('已關閉解鎖碼'); refresh();
       return;
     }
-    // 手機版忘記密碼只能清掉資料，所以開啟前要先有一份最近的備份
+    // 手機版忘記解鎖碼只能清掉資料，所以開啟前要先有一份最近的備份
     if (!usingCloud() && (await DB.allRecords()).length) {
       const last = await DB.getSetting('lastBackupAt', null);
       if (!last || Date.now() - last > 86400000) {
-        if (!confirm('手機版的紀錄只存在這支手機，忘記密碼的話只能清除瀏覽器資料，紀錄會一起不見。\n開啟密碼鎖前要先匯出一份備份，按「確定」現在匯出。')) return;
+        if (!confirm('手機版的紀錄只存在這支手機，忘記解鎖碼的話只能清除瀏覽器資料，紀錄會一起不見。\n開啟解鎖碼前要先匯出一份備份，按「確定」現在匯出。')) return;
         const exp = document.getElementById('export');
         if (exp) exp.click();
-        toast('備份好之後，再按一次「開啟」設定密碼');
+        toast('備份好之後，再按一次「開啟」設定解鎖碼');
         return;
       }
     }
-    const a = await ask('設定 4 位數密碼', '之後打開 App 要輸入');
+    const a = await ask('設定 4 位數解鎖碼', '之後打開 App 要輸入');
     if (!a) return;
-    const b = await pinPad({ title: '再輸入一次', sub: '確認密碼', cancelable: true, onDone: async (x) => x === a });
+    const b = await pinPad({ title: '再輸入一次', sub: '確認解鎖碼', cancelable: true, onDone: async (x) => x === a });
     if (!b) return;
-    await pinSet(a); track('pin_enable'); toast('已開啟密碼鎖'); refresh();
+    await pinSet(a); track('pin_enable'); toast('已開啟解鎖碼'); refresh();
   });
   const change = document.getElementById('pin-change');
   if (change) change.addEventListener('click', async () => {
-    const cur = await pinPad({ title: '輸入目前的密碼', cancelable: true, onDone: pinCheck });
+    const cur = await pinPad({ title: '輸入目前的解鎖碼', cancelable: true, onDone: pinCheck });
     if (!cur) return;
-    const a = await ask('新的 4 位數密碼');
+    const a = await ask('新的 4 位數解鎖碼');
     if (!a) return;
-    const b = await pinPad({ title: '再輸入一次', sub: '確認新密碼', cancelable: true, onDone: async (x) => x === a });
+    const b = await pinPad({ title: '再輸入一次', sub: '確認新解鎖碼', cancelable: true, onDone: async (x) => x === a });
     if (!b) return;
-    await pinSet(a); toast('密碼已更改'); refresh();
+    await pinSet(a); toast('解鎖碼已更改'); refresh();
   });
 }
 
@@ -328,7 +328,7 @@ if ('serviceWorker' in navigator && (location.protocol === 'https:' || localStor
       if (isPartner()) toast('歡迎回來！已經回到原本的帳號');
       else if (!CloudDB.pendingJoin()) { rejoinNotice = true; go('#/join'); }
     }
-    if (linking && CloudDB.isBoundPartner()) { bindError = ''; toast('Google 綁定完成！'); }
+    if (linking && CloudDB.isBoundPartner()) { bindError = ''; toast('帳號建立好了！'); }
     else if (linking && isPartner()) { bindError = googleBindErrorText(urlErr); go('#/bind'); }
     else if (urlErr) toast(/identity_already_exists|already/i.test(`${urlErr.code} ${urlErr.message}`) ? '這個 Google 帳號已經被用過了，換一個帳號或改用 Email。' : `Google 登入沒有成功：${urlErr.message || urlErr.code}`);
   }

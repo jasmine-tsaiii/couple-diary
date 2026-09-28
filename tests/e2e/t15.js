@@ -16,7 +16,7 @@ const U = (process.env.U || 'http://localhost:8770/');
   // 試用模式：上鎖只是標記的說明
   await p.goto(U + '#/'); await p.waitForTimeout(600);
   await p.goto(U + '#/new/happy'); await p.waitForTimeout(500);
-  log('local lock note', (await p.textContent('#app')).includes('上鎖」只是標記'));
+  log('local lock note', (await p.textContent('#app')).includes('還不會分享給任何人'));
   // 自訂表情檢查
   await p.click('#add-emoji'); await p.fill('#emoji-input', '哈'); await p.click('#emoji-ok'); await p.waitForTimeout(200);
   log('emoji reject', await p.textContent('#toast'));
