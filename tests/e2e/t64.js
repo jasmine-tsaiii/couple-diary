@@ -19,9 +19,15 @@ const OUT = (process.env.SHOT_DIR || '.') + '/';
   };
   await p.goto(U); await p.waitForTimeout(600);
   await p.fill('#n-me', 'Jasmine'); await p.fill('#n-partner', '小明'); await p.click('#n-save'); await p.waitForTimeout(500);
-  const id = await add('happy', '一起去淡水看夕陽，吃了雞蛋糕', '風很大但很開心', 'big.jpg');
+  await add('happy', '一起去淡水看夕陽，吃了雞蛋糕', '風很大但很開心', 'big.jpg');
   await add('happy', '他煮了晚餐');
   await add('cloud', '遲到');
+  // Safari 引擎填日期欄不一定吃得到，直接把日期設成上週；紀錄 id 也從資料庫拿
+  const id = await p.evaluate(async (d) => {
+    let found = '';
+    for (const r of await DB.allRecords()) { if (r.date !== d) { r.date = d; await DB.putRecord(r); } if (r.title.startsWith('一起去淡水')) found = r.id; }
+    return found;
+  }, lw);
   await p.goto(U); await p.waitForTimeout(900);
   console.log('home banner', await p.isVisible('.card-banner'), 'tile', await p.isVisible('text=回憶小卡'));
   await p.goto(U + '#/cards'); await p.waitForTimeout(700);
