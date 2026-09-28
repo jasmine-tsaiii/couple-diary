@@ -9,6 +9,7 @@ const OUT = (process.env.SHOT_DIR || '.') + '/';
   const ctx = await b.newContext({ viewport: { width: 390, height: 844 }, acceptDownloads: true });
   await ctx.addInitScript(() => { localStorage.setItem('tourDone', '1'); localStorage.setItem('a2hsNever', '1'); window.__noCelebrate = 1; new MutationObserver(() => document.querySelectorAll('.celebrate:not(.wish-dlg):not(.danger-dlg)').forEach((e) => e.remove())).observe(document, { childList: true, subtree: true }); });
   const p = await ctx.newPage(); p.on('pageerror', (e) => errs.push(e.message)); p.on('dialog', (d) => d.accept());
+  if (process.env.BROWSER === 'webkit') p.on('console', (m) => { if (m.type() === 'error' || m.type() === 'warning') console.log('console', m.type(), m.text().slice(0, 200)); });
   // 上週的日期
   const lw = await p.evaluate(() => { const d = new Date(); const dow = (d.getDay() + 6) % 7; d.setDate(d.getDate() - dow - 3); return d.toISOString().slice(0, 10); });
   const add = async (type, title, desc, photo) => {
@@ -28,6 +29,7 @@ const OUT = (process.env.SHOT_DIR || '.') + '/';
     for (const r of await DB.allRecords()) { if (r.date !== d) { r.date = d; await DB.putRecord(r); } if (r.title.startsWith('一起去淡水')) found = r.id; }
     return found;
   }, lw);
+  if (process.env.BROWSER === 'webkit') console.log('records', JSON.stringify(await p.evaluate(async () => (await DB.allRecords()).map((r) => [r.type, r.title.slice(0, 6), r.date, (r.photoIds || []).length]))), 'id', id);
   await p.goto(U); await p.waitForTimeout(900);
   console.log('home banner', await p.isVisible('.card-banner'), 'tile', await p.isVisible('text=回憶小卡'));
   await p.goto(U + '#/cards'); await p.waitForTimeout(700);
