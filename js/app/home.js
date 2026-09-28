@@ -119,6 +119,7 @@ async function viewHome() {
       </div>
       <div class="row" style="gap:8px;align-items:flex-start">
         ${isGuest() ? '<a class="btn small secondary" href="#/login" id="home-login">登入</a>' : ''}
+        ${bellBtnHtml()}
         <a class="icon-btn gear-btn" href="#/settings" aria-label="設定">${ICON.gear}<span>設定</span></a>
       </div>
     </div>

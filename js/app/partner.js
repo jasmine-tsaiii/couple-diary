@@ -33,7 +33,8 @@ async function viewPartnerHome() {
         <div class="hello">嗨，${esc(info.name)}</div>
         <h1 class="title-xl">${bound ? `${esc(ownerName())}和${esc(info.name)}的紀錄` : `${esc(ownerName())}的紀錄`}</h1>
       </div>
-      <a class="icon-btn gear-btn" href="#/settings" aria-label="設定">${ICON.gear}<span>設定</span></a>
+      <div class="row" style="gap:8px;align-items:flex-start">${bellBtnHtml()}
+      <a class="icon-btn gear-btn" href="#/settings" aria-label="設定">${ICON.gear}<span>設定</span></a></div>
     </div>
     ${bound ? quickRecord('今天想記下什麼？') : `<div class="mascot-hello">${mascotHtml('happy', 110)}<div class="small muted">看看${esc(ownerName())}分享了什麼</div></div>`}
     ${info.paused ? `<div class="card" id="paused-note" style="background:var(--lock-bg);border-color:transparent;gap:4px">
@@ -287,6 +288,7 @@ function viewPartnerSettings() {
       <div class="muted">登出後用你的帳號登入就能回來。</div>
       <button class="btn small secondary" id="logout">登出</button>
     </div>` : ''}
+    ${notifyCardHtml()}
     ${pinCardHtml()}
     ${CloudDB.isBoundPartner() ? `<div class="card">
       <div class="bold">匯出我寫的紀錄</div>

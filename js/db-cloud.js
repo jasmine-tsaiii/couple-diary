@@ -399,6 +399,22 @@ const CloudDB = CLOUD_ENABLED ? (() => {
       if (error) throw new Error(/restore_archive|function/i.test(error.message) ? '還原功能還沒開好，請稍後再試' : error.message);
       return data || 0;
     },
+    // 通知（小鈴鐺）：還沒重跑 schema.sql 時安靜地回空的，不讓畫面壞掉
+    async notifications() {
+      const { data, error } = await client.rpc('my_notifications');
+      return error ? null : (data || []);
+    },
+    async markNotificationsRead() {
+      await client.rpc('mark_notifications_read');
+    },
+    async notifyPrefs() {
+      const { data, error } = await client.rpc('notify_prefs_get');
+      return error ? null : (data || { email_on: true });
+    },
+    async setNotifyEmail(on) {
+      const { error } = await client.rpc('notify_prefs_set', { p_email_on: !!on });
+      if (error) throw new Error(/notify_prefs|function/i.test(error.message) ? '通知設定還沒開好，請稍後再試' : error.message);
+    },
     async endRelationship(mode, keepUid = null) {
       // keepUid：結束後要讓哪個還在等同意的新對象加入（分享碼保留）
       check(await client.rpc('end_relationship', keepUid ? { p_mode: mode, p_keep: keepUid } : { p_mode: mode }));

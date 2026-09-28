@@ -57,7 +57,9 @@ async function route() {
       else if (page === 'feedback') { renderTabbar(null); viewFeedback(); }
       else if (page === 'task') { renderTabbar(null); await viewPartnerTaskForm(arg); }
       else if (page === 'settings') { renderTabbar(null); viewPartnerSettings(); }
+      else if (page === 'notifications') { renderTabbar(null); await viewNotifications(); }
       else go('#/');
+      afterRender();
       return;
     }
     if (!page) { renderTabbar('home'); await viewHome(); }
@@ -72,11 +74,13 @@ async function route() {
     else if (page === 'cards') { renderTabbar(null); await viewCards(); }
     else if (page === 'card') { renderTabbar(null); await viewCard(arg, parts[2]); }
     else if (page === 'feedback') { renderTabbar(null); viewFeedback(); }
+    else if (page === 'notifications' && usingCloud()) { renderTabbar(null); await viewNotifications(); }
     else if (page === 'tasks' && usingCloud()) { renderTabbar(null); await viewPartnerTasks(); }
     else if (page === 'end' && usingCloud()) { renderTabbar(null); await viewEnd(arg ? decodeURIComponent(arg) : ''); }
     else if (page === 'archive' && usingCloud()) { renderTabbar(null); await viewArchive(); }
     else if (page === 'task' && usingCloud()) { renderTabbar(null); await viewPartnerTaskForm(arg); }
     else go('#/');
+    afterRender();
     if (!page || page === 'view') checkNewStamps().catch(() => {});
     if (!page || page === 'view') { if (!maybeShowSignupNudge()) maybeShowA2hs(); }
   } catch (e) {
@@ -84,6 +88,12 @@ async function route() {
     app.innerHTML = `<div class="empty no-mascot">${esc(cloudErrorText(e))}<button class="btn small" id="reload">重新整理</button></div>`;
     document.getElementById('reload').addEventListener('click', () => location.reload());
   }
+}
+
+// 畫面出來之後再慢慢讀：小鈴鐺的未讀數、設定頁的通知開關（讀不到就不顯示）
+function afterRender() {
+  refreshBell().catch(() => {});
+  bindNotifyCard().catch(() => {});
 }
 
 // 向瀏覽器申請「不要自動清除這個網站的資料」

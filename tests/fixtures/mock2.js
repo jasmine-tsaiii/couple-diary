@@ -88,6 +88,11 @@
     return q;
   }
   const rpcs = {
+    // 通知（真的資料庫由觸發器寫入；這裡測試直接放進 S.notifs）
+    my_notifications(S, u) { return (S.notifs || []).filter((n) => n.recipient === u.id).sort((a, b) => (a.created_at < b.created_at ? 1 : -1)).slice(0, 50).map(({ recipient, ...n }) => n); },
+    mark_notifications_read(S, u) { (S.notifs || []).forEach((n) => { if (n.recipient === u.id && !n.read_at) n.read_at = new Date().toISOString(); }); },
+    notify_prefs_get(S, u) { return { email_on: ((S.prefs || {})[u.id] || { email_on: true }).email_on }; },
+    notify_prefs_set(S, u, a) { S.prefs = S.prefs || {}; S.prefs[u.id] = { email_on: !!a.p_email_on }; },
     partner_info(S, u) {
       const p = S.t.partners.find((x) => x.uid === u.id); if (!p) return null;
       const s = S.t.shares.find((x) => x.owner === p.owner);

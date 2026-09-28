@@ -501,3 +501,18 @@ body.is-offline { padding-top: calc(30px + env(safe-area-inset-top)); }
 .login-more { display: flex; flex-direction: column; align-items: center; gap: 10px; margin-top: 6px; padding-top: 18px; border-top: 1px solid var(--line); }
 .login-more .btn { width: 100%; }
 #login-msg:empty { display: none; }
+
+/* 通知（小鈴鐺） */
+.bell-btn { position: relative; }
+.bell-dot {
+  position: absolute; top: 0; right: 2px; min-width: 18px; height: 18px; padding: 0 5px;
+  border-radius: 99px; background: var(--happy); color: #fff; font-size: 11px; line-height: 18px; text-align: center;
+}
+.notify-list { padding: 0; gap: 0; overflow: hidden; }
+.notify-item {
+  display: flex; flex-direction: column; gap: 2px; padding: 12px 16px; text-decoration: none; color: var(--ink);
+  border-top: 1px solid var(--line);
+}
+.notify-item:first-child { border-top: none; }
+.notify-item.unread .notify-text { font-weight: 700; }
+.notify-item.unread { background: var(--happy-bg); }

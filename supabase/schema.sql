@@ -1485,3 +1485,124 @@ grant execute on function public.partner_accounts() to authenticated;
 create or replace function public.ping() returns integer
 language sql stable as $$ select 1 $$;
 grant execute on function public.ping() to anon, authenticated;
+
+-- ============================================================
+-- 通知（2026-09-28）：另一半新增美好、任務等你確認、任務通過時，通知對方
+-- App 內的小鈴鐺讀 notifications；Email 由 Edge Function notify-email 定時寄（每人每小時最多一封）
+-- 之後做 App 時，推播也從這張表送，不用改其他地方
+-- ============================================================
+create table if not exists public.notifications (
+  id           bigint generated always as identity primary key,
+  recipient    uuid not null references auth.users (id) on delete cascade,
+  space_owner  uuid not null references auth.users (id) on delete cascade,
+  actor        uuid references auth.users (id) on delete set null,
+  actor_name   text not null default '',
+  kind         text not null check (kind in ('new_happy', 'new_task_record', 'task_submitted', 'task_approved')),
+  record_id    text,
+  created_at   timestamptz not null default now(),
+  read_at      timestamptz,
+  emailed_at   timestamptz
+);
+create index if not exists notifications_recipient_idx on public.notifications (recipient, created_at desc);
+create index if not exists notifications_email_idx on public.notifications (created_at) where emailed_at is null and read_at is null;
+alter table public.notifications enable row level security;
+drop policy if exists "notifications_select_own" on public.notifications;
+create policy "notifications_select_own" on public.notifications for select to authenticated using (recipient = auth.uid());
+
+-- 每個人收通知的方式（之後的 App 推播也放這裡）
+create table if not exists public.notify_prefs (
+  uid            uuid primary key references auth.users (id) on delete cascade,
+  email_on       boolean not null default true,
+  last_email_at  timestamptz,
+  updated_at     timestamptz not null default now()
+);
+alter table public.notify_prefs enable row level security;
+drop policy if exists "notify_prefs_select_own" on public.notify_prefs;
+create policy "notify_prefs_select_own" on public.notify_prefs for select to authenticated using (uid = auth.uid());
+
+-- 誰的名字：主人用分享時填的名字，另一半用加入時的名字
+create or replace function public.space_member_name(p_owner uuid, p_uid uuid) returns text
+language sql stable security definer set search_path = public as $$
+  select coalesce(
+    case when p_uid = p_owner then (select nullif(owner_name, '') from public.shares where owner = p_owner)
+         else (select name from public.partners where owner = p_owner and uid = p_uid) end,
+    '對方')
+$$;
+revoke all on function public.space_member_name(uuid, uuid) from public, anon, authenticated;
+
+-- 新增美好時刻（給對方看、或要完成任務才能看）時通知對方。上鎖的、烏雲、吵架不通知；搬家或匯入的舊紀錄也不通知
+create or replace function public.notify_new_record() returns trigger
+language plpgsql security definer set search_path = public as $$
+declare
+  v_author uuid := coalesce(new.author, new.owner);
+  v_kind text;
+  v_created bigint := nullif(new.data ->> 'createdAt', '')::bigint;
+begin
+  if new.type <> 'happy' or new.visibility = 'locked' or new.archived or (new.data ->> 'deletedAt') is not null then return new; end if;
+  if v_created is not null and v_created < (extract(epoch from now() - interval '1 day') * 1000) then return new; end if;
+  v_kind := case when new.visibility = 'task' then 'new_task_record' else 'new_happy' end;
+  if v_author = new.owner then
+    if public.space_paused(new.owner) then return new; end if;
+    insert into public.notifications (recipient, space_owner, actor, actor_name, kind, record_id)
+      select p.uid, new.owner, v_author, public.space_member_name(new.owner, v_author), v_kind, new.id
+      from public.partners p where p.owner = new.owner and p.approved and p.uid <> v_author;
+  else
+    insert into public.notifications (recipient, space_owner, actor, actor_name, kind, record_id)
+      values (new.owner, new.owner, v_author, public.space_member_name(new.owner, v_author), v_kind, new.id);
+  end if;
+  return new;
+end $$;
+drop trigger if exists records_notify on public.records;
+create trigger records_notify after insert on public.records for each row execute function public.notify_new_record();
+
+-- 任務送出時通知寫這則紀錄的人；任務通過時通知做任務的人
+create or replace function public.notify_task() returns trigger
+language plpgsql security definer set search_path = public as $$
+declare
+  r public.records;
+  v_writer uuid;
+begin
+  select * into r from public.records where id = new.record_id;
+  if not found then return new; end if;
+  v_writer := coalesce(r.author, r.owner);
+  if tg_op = 'INSERT' and new.status = 'pending' and v_writer <> new.partner then
+    insert into public.notifications (recipient, space_owner, actor, actor_name, kind, record_id)
+      values (v_writer, r.owner, new.partner, coalesce(nullif(new.partner_name, ''), public.space_member_name(r.owner, new.partner)), 'task_submitted', r.id);
+  elsif tg_op = 'UPDATE' and new.status = 'approved' and old.status is distinct from 'approved' and v_writer <> new.partner then
+    insert into public.notifications (recipient, space_owner, actor, actor_name, kind, record_id)
+      values (new.partner, r.owner, v_writer, public.space_member_name(r.owner, v_writer), 'task_approved', r.id);
+  end if;
+  return new;
+end $$;
+drop trigger if exists task_submissions_notify on public.task_submissions;
+create trigger task_submissions_notify after insert or update of status on public.task_submissions for each row execute function public.notify_task();
+
+-- App 讀自己的通知（最近 50 則）、標成已讀、Email 開關
+create or replace function public.my_notifications() returns jsonb
+language sql stable security definer set search_path = public as $$
+  select coalesce(jsonb_agg(to_jsonb(x) order by x.created_at desc), '[]'::jsonb) from (
+    select id, actor_name, kind, record_id, created_at, read_at from public.notifications
+    where recipient = auth.uid() order by created_at desc limit 50
+  ) x
+$$;
+create or replace function public.mark_notifications_read() returns void
+language sql security definer set search_path = public as $$
+  update public.notifications set read_at = now() where recipient = auth.uid() and read_at is null
+$$;
+create or replace function public.notify_prefs_get() returns jsonb
+language sql stable security definer set search_path = public as $$
+  select jsonb_build_object('email_on', coalesce((select email_on from public.notify_prefs where uid = auth.uid()), true))
+$$;
+create or replace function public.notify_prefs_set(p_email_on boolean) returns void
+language sql security definer set search_path = public as $$
+  insert into public.notify_prefs (uid, email_on, updated_at) values (auth.uid(), p_email_on, now())
+  on conflict (uid) do update set email_on = excluded.email_on, updated_at = now()
+$$;
+revoke all on function public.my_notifications() from public, anon;
+revoke all on function public.mark_notifications_read() from public, anon;
+revoke all on function public.notify_prefs_get() from public, anon;
+revoke all on function public.notify_prefs_set(boolean) from public, anon;
+grant execute on function public.my_notifications() to authenticated;
+grant execute on function public.mark_notifications_read() to authenticated;
+grant execute on function public.notify_prefs_get() to authenticated;
+grant execute on function public.notify_prefs_set(boolean) to authenticated;

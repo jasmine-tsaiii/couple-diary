@@ -614,3 +614,90 @@ async function viewStamps() {
     b.setAttribute('aria-expanded', String(!t.hidden));
   }));
 }
+
+// ---------- 通知（小鈴鐺） ----------
+// 雲端帳號才有；資料庫還沒更新（沒有 my_notifications）時鈴鐺不顯示
+function bellBtnHtml() {
+  if (!usingCloud()) return '';
+  return `<a class="icon-btn gear-btn bell-btn" href="#/notifications" id="bell" aria-label="通知" hidden>${ICON.bell}<span>通知</span><b class="bell-dot" hidden></b></a>`;
+}
+async function refreshBell() {
+  const btn = document.getElementById('bell');
+  if (!btn) return;
+  const list = await CloudDB.notifications().catch(() => null);
+  if (!list || !document.body.contains(btn)) return;
+  btn.hidden = false;
+  const unread = list.filter((n) => !n.read_at).length;
+  const dot = btn.querySelector('.bell-dot');
+  dot.hidden = !unread;
+  dot.textContent = unread > 9 ? '9+' : String(unread || '');
+  btn.setAttribute('aria-label', unread ? `通知，${unread} 則沒看過` : '通知');
+}
+function notifyText(n) {
+  const who = n.actor_name || '對方';
+  if (n.kind === 'new_happy') return `${who}新增了一則美好時刻`;
+  if (n.kind === 'new_task_record') return `${who}新增了一則美好時刻，完成任務就能看`;
+  if (n.kind === 'task_submitted') return `${who}完成了任務，等你確認`;
+  if (n.kind === 'task_approved') return `${who}確認了你的任務，紀錄解鎖了`;
+  return `${who}有新動態`;
+}
+function notifyHref(n) {
+  if (!n.record_id) return '#/';
+  if (n.kind === 'task_submitted') return '#/tasks';
+  if (n.kind === 'new_task_record') return `#/task/${encodeURIComponent(n.record_id)}`;
+  return `#/view/${encodeURIComponent(n.record_id)}`;
+}
+function notifyWhen(ts) {
+  const t = new Date(ts).getTime();
+  const min = Math.floor((Date.now() - t) / 60000);
+  if (min < 1) return '剛剛';
+  if (min < 60) return `${min} 分鐘前`;
+  if (min < 60 * 24) return `${Math.floor(min / 60)} 小時前`;
+  const d = Math.floor(min / 60 / 24);
+  return d < 7 ? `${d} 天前` : new Date(t).toLocaleDateString('zh-TW', { month: 'numeric', day: 'numeric' });
+}
+async function viewNotifications() {
+  app.className = '';
+  const list = await CloudDB.notifications().catch(() => null);
+  app.innerHTML = `
+    <div class="topbar">
+      <a class="icon-btn" href="#/" aria-label="返回">${ICON.back}</a>
+      <h1>通知</h1>
+    </div>
+    ${list == null ? '<div class="empty">通知功能還在準備中，過幾天再來看看。</div>'
+      : !list.length ? `<div class="empty">${mascotHtml('happy', 90)}<div>還沒有通知。${esc(otherName())}新增美好時刻、或任務有進度時，會在這裡告訴你。</div></div>`
+      : `<div class="card notify-list">${list.map((n) => `<a class="notify-item${n.read_at ? '' : ' unread'}" href="${notifyHref(n)}">
+          <span class="notify-text">${esc(notifyText(n))}</span>
+          <span class="small muted">${notifyWhen(n.created_at)}</span>
+        </a>`).join('')}</div>`}
+    ${list && list.length && !CloudDB.isAnonymous() ? '<div class="small muted" style="text-align:center">想改 Email 通知，到「設定 → 通知」。</div>' : ''}
+  `;
+  if (list && list.some((n) => !n.read_at)) CloudDB.markNotificationsRead().catch(() => {});
+}
+// 設定頁的「通知」卡片（有 Email 的帳號才有 Email 開關）
+function notifyCardHtml() {
+  if (!usingCloud() || CloudDB.isAnonymous()) return '';
+  return `<div class="card" id="notify-card" hidden>
+    <div class="bold">通知</div>
+    <div class="small muted">另一半新增美好時刻、任務等你確認時，打開啾啾日記會在右上角的小鈴鐺看到。</div>
+    <div class="row between" style="gap:12px"><div>Email 通知<div class="small muted">一小時最多一封，好幾則會合併成一封</div></div>
+      <button class="btn small" id="notify-email" aria-pressed="true">開啟中</button></div>
+  </div>`;
+}
+async function bindNotifyCard() {
+  const card = document.getElementById('notify-card');
+  if (!card) return;
+  const prefs = await CloudDB.notifyPrefs().catch(() => null);
+  if (!prefs || !document.body.contains(card)) return;
+  card.hidden = false;
+  const b = document.getElementById('notify-email');
+  const show = (on) => { b.setAttribute('aria-pressed', String(on)); b.textContent = on ? '開啟中' : '已關閉'; b.classList.toggle('secondary', !on); };
+  show(prefs.email_on !== false);
+  b.addEventListener('click', async () => {
+    const next = b.getAttribute('aria-pressed') !== 'true';
+    b.disabled = true;
+    try { await CloudDB.setNotifyEmail(next); show(next); toast(next ? '會寄 Email 通知你' : '不寄 Email 了，小鈴鐺還是會有'); }
+    catch (e) { toast(cloudErrorText(e)); }
+    b.disabled = false;
+  });
+}
