@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
   push:
     branches: [main]
-    paths: ['js/cards.js']
+    paths: ['js/cards.js', '.github/workflows/cards-safari.yml', 'tests/e2e/t64.js']
 jobs:
   webkit:
     runs-on: ubuntu-latest
@@ -24,6 +24,8 @@ jobs:
           BROWSER: webkit
           CI: 'true'
           KEEP: '1'
+      - if: always()
+        run: cat out/t64.txt || true
       - if: always()
         run: cp /tmp/diary-t64-*/*.png shots/ || true
       - if: always()
