@@ -6,7 +6,7 @@ const U = (process.env.U || 'http://localhost:8770/');
   const log = (...a) => console.log(...a); const errs = [];
   const ctx = await b.newContext({ viewport: { width: 390, height: 844 }, userAgent: devices['iPhone 13'].userAgent });
   await ctx.route('**/vendor/supabase-2.117.2.js', (r) => r.fulfill({ contentType: 'text/javascript', body: fs.readFileSync('mock2.js', 'utf8') }));
-  await ctx.addInitScript(() => { localStorage.setItem('tourDone', '1'); localStorage.setItem('guestStarted', '1'); window.__shared = null; navigator.share = async (d) => { window.__shared = d; }; });
+  await ctx.addInitScript(() => { localStorage.setItem('tourDone', '1'); localStorage.setItem('guestStarted', '1'); localStorage.setItem('signupNudgeShown', '1'); window.__shared = null; navigator.share = async (d) => { window.__shared = d; }; });
   const p = await ctx.newPage(); p.on('pageerror', (e) => errs.push(e.message)); p.on('dialog', (d) => d.accept());
   await p.goto(U); await p.waitForTimeout(600);
   await p.goto(U + '#/new/happy'); await p.waitForTimeout(600); await p.fill('#f-title', '試用'); await p.click('#save'); await p.waitForTimeout(1200);

@@ -619,9 +619,11 @@ async function viewForm(mode, arg) {
     app.oninput = () => { dirty = true; if (mode === 'new') { clearTimeout(draftTimer); draftTimer = setTimeout(() => { collect(); saveDraft(rec); }, 800); } };
     app.querySelector('.topbar .icon-btn').addEventListener('click', (ev) => {
       if ((dirty || newPhotos.size) && !confirm('還沒儲存，確定要離開嗎？寫的內容會不見。')) { ev.preventDefault(); return; }
+      formGuard = null;
       clearTimeout(draftTimer);
       if (mode === 'new') clearDraft();
     });
+    formGuard = { dirty: () => dirty || newPhotos.size > 0, leave: () => { clearTimeout(draftTimer); if (mode === 'new') clearDraft(); } };
     app.querySelectorAll('[data-taskmode]').forEach((b) => b.addEventListener('click', () => { collect(); rec.task.mode = b.dataset.taskmode; render(); }));
     const photoInput = document.getElementById('f-photos');
     if (photoInput) photoInput.addEventListener('change', async (ev) => {
@@ -721,7 +723,8 @@ async function viewForm(mode, arg) {
         track('record_create', { type: rec.type, visibility: rec.visibility || 'shared', has_photo: (rec.photoIds || []).length > 0, author: partner ? 'partner' : 'me' });
       } else track('record_edit', { type: rec.type });
       markA2hsPending();
-      if (mode === 'new' && isGuest()) { try { if ((await liveRecords()).length >= 3) sessionStorage.setItem('signupNudge', '1'); } catch (e) { /* 略過 */ } }
+      if (mode === 'new' && isGuest()) { try { if ((await liveRecords()).length >= (IOS_SAFARI_TAB ? 1 : 3)) sessionStorage.setItem('signupNudge', '1'); } catch (e) { /* 略過 */ } }
+      formGuard = null;
       go(`#/view/${rec.id}`);
     }));
   }

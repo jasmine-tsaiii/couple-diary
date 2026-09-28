@@ -3,6 +3,8 @@
 //   node tests/run.js            全部跑
 //   node tests/run.js t58 t64    只跑指定的
 // 環境變數：JOBS=同時跑幾個（預設 4）、KEEP=1 保留每個測試的暫存資料夾（截圖、輸出）
+//   DEVICE=android|iphone 用手機模式跑（見 mobile-shim.js），ENGINE=webkit 改用 Safari 引擎
+//   SKIP="t7 t46" 這次不跑的測試（例如 WebKit 做不到的模擬）
 //
 // 每個測試是一支獨立的 node 程式，把檢查結果印成 true / false，最後印 `errors [...]`（頁面上的 JS 錯誤）。
 // 判斷規則：
@@ -48,7 +50,7 @@ function runOne(name, url) {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), `diary-${name}-`));
     for (const f of fs.readdirSync(FIX)) fs.copyFileSync(path.join(FIX, f), path.join(dir, f));
     const started = Date.now();
-    const child = spawn(process.execPath, [path.join(E2E, `${name}.js`)], { cwd: dir, env: { ...process.env, U: url, SHOT_DIR: dir } });
+    const child = spawn(process.execPath, [path.join(E2E, `${name}.js`)], { cwd: dir, env: { ...process.env, U: url, SHOT_DIR: dir, ...(process.env.DEVICE ? { NODE_OPTIONS: `${process.env.NODE_OPTIONS || ''} --require ${path.join(__dirname, 'mobile-shim.js')}`.trim() } : {}) } });
     let out = '';
     child.stdout.on('data', (d) => { out += d; });
     child.stderr.on('data', (d) => { out += d; });
@@ -75,7 +77,8 @@ function runOne(name, url) {
   const want = process.argv.slice(2);
   const all = fs.readdirSync(E2E).filter((f) => /^t\d+\.js$/.test(f)).map((f) => f.replace(/\.js$/, ''))
     .sort((a, b) => Number(a.slice(1)) - Number(b.slice(1)));
-  const list = want.length ? all.filter((n) => want.includes(n)) : all;
+  const skip = (process.env.SKIP || '').split(/[\s,]+/).filter(Boolean);
+  const list = (want.length ? all.filter((n) => want.includes(n)) : all).filter((n) => !skip.includes(n));
   const srv = await serve();
   const url = `http://127.0.0.1:${srv.address().port}/`;
   console.log(`跑 ${list.length} 個測試，同時 ${JOBS} 個，網址 ${url}`);

@@ -336,7 +336,8 @@ function maybeShowSignupNudge() {
 }
 function showSignupNudge() {
   track('signup_prompt', { where: 'third_record' });
-  showSignupSheet('已經寫了 3 則，要不要保存起來？', '現在的紀錄只存在這支手機的瀏覽器，清掉資料或換手機就會不見。');
+  if (IOS_SAFARI_TAB) showSignupSheet('要不要先把紀錄保存起來？', `${IOS_CLEAR_NOTE}註冊後紀錄存在雲端，就不會不見，換手機也看得到。`);
+  else showSignupSheet('已經寫了 3 則，要不要保存起來？', '現在的紀錄只存在這支手機的瀏覽器，清掉資料或換手機就會不見。');
 }
 // 試用中碰到要註冊才能用的功能（例如分享給另一半），就在原地跳出來，不用離開現在的畫面
 function showSignupSheet(title, text) {

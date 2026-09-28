@@ -18,7 +18,7 @@ const U = (process.env.U || 'http://localhost:8770/');
   // 草稿
   await p.goto(U + '#/new/fight'); await p.waitForTimeout(500);
   await p.fill('#f-title', '家事分配'); await p.waitForTimeout(1200);
-  await p.goto(U + '#/'); await p.waitForTimeout(400);
+  await p.evaluate(() => { formGuard = null; }); await p.goto(U + '#/'); await p.waitForTimeout(400); // 像關掉 App 再打開（草稿要留著）
   log('draft stored', await p.evaluate(() => !!localStorage.getItem('couple-diary-draft')));
   answers = [true]; await p.goto(U + '#/new/happy'); await p.waitForTimeout(600);
   log('draft prompt', msgs.pop());

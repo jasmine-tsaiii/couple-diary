@@ -6,7 +6,7 @@ const U = (process.env.U || 'http://localhost:8770/');
   const errs = [];
   for (const [name, ua] of [['ios', devices['iPhone 13'].userAgent], ['android', devices['Pixel 5'].userAgent], ['desktop', null]]) {
     const ctx = await b.newContext({ viewport: { width: 390, height: 844 }, ...(ua ? { userAgent: ua } : {}) });
-    await ctx.addInitScript(() => { localStorage.setItem('tourDone', '1'); localStorage.setItem('guestStarted', '1'); });
+    await ctx.addInitScript(() => { localStorage.setItem('tourDone', '1'); localStorage.setItem('guestStarted', '1'); localStorage.setItem('signupNudgeShown', '1'); });
     const p = await ctx.newPage(); p.on('pageerror', (e) => errs.push(e.message)); p.on('dialog', (d) => d.accept());
     await p.goto(U + '#/new/happy'); await p.waitForTimeout(700);
     await p.fill('#f-title', '第一個'); await p.click('#save'); await p.waitForTimeout(1200);

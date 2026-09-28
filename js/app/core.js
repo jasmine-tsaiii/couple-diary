@@ -99,6 +99,8 @@ function toast(msg) {
   toast.timer = setTimeout(() => t.classList.remove('show'), 1800);
 }
 function go(hash) { location.hash = hash; }
+// 編輯頁還沒儲存時，手機返回鍵、滑動返回、重新整理都要先問（record.js 設定，換頁後清掉）
+let formGuard = null;
 // 按鈕處理中先停用，避免連點；失敗時說清楚並恢復按鈕讓人重試
 async function withBusy(btn, label, fn) {
   if (!btn || btn.disabled) return;
@@ -129,12 +131,22 @@ const justUnlocked = (r) => r.visibility === 'task' && r.unlocked && r.unlockedA
 const RECORD_VERSION = 1; // 紀錄的資料格式版本，之後改格式時用來判斷要不要轉換
 // LINE、IG、FB 等 App 內建的瀏覽器：資料和 Safari／Chrome 分開，Google 登入也會被擋
 const IN_APP = /Line\/|FBAN|FBAV|Instagram|MicroMessenger/i.test(navigator.userAgent);
+// iPhone 在 Safari 分頁裡用（不是主畫面、不是 LINE/IG）：7 天沒打開，Safari 可能清掉這個網站存在手機裡的資料
+const IOS_SAFARI_TAB = /iphone|ipad|ipod/i.test(navigator.userAgent) && !IN_APP
+  && !(window.matchMedia && window.matchMedia('(display-mode: standalone)').matches) && navigator.standalone !== true;
+const IOS_CLEAR_NOTE = 'iPhone 的 Safari 如果超過 7 天沒打開這個網站，可能會自動清掉存在手機裡的紀錄。';
 function inAppNotice() {
   if (!IN_APP) return '';
   return `<div class="card" style="background:var(--open-bg);border-color:transparent;gap:4px">
     <div class="bold" style="color:var(--open-ink)">請改用 Safari 或 Chrome 打開</div>
     <div class="small" style="color:var(--open-ink)">你現在是在 LINE（或其他 App）裡面打開的。這裡存的資料之後在瀏覽器看不到，也不能用 Google 登入。請點右上角的「⋯」，選「用瀏覽器開啟」。</div>
   </div>`;
+}
+// LINE、IG 裡面的瀏覽器存不了檔案：先說清楚，不要假裝已經下載
+function inAppCantSave(what) {
+  if (!IN_APP) return false;
+  alert(`LINE、IG 裡打開的畫面沒辦法存${what}。\n請點右上角的「⋯」，選「用瀏覽器開啟」，在 Safari 或 Chrome 裡再按一次。`);
+  return true;
 }
 // 新紀錄預設誰可以看：美好時刻給對方看；烏雲和吵架常在氣頭上寫，預設上鎖
 // 吵架議題是兩個人的事，一律兩個人都看得到；烏雲預設只有自己看得到

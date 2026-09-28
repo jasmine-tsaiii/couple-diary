@@ -215,6 +215,7 @@ async function viewSettings() {
       <button class="btn small secondary" id="renumber">依日期重新編號</button>
     </div>
     <h2 class="section-title set-sec" id="set-backup">備份與匯出</h2>
+    ${inAppNotice()}
     <div class="card">
       <div class="bold">備份</div>
       ${usingCloud()
@@ -317,6 +318,7 @@ async function viewSettings() {
     toast('已儲存');
   });
   document.getElementById('export').addEventListener('click', async () => {
+    if (inAppCantSave('備份檔')) return;
     toast('準備備份中…');
     const photos = await DB.allPhotos();
     const data = {
@@ -510,6 +512,7 @@ async function viewSettings() {
 
 // 另一半匯出自己寫的紀錄（格式和「匯出還原用備份」一樣，可以匯入自己的帳號或手機版）
 async function exportMyRecords() {
+  if (inAppCantSave('備份檔')) return;
   const records = (await DB.allRecords()).filter((r) => isMine(r) && !r.deletedAt);
   const photos = [];
   for (const r of records) for (const pid of r.photoIds || []) {
@@ -630,7 +633,7 @@ function loginMethodsCard() {
     ${m.google ? '' : `<div class="small muted">如果你的 Google 信箱就是 ${esc(email) || '註冊的信箱'}，直接按 Google 登入也會進到同一個帳號。信箱不一樣的話，按下面連結起來：</div>
       <button class="btn small secondary" id="link-google">連結 Google 帳號</button>`}
     ${m.email ? '' : `<form id="set-password" class="row" style="gap:8px;flex-wrap:wrap;margin-top:8px">
-      <input type="password" autocomplete="new-password" placeholder="設定一組密碼（至少 6 個字）" maxlength="72" style="flex:1;min-width:160px">
+      <input type="password" class="input" autocomplete="new-password" placeholder="設定一組密碼（至少 6 個字）" maxlength="72" style="flex:1;min-width:160px">
       <button class="btn small secondary" type="submit">設定密碼</button>
     </form>
     <div class="small muted">設好之後，也可以用 ${esc(email)} 加這組密碼登入。</div>`}

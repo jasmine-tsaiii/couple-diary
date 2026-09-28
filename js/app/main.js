@@ -9,6 +9,8 @@ async function route() {
   if (page !== 'feedback') { try { sessionStorage.setItem('fbFrom', page || 'home'); } catch (e) { /* 沒關係 */ } }
   app.className = '';
   app.oninput = null;
+  formGuard = null;
+  lastHash = location.hash;
   window.scrollTo(0, 0);
   try { if (window.Analytics) window.Analytics.pageView(); } catch (e) { /* 略過 */ }
   try {
@@ -303,7 +305,23 @@ document.addEventListener('touchend', (ev) => {
   if (back) back.click();
 }, { passive: true });
 
-window.addEventListener('hashchange', route);
+let lastHash = location.hash;
+window.addEventListener('hashchange', () => {
+  if (formGuard && formGuard.dirty()) {
+    if (!confirm('還沒儲存，確定要離開嗎？寫的內容會不見。')) {
+      // 留在編輯頁：把網址改回來（不會重畫，寫的內容還在）
+      history.pushState(null, '', lastHash || '#/');
+      return;
+    }
+    formGuard.leave();
+  }
+  formGuard = null;
+  lastHash = location.hash;
+  route();
+});
+window.addEventListener('beforeunload', (ev) => {
+  if (formGuard && formGuard.dirty()) { ev.preventDefault(); ev.returnValue = ''; }
+});
 requestPersist();
 
 // ---------- 離線 ----------

@@ -409,6 +409,7 @@ async function viewCard(kind, id) {
   app.className = 'theme-happy';
   app.innerHTML = `
     <div class="topbar"><a class="icon-btn" href="#/cards" aria-label="返回">${ICON.back}</a><h1>${esc(title)}</h1><div style="width:44px"></div></div>
+    ${inAppNotice()}
     <div class="card-preview"><img id="card-img" alt="小卡預覽"><div class="small muted" id="card-wait">小卡製作中…</div></div>
     <div class="field"><div class="label">尺寸</div><div class="theme-pick" style="grid-template-columns:repeat(2,minmax(0,1fr))">
       ${Object.entries(CARD_SIZES).map(([k, v]) => `<button class="chip ${k === opt.size ? 'on' : ''}" data-size="${k}">${v.label}</button>`).join('')}
@@ -467,6 +468,8 @@ async function viewCard(kind, id) {
         toast('沒辦法分享，改成下載圖片');
       }
     }
+    // LINE、IG 裡的瀏覽器不能下載：改成放大顯示圖片，讓人長按存到相簿
+    if (IN_APP) { await showLongPressSave(blob); track('card_share', { kind, size: opt.size, how: 'download' }); return; }
     const a = document.createElement('a');
     a.href = URL.createObjectURL(blob); a.download = file.name;
     document.body.appendChild(a); a.click(); a.remove();
@@ -475,4 +478,19 @@ async function viewCard(kind, id) {
     track('card_share', { kind, size: opt.size, how: 'download' });
   }));
   redraw();
+}
+
+// 在 LINE、IG 裡：全螢幕顯示小卡，長按圖片就能存到相簿
+async function showLongPressSave(blob) {
+  const url = await new Promise((ok) => { const r = new FileReader(); r.onload = () => ok(r.result); r.readAsDataURL(blob); });
+  const box = document.createElement('div');
+  box.className = 'celebrate longpress-save';
+  box.innerHTML = `<div class="celebrate-box" role="dialog" aria-modal="true" aria-label="存小卡">
+    <div class="bold">長按圖片，選「儲存」或「加入照片」</div>
+    <img src="${url}" alt="回憶小卡" style="max-width:100%;max-height:60vh;border-radius:12px;-webkit-touch-callout:default;user-select:auto">
+    <div class="small muted">存不起來的話，點右上角的「⋯」選「用瀏覽器開啟」，在 Safari 或 Chrome 裡按「分享」。</div>
+    <button class="btn" id="longpress-close">好了</button>
+  </div>`;
+  document.body.appendChild(box);
+  box.querySelector('#longpress-close').addEventListener('click', () => box.remove());
 }

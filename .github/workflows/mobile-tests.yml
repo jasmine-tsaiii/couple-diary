@@ -1,0 +1,42 @@
+# 用手機模式跑全部畫面測試（#30）：Android（Chromium）和 iPhone（Safari 引擎 WebKit）
+# 只在手動按「Run workflow」時跑，不會每次推程式都寄通知
+# WebKit 沒辦法模擬的先跳過：t7（假資料庫讀大照片被擋）、t46（不能產生觸控事件）、t65（有 service worker 時 reload 會出錯）、t35（換網址會整頁重載，會跳解鎖碼，這是正確行為）
+name: mobile-tests
+on:
+  workflow_dispatch:
+jobs:
+  mobile:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - device: android
+            engine: chromium
+            skip: ''
+          - device: iphone
+            engine: webkit
+            skip: 't7 t35 t46 t65'
+    defaults:
+      run:
+        working-directory: tests
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm install --no-audit --no-fund
+      - run: npx playwright install --with-deps ${{ matrix.engine }}
+      - run: node run.js
+        env:
+          DEVICE: ${{ matrix.device }}
+          ENGINE: ${{ matrix.engine }}
+          SKIP: ${{ matrix.skip }}
+          CI: 'true'
+          JOBS: '3'
+      - if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: mobile-${{ matrix.device }}-out
+          path: tests/out/

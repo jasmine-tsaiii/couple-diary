@@ -15,3 +15,8 @@ KEEP=1 node run.js t64            # 保留截圖（路徑印在 out/t64.txt 附�
 - `run.js` 會自己開一個本機網站，測試失敗時輸出存在 `out/tNN.txt`。
 - `baseline.json`：舊測試裡有些 `false` 是預期的（例如「另一半看不到這個按鈕」印 false）。新測試請讓通過的檢查都印 `true`。
 - GitHub 上每次推上 main 都會自動跑（`.github/workflows/test.yml`），只改 `m/` 行銷圖片時不跑。
+
+## 手機模式（#30）
+- `DEVICE=android node run.js`：用 Android 手機的瀏覽器識別、觸控跑全部測試（本機就能跑）。
+- `DEVICE=iphone ENGINE=webkit SKIP="t7 t35 t46 t65" node run.js`：用 Safari 引擎跑（要先 `npx playwright install webkit`）。
+- GitHub → Actions → mobile-tests → Run workflow，兩種會一起跑。
