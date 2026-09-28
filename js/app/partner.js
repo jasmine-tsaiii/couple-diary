@@ -502,21 +502,34 @@ async function shareCardHtml() {
       <div class="bold">分享給另一半</div>
       <div class="muted">產生分享碼和密碼給對方，對方就能看你「給對方看」和任務解鎖後的紀錄、做任務。對方用 Email 或 Google 建立自己的帳號後，還能寫自己的美好和烏雲，也能和你一起寫吵架議題；你寫的美好和烏雲，對方不能改。</div>
       <div class="field"><label for="s-name">你的名字（對方會看到）</label><input id="s-name" class="input" maxlength="${LIMITS.name}" value="${esc(NAMES.me)}"></div>
-      ${digitBoxes('s-pass', '分享密碼（自己設 6 位數字，再告訴對方）')}
+      ${digitBoxes('s-pass', '分享密碼（自己設 6 位數字，等一下要私下告訴對方）')}
       <button class="btn small" id="s-create">產生分享碼</button>
     </div>`;
   }
   const joined = partners.filter((p) => p.approved !== false);
   const waiting = partners.filter((p) => p.approved === false);
+  // 還沒有人加入：邀請步驟攤開；已經有人加入：收進「再邀請／改設定」
+  const inviteSteps = `<div class="invite-steps">
+      <div class="invite-step"><span class="step-no">1</span><div class="grow">
+        <div class="bold">傳邀請連結給對方</div>
+        <div class="small muted">連結裡已經帶著分享碼 <b class="share-code mono">${esc(share.code)}</b>，對方點開就自動填好，不用自己打。</div>
+        <button class="btn small" id="s-copy" style="margin-top:8px">傳邀請連結</button></div></div>
+      <div class="invite-step"><span class="step-no">2</span><div class="grow">
+        <div class="bold">私下告訴對方「分享密碼」</div>
+        <div class="small muted">就是你建立分享時自己設的 6 位數字（為了安全，不會放在連結裡，這裡也不會顯示）。忘記了就在下面重設一組新的，再告訴對方。</div></div></div>
+    </div>`;
+  const settings = `<div class="field"><label for="s-name">你的名字（對方會看到）</label>
+      <div class="row"><input id="s-name" class="input grow" maxlength="20" value="${esc(share.owner_name)}"><button class="btn small" id="s-save-name">儲存</button></div></div>
+    ${digitBoxes('s-pass', '重設分享密碼（新的 6 位數字）')}
+    <button class="btn small secondary" id="s-save-pass">儲存新密碼</button>
+    <div class="field"><div class="label">換新分享碼</div>
+      <div class="small muted">舊的邀請連結和分享碼就不能用了，已經加入的人不受影響。擔心連結外流時再用。</div>
+      <button class="btn small secondary" id="s-renew" style="align-self:flex-start">換新分享碼</button></div>`;
   return `<div class="card" id="share-card">
     <div class="bold">分享給另一半</div>
-    <div class="muted">對方加入要兩樣東西：下面這組 8 碼<b>分享碼</b>（邀請連結裡已經帶了，對方點開就自動填好），和你自己設的 6 位數<b>分享密碼</b>（私下告訴對方，不會放在連結裡）。</div>
-    <div class="share-code">${esc(share.code)}</div>
-    <button class="btn small secondary" id="s-copy">分享邀請連結（不含密碼）</button>
-    <div class="field"><label for="s-name">你的名字（對方會看到）</label>
-      <div class="row"><input id="s-name" class="input grow" maxlength="20" value="${esc(share.owner_name)}"><button class="btn small" id="s-save-name">儲存</button></div></div>
-    ${digitBoxes('s-pass', '分享密碼（6 位數字，想換的話在這裡重設）')}
-    <button class="btn small secondary" id="s-save-pass">更改分享密碼</button>
+    ${joined.length ? `<details class="share-more"><summary>再邀請一次、忘記密碼、改設定</summary>${inviteSteps}${settings}</details>`
+      : `<div class="muted small">對方加入需要兩樣東西：<b>分享碼</b>（8 碼，在邀請連結裡）和<b>分享密碼</b>（6 位數字，你私下告訴對方）。</div>${inviteSteps}
+    <details class="share-more"><summary>忘記密碼、改名字、換新分享碼</summary>${settings}</details>`}
     ${waiting.length ? `<div class="field" id="join-requests"><div class="label">想加入的人（要你同意）</div>
       <div class="muted small">另一半換手機或清掉瀏覽器重新加入時，也會出現在這裡；是同一個人的話，同意後會接回原本分享的紀錄。按「同意」時會再問你是同一個人還是新的對象。</div>
       ${waiting.map((p) => `<div class="row between"><span>${esc(p.name)}<span class="muted small">・${shortDate(p.joined_at.slice(0, 10))} 送出</span></span>
@@ -533,7 +546,6 @@ async function shareCardHtml() {
       <div class="small muted">${paused ? `暫停中：${esc(joined[0].name)}現在看不到你寫的任何紀錄、照片和任務，對方自己寫的照舊。按「恢復分享」就回來，資料都不會動。` : `想先冷靜一下時可以暫停，${esc(joined[0].name)}會暫時看不到你寫的紀錄，隨時可以恢復。`}</div>
     </div>` : ''}
     <div class="btn-row">
-      <button class="btn small secondary" id="s-renew">換新分享碼</button>
       <button class="btn small danger" id="s-stop">停止分享</button>
     </div>
   </div>`;

@@ -44,12 +44,13 @@ const U = (process.env.U || 'http://localhost:8770/');
   // 分享 + 伴侶 + 改密碼時移除
   await p.fill('#s-name', 'Jasmine'); await p.fill('#s-pass', '123456'); answers = [true]; await p.click('#s-create'); await p.waitForTimeout(600);
   const code = (await p.textContent('.share-code')).trim();
+  if (process.env.SHOT_DIR) { await p.locator('#share-card').scrollIntoViewIfNeeded(); await p.locator('#share-card').screenshot({ path: process.env.SHOT_DIR + '/share-card.png' }); }
   await p.evaluate(() => sessionStorage.removeItem('mockUid')); await p.goto(U + '#/login'); await p.reload(); await p.waitForTimeout(500);
   await p.click('text=我是另一半，用分享碼加入'); await p.waitForTimeout(300);
   await p.fill('#j-code', code); await p.fill('#j-pass', '123456'); await p.fill('#j-name', '小明'); await p.click('#join-btn'); await p.waitForTimeout(700);
   await p.evaluate(() => sessionStorage.setItem('mockUid', 'owner-jas')); await p.goto(U + '#/settings'); await p.reload(); await p.waitForTimeout(800);
   log('partner listed', await p.isVisible('[data-rm-partner]'));
-  await p.fill('#s-pass', '654321'); answers = [true]; await p.click('#s-save-pass'); await p.waitForTimeout(900);
+  await p.click('.share-more summary'); await p.fill('#s-pass', '654321'); answers = [true]; await p.click('#s-save-pass'); await p.waitForTimeout(900);
   log('partner removed after pw change', !(await p.isVisible('[data-rm-partner]')), await p.evaluate(() => JSON.parse(localStorage.mockServer).t.partners.length));
   // 刪除帳號
   answers = ['不要']; await p.click('#delete-account'); await p.waitForTimeout(300);
