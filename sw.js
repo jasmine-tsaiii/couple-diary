@@ -13,6 +13,7 @@ const PRECACHE = [
   'js/analytics.js',
   'js/db-local.js',
   'js/db-cloud.js',
+  'js/google.js',
   'js/mascot.js',
   'js/cards.js',
   'js/app/core.js',

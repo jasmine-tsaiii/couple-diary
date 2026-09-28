@@ -5,6 +5,7 @@ const U = (process.env.U || 'http://localhost:8770/');
   const b = await chromium.launch(require('./_launch'));
   const log = (...a) => console.log(...a); const errs = [];
   const ctx = await b.newContext({ viewport: { width: 390, height: 844 } });
+  await ctx.route('**/gsi/client*', (r) => r.abort()); // 這個測試用原本的 Google 按鈕
   await ctx.route('**/vendor/supabase-2.117.2.js', (r) => r.fulfill({ contentType: 'text/javascript', body: fs.readFileSync('mock2.js', 'utf8') }));
   await ctx.route('**/js/config.js', async (r) => { const res = await r.fetch(); r.fulfill({ contentType: 'text/javascript', body: (await res.text()).replace(/GA_MEASUREMENT_ID: '[^']*'/, "GA_MEASUREMENT_ID: ''") }); });
   await ctx.addInitScript(() => { localStorage.setItem('tourDone', '1'); localStorage.setItem('a2hsNever', '1'); localStorage.setItem('mockAutoApprove', '1'); new MutationObserver(() => document.querySelectorAll('.tour-dlg').forEach((e) => e.remove())).observe(document, { childList: true, subtree: true }); });

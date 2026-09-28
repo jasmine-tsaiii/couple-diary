@@ -304,6 +304,11 @@
             const S = load(); const id = 'owner-' + email.split('@')[0]; S.users[id] = { id, email, is_anonymous: false, identities: [{ provider: 'email' }] }; save(S);
             sessionStorage.setItem('mockUid', id); return { data: { session: { user: S.users[id] } }, error: null };
           },
+          async signInWithIdToken({ token }) {
+            window.__idToken = token;
+            const S = load(); const id = 'owner-g'; S.users[id] = S.users[id] || { id, email: 'g@x.com', is_anonymous: false, identities: [{ provider: 'google' }] }; save(S);
+            sessionStorage.setItem('mockUid', id); return { data: { session: { user: S.users[id] } }, error: null };
+          },
           async signInAnonymously() {
             const S = load(); const id = 'anon-' + (++S.n); S.users[id] = { id, email: '', is_anonymous: true }; save(S);
             sessionStorage.setItem('mockUid', id); return { data: { session: { user: S.users[id] } }, error: null };

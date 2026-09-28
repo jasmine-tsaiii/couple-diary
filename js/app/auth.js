@@ -102,6 +102,20 @@ function viewLogin(mode = 'signin') {
         ? 'Google 登入暫時不能用，先用 Email 登入吧。' : 'Google 登入沒有成功，請再試一次，或先用 Email 登入。';
     }
   });
+  // 有設定 Google 用戶端 ID 就換成 Google 官方按鈕（Google 畫面會顯示我們的網址，不是 supabase.co）
+  if (!IN_APP && typeof GoogleButton !== 'undefined' && GoogleButton.enabled()) {
+    const oldBtn = document.getElementById('google-btn');
+    const box = document.createElement('div'); box.className = 'gsi-box';
+    oldBtn.after(box);
+    GoogleButton.mount(box, async (token, nonce) => {
+      rememberLogin('google');
+      try { sessionStorage.setItem('googlePending', '1'); } catch (e) { /* 略過 */ }
+      try { await CloudDB.signInWithGoogleToken(token, nonce); location.reload(); } catch (e) {
+        try { sessionStorage.removeItem('googlePending'); } catch (x) { /* 略過 */ }
+        document.getElementById('login-msg').textContent = 'Google 登入沒有成功，請再試一次，或先用 Email 登入。';
+      }
+    }, isUp ? 'signup_with' : 'signin_with').then((ok) => { if (ok) oldBtn.hidden = true; else box.remove(); });
+  }
   document.getElementById('login-form').addEventListener('submit', async (ev) => {
     ev.preventDefault();
     const email = document.getElementById('email').value.trim();

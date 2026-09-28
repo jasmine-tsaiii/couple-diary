@@ -434,6 +434,19 @@ async function viewSettings() {
       toast(/暫時不能用/.test(e.message) ? 'Google 連結功能還沒開好，晚點再試，或先用 Email 和密碼登入' : `連結 Google 沒有成功：${e.message}`);
     }
   }));
+  if (linkG && typeof GoogleButton !== 'undefined' && GoogleButton.enabled()) {
+    const box = document.createElement('div'); box.className = 'gsi-box';
+    linkG.after(box);
+    GoogleButton.mount(box, async (token, nonce) => {
+      try { await CloudDB.linkGoogleToken(token, nonce); } catch (e) {
+        toast(/already|exists/i.test(`${e.code} ${e.message}`) ? '這個 Google 帳號已經是另一個啾啾日記帳號了，沒辦法連結。換一個 Google 帳號試試。'
+          : /manual linking|disabled/i.test(e.message) ? 'Google 連結功能還沒開好，晚點再試' : `連結 Google 沒有成功：${e.message}`);
+        return;
+      }
+      try { sessionStorage.setItem('linkPending', '1'); } catch (e) { /* 略過 */ }
+      location.reload();
+    }, 'continue_with').then((ok) => { if (ok) linkG.hidden = true; else box.remove(); });
+  }
   const pwForm = document.getElementById('set-password');
   if (pwForm) pwForm.addEventListener('submit', (ev) => {
     ev.preventDefault();

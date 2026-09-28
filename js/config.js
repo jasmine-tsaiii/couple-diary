@@ -8,4 +8,7 @@ window.APP_CONFIG = {
   SUPABASE_ANON_KEY: 'sb_publishable__V15eMn36oW3aJ-vYR3XRw_5x8QnBaG',
   // Google Analytics 4 的評估 ID（G- 開頭）。留空就完全不追蹤、也不會載入 Google 的程式。
   GA_MEASUREMENT_ID: 'G-GNF8K7HB29',
+  // Google 登入的「用戶端 ID」（xxxx.apps.googleusercontent.com，公開的值，不是密碼）。
+  // 填了就用 Google 官方登入按鈕，Google 畫面會顯示我們的網址；留空就用原本跳去 Google 再回來的方式。
+  GOOGLE_CLIENT_ID: '625276631279-so2ntvms2avugj2le1m5aea5rkr1tele.apps.googleusercontent.com',
 };

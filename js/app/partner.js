@@ -228,6 +228,31 @@ function viewBind(sentTo = '') {
     }
     await CloudDB.refreshUser(); viewBind();
   }));
+  // Google 官方按鈕：在這個網站上直接完成，不用跳走
+  if (!IN_APP && typeof GoogleButton !== 'undefined' && GoogleButton.enabled()) {
+    const box = document.createElement('div'); box.className = 'gsi-box';
+    g.after(box);
+    GoogleButton.mount(box, async (token, nonce) => {
+      try { await CloudDB.linkGoogleToken(token, nonce); } catch (e) {
+        bindError = googleBindErrorText({ code: e.code || '', message: e.message });
+        viewBind();
+        return;
+      }
+      try { sessionStorage.setItem('linkPending', '1'); } catch (e) { /* 略過 */ }
+      location.reload();
+    }, 'signup_with').then((ok) => { if (ok) g.hidden = true; else box.remove(); });
+    if (lg) {
+      const box2 = document.createElement('div'); box2.className = 'gsi-box';
+      lg.after(box2);
+      GoogleButton.mount(box2, async (token, nonce) => {
+        try { sessionStorage.setItem('rejoinAfterLogin', '1'); } catch (e) { /* 略過 */ }
+        await CloudDB.signOut();
+        bindError = ''; bindErrorExists = false;
+        try { await CloudDB.signInWithGoogleToken(token, nonce); } catch (e) { toast('Google 登入沒有成功，請再試一次'); }
+        location.reload();
+      }).then((ok) => { if (ok) lg.hidden = true; else box2.remove(); });
+    }
+  }
   document.getElementById('b-form').addEventListener('submit', (ev) => {
     ev.preventDefault();
     const email = document.getElementById('b-email').value.trim();

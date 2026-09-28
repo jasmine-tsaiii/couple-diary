@@ -133,6 +133,14 @@ const CloudDB = CLOUD_ENABLED ? (() => {
         options: { redirectTo: location.origin + location.pathname },
       }));
     },
+    // Google 官方按鈕拿到的 id token 直接登入（不用跳去 Google 再回來）
+    async signInWithGoogleToken(token, nonce) {
+      check(await client.auth.signInWithIdToken({ provider: 'google', token, nonce }));
+    },
+    async linkGoogleToken(token, nonce) {
+      const { error } = await client.auth.linkIdentity({ provider: 'google', token, nonce });
+      if (error) { const e = new Error(error.message || '連結沒有成功'); e.code = error.code || ''; throw e; }
+    },
     async resetPassword(email) {
       check(await client.auth.resetPasswordForEmail(email, { redirectTo: location.origin + location.pathname + '?reset=1' }));
     },

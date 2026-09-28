@@ -5,6 +5,7 @@ const U = process.env.U || 'http://localhost:8770/';
 (async () => {
   const b = await chromium.launch(require('./_launch'));
   const ctx = await b.newContext({ viewport: { width: 390, height: 844 } });
+  await ctx.route('**/gsi/client*', (r) => r.abort()); // 這個測試用原本的 Google 按鈕
   await ctx.addInitScript(() => { localStorage.setItem('tourDone', '1'); localStorage.setItem('guestStarted', '1'); new MutationObserver(() => document.querySelectorAll('.tour-dlg').forEach((e) => e.remove())).observe(document, { childList: true, subtree: true }); });
   await ctx.route('**/vendor/supabase-2.117.2.js', (r) => r.fulfill({ contentType: 'text/javascript', body: fs.readFileSync('mock2.js', 'utf8') }));
   const p = await ctx.newPage();
