@@ -16,7 +16,11 @@ const OUT = (process.env.SHOT_DIR || '.') + '/';
     await p.goto(U + '#/new/' + type); await p.waitForTimeout(600); await p.fill('#f-title', title); await p.fill('#f-date', lw);
     if (desc) await p.fill('#f-desc', desc).catch(() => {});
     if (photo) { await p.setInputFiles('#f-photos', photo); await p.waitForTimeout(800); }
-    await p.click('#save'); await p.waitForTimeout(1000); return p.url().split('/').pop();
+    await p.click('#save');
+    // 有照片時存檔要先壓縮照片，Safari 引擎比較慢：等到跳到紀錄頁才算存好
+    const ok = await p.waitForFunction(() => location.hash.startsWith('#/view/'), null, { timeout: 30000 }).then(() => true).catch(() => false);
+    if (!ok) console.log('save stuck', title, JSON.stringify(((await p.textContent('#app').catch(() => '')) || '').slice(0, 200)));
+    return p.url().split('/').pop();
   };
   await p.goto(U); await p.waitForTimeout(600);
   await p.fill('#n-me', 'Jasmine'); await p.fill('#n-partner', '小明'); await p.click('#n-save'); await p.waitForTimeout(500);
