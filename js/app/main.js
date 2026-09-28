@@ -2,7 +2,17 @@
 // 所有 js/app/*.js 共用同一個全域範圍，依 index.html 的順序載入。
 
 // ---------- 路由 ----------
-async function route() {
+// 一次只畫一頁：上一頁還在讀資料時換頁，等它畫完（最多 3 秒）再畫新的，免得慢的舊頁面蓋掉新頁面
+let routeRunning = Promise.resolve();
+let routeSeq = 0;
+function route() {
+  const my = ++routeSeq;
+  const prev = routeRunning;
+  routeRunning = Promise.race([prev.catch(() => {}), new Promise((r) => setTimeout(r, 3000))])
+    .then(() => (my === routeSeq ? renderRoute() : null));
+  return routeRunning;
+}
+async function renderRoute() {
   const parts = (location.hash.replace(/^#\/?/, '') || '').split('/');
   const [page, arg] = parts;
   // 意見回饋會附上是從哪一頁來的（只有頁面名稱，不含紀錄內容）
