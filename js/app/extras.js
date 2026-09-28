@@ -125,7 +125,7 @@ async function viewWishes(show = 'todo') {
     <div class="topbar">
       <a class="icon-btn" href="#/" aria-label="返回">${ICON.back}</a>
       <h1>一起完成的事</h1>
-      ${list.length ? `<div class="count"><b style="font-size:16px;color:var(--accent)">${done.length}</b> / ${list.length}</div>` : ''}
+      ${list.length ? `<div class="count"><b style="font-size:16px;color:var(--accent-text)">${done.length}</b> / ${list.length}</div>` : ''}
     </div>
     <div class="muted small">想和${esc(partner ? ownerName() : partnerName())}一起做的事都寫在這裡。${usingCloud() ? '兩個人都能新增、打勾。' : isGuest() ? '註冊並邀請另一半之後，兩個人都能新增、打勾。' : ''}</div>
     <button class="btn" id="w-add">＋ 新增一件事</button>
@@ -266,14 +266,14 @@ document.addEventListener('click', (ev) => {
   document.querySelectorAll('[data-theme-pick]').forEach((x) => { const on = x === b; x.classList.toggle('on', on); x.setAttribute('aria-pressed', String(on)); });
 });
 
-const ANALYTICS_NOTE = '我們用 Google Analytics 了解有多少人在用、哪些功能有人用。只會記「新增了一則美好」這類次數，不會傳送你寫的標題、內容、名字或照片。';
+const ANALYTICS_NOTE = '你們寫的內容、照片和名字，統計完全碰不到，只有你們兩個看得到。我們只會知道「今天有人新增了一則美好」這樣的次數，用來找出哪些功能好用、哪裡還要改。留著開啟，就是在幫啾啾日記變得更好。';
 function analyticsCard() {
   if (!window.Analytics || !window.Analytics.configured()) return '';
   const on = window.Analytics.enabled();
   return `<div class="card" style="gap:8px">
     <div class="row between" style="gap:12px"><div class="bold">匿名使用統計</div>
       <button class="btn small ${on ? '' : 'secondary'}" id="analytics-toggle" aria-pressed="${on}">${on ? '開啟中' : '已關閉'}</button></div>
-    <div class="small muted">${ANALYTICS_NOTE}關掉之後，這支手機就不會再送出任何統計。</div>
+    <div class="small muted">${ANALYTICS_NOTE}想關掉也可以隨時在這裡關。</div>
   </div>`;
 }
 document.addEventListener('click', (ev) => {
@@ -562,7 +562,7 @@ async function showNewStamps() {
   box.className = 'celebrate';
   box.innerHTML = `<div class="celebrate-box" role="dialog" aria-label="解鎖印章">
     ${mascotHtml('celebrate', 180)}
-    <div class="small bold" style="color:var(--happy)">解鎖新印章！</div>
+    <div class="small bold" style="color:var(--happy-text)">解鎖新印章！</div>
     <div class="stamp got"><div class="stamp-face">${s.icon}</div></div>
     <h2 style="font-size:22px">${esc(s.name)}</h2>
     <div class="muted">${esc(s.group.title)}：${s.n} ${s.group.u}${fresh.length > 1 ? `（這次一共拿到 ${fresh.length} 個章）` : ''}</div>
@@ -586,7 +586,7 @@ async function viewStamps() {
     <div class="topbar">
       <a class="icon-btn" href="#/" aria-label="返回">${ICON.back}</a>
       <h1>印章冊</h1>
-      <div class="count"><b style="font-size:16px;color:var(--happy)">${stamps.filter((x) => x.got).length}</b> / ${stamps.length}</div>
+      <div class="count"><b style="font-size:16px;color:var(--happy-text)">${stamps.filter((x) => x.got).length}</b> / ${stamps.length}</div>
     </div>
     ${next ? `<div class="card" style="background:var(--happy-bg);border-color:transparent;gap:4px">
       <div class="small bold" style="color:var(--happy-dark)">下一個印章</div>

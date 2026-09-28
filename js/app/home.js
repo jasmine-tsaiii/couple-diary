@@ -270,11 +270,11 @@ function exampleCard(type) {
   const st = x.status ? STATUS[x.status] : null;
   return `<a class="card example-card ${TYPES[type].theme}" href="#/new/${type}" data-example="${type}">
     <div class="row between"><span class="badge example-badge">範例・${TYPES[type].short}</span>${st ? `<span class="badge ${st.cls}">${st.label}</span>` : ''}</div>
-    <div class="bold" style="font-size:16px">${x.category ? `<span class="small" style="color:var(--fight)">${esc(x.category)}・</span>` : ''}${esc(x.title)} ${esc(x.emoji)}</div>
+    <div class="bold" style="font-size:16px">${x.category ? `<span class="small" style="color:var(--fight-text)">${esc(x.category)}・</span>` : ''}${esc(x.title)} ${esc(x.emoji)}</div>
     <div class="small muted">${esc(x.text)}</div>
     ${x.extra ? `<div class="small" style="color:var(--accent-dark)">${esc(x.extra)}</div>` : ''}
     ${x.tags ? `<div class="small muted">${x.tags.map((t) => '#' + esc(t)).join(' ')}</div>` : ''}
-    <div class="small bold" style="color:var(--accent)">寫一則自己的 ›</div>
+    <div class="small bold" style="color:var(--accent-text)">寫一則自己的 ›</div>
   </a>`;
 }
 function examplesBlock(types) {
@@ -324,7 +324,7 @@ async function viewList(type, tagFilter) {
     <div class="topbar">
       <a class="icon-btn" href="#/" aria-label="返回">${ICON.back}</a>
       <h1>${conf.label}</h1>
-      <div class="count"><b style="font-size:16px;color:var(--accent)">${total}</b>${type === 'cloud' ? ' 則' : ` / ${conf.goal}`}</div>
+      <div class="count"><b style="font-size:16px;color:var(--accent-text)">${total}</b>${type === 'cloud' ? ' 則' : ` / ${conf.goal}`}</div>
     </div>
     ${type === 'cloud' ? `<div class="card mascot-hello" style="background:var(--cloud-bg);border-color:transparent">${mascotHtml('cloud', 120)}<div class="small" style="color:var(--cloud-dark)">不開心的時刻也值得記下來，心情過去了就按「已放晴」。</div></div>` : `<div class="progress" style="height:8px"><div style="width:${pct}%"></div></div>`}
     ${twoAuthors ? `<div class="chips">
@@ -428,7 +428,7 @@ async function viewFights(catFilter, statusFilter) {
         const n = (f.followUps || []).length;
         const extra = f.status === 'resolved' && f.resolution ? `解法：${esc(f.resolution)}` : (n ? `${n} 則後續進展` : '還沒有後續進展');
         return `<a class="card" href="#/view/${esc(f.id)}" style="gap:6px">
-          <div class="row between"><span class="small bold" style="color:var(--fight)">${esc(f.category || '沒選分類')}</span><span class="badge ${s.cls}">${s.label}</span></div>
+          <div class="row between"><span class="small bold" style="color:var(--fight-text)">${esc(f.category || '沒選分類')}</span><span class="badge ${s.cls}">${s.label}</span></div>
           <div class="bold" style="font-size:16px">${isNewFromOther(f) ? '<span class="new-dot" aria-label="新的"></span> ' : ''}${esc(f.title)}</div>
           <div class="muted small">${shortDate(f.date)} · ${extra} ${esc((f.emojis || []).join(''))}${byOther(f) ? ` · ${esc(f.authorName || (partner ? ownerName() : partnerName()))}新增` : ''}</div>
         </a>`;

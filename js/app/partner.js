@@ -79,7 +79,7 @@ async function viewPartnerTasks() {
         const state = s === 'pending' ? `<span class="badge st-progress">已送出${sentAgo == null ? '' : sentAgo === 0 ? '・今天' : `・${sentAgo} 天前`}，等${esc(otherName())}確認</span>`
           : s === 'rejected' ? `<span class="badge st-open">被退回了，可以再試一次</span>${t.submission.review_note ? `<div class="small" style="color:var(--open-ink, var(--accent))">${esc(otherName())}說：「${esc(t.submission.review_note)}」</div>` : ''}` : '';
         return `<div class="card ${TYPES[t.type].theme}" style="gap:8px">
-          <div class="row between"><span class="small bold" style="color:var(--accent)">${ICON.lockSmall} 一則${TYPES[t.type].label}</span>
+          <div class="row between"><span class="small bold" style="color:var(--accent-text)">${ICON.lockSmall} 一則${TYPES[t.type].label}</span>
           <span class="small muted">${t.task.mode === 'photo' ? '要上傳照片' : '按完成就好'}</span></div>
           <div class="bold" style="font-size:16px">${esc(t.task.text)}</div>
           ${state}

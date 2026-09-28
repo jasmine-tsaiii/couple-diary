@@ -80,6 +80,9 @@
   function track(name, params = {}) {
     const spec = EVENTS[name];
     if (!spec || off() || !load()) return;
+    // 每段使用的第一個事件要是 page_view，GA4 才抓得到來源；不然來源會變成 (not set)
+    if (lastPath === null || Date.now() - lastHit > IDLE) pageView();
+    lastHit = Date.now();
     const out = {};
     for (const [k, check] of Object.entries(spec)) {
       if (!(k in params)) continue;
@@ -89,11 +92,16 @@
     window.gtag('event', name, out);
   }
   let lastPath = null;
+  let lastHit = 0;
+  // GA4 閒置 30 分鐘就算新的一段使用；App 放在背景很久再打開時，要重送一次 page_view
+  const IDLE = 29 * 60 * 1000;
   function pageView() {
     if (off() || !load()) return;
     const path = pagePath();
-    if (path === lastPath) return;
+    const idle = Date.now() - lastHit > IDLE;
+    if (path === lastPath && !idle) return;
     lastPath = path;
+    lastHit = Date.now();
     window.gtag('event', 'page_view', { page_location: location.origin + path + firstSearch, page_path: path, page_title: '啾啾日記' });
   }
   function setEnabled(on) {
@@ -102,5 +110,8 @@
     if (on && ID) { try { window[`ga-disable-${ID}`] = false; } catch (e) { /* 略過 */ } }
   }
   if (ID && off()) window[`ga-disable-${ID}`] = true;
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible' && lastPath !== null && Date.now() - lastHit > IDLE) pageView();
+  });
   window.Analytics = { track, pageView, setEnabled, enabled: () => !!ID && !off(), configured: () => !!ID, EVENTS };
 })();

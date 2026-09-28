@@ -458,7 +458,8 @@ async function viewCard(kind, id) {
     const file = new File([blob], `jiujiu-diary-${kind}-${today()}.png`, { type: 'image/png' });
     if (navigator.canShare && navigator.canShare({ files: [file] })) {
       try {
-        await navigator.share({ files: [file], title: '啾啾日記' });
+        // 只送圖片：加了 title 或 text，LINE、Threads 會把那段字當成貼文內容
+        await navigator.share({ files: [file] });
         track('card_share', { kind, size: opt.size, how: 'share' });
         return;
       } catch (e) {

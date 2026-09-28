@@ -124,7 +124,7 @@ async function viewDetail(id) {
       notesPart = `<div class="card" style="background:var(--happy-bg);border-color:transparent;flex-direction:row;align-items:center"><span style="font-size:20px">❤️</span><span class="bold" style="color:var(--happy-dark)">${esc(hearts[0].partner_name)} 按了愛心</span></div>`;
     } else if (r.type === 'fight' && ((partner && !bound) || pnotes.length)) {
       notesPart = `<div class="card theme-fight" style="gap:10px">
-        <div class="bold" style="color:var(--fight)">${partner ? '我的補充' : `${esc(pnotes[0].partner_name)}的補充`}</div>
+        <div class="bold" style="color:var(--fight-text)">${partner ? '我的補充' : `${esc(pnotes[0].partner_name)}的補充`}</div>
         ${partner && !bound ? `<div class="muted small">${esc(ownerName())}寫的內容你不能改，但可以在這裡補充你的想法，${esc(ownerName())}看得到。</div>` : ''}
         ${pnotes.map((n) => `<div class="field" style="gap:4px">
           <div class="row between"><span class="small muted">${shortDate(n.created_at.slice(0, 10))}</span>${partner ? `<button class="btn small secondary" data-del-pn="${esc(n.id)}">刪除</button>` : ''}</div>
@@ -144,16 +144,16 @@ async function viewDetail(id) {
     fightPart = `
       ${!fightEdit
         ? `<div class="field"><div class="label">狀態</div><span class="badge ${STATUS[s].cls}" style="align-self:flex-start">${STATUS[s].label}</span></div>
-           ${s === 'resolved' && r.resolution ? `<div class="card"><div class="small bold" style="color:var(--fight)">我們怎麼解決的</div><p class="prose">${esc(r.resolution)}</p></div>` : ''}`
+           ${s === 'resolved' && r.resolution ? `<div class="card"><div class="small bold" style="color:var(--fight-text)">我們怎麼解決的</div><p class="prose">${esc(r.resolution)}</p></div>` : ''}`
         : `<div class="field"><div class="label">狀態</div>
         <div class="opts cols-3">${Object.entries(STATUS).map(([k, v]) => `<button class="opt ${k === s ? 'on' : ''}" data-status="${k}">${v.label}</button>`).join('')}</div>
         ${s === 'resolved' ? '' : '<div class="small muted">和好之後按「已解決」，印章冊的「吵架和好」就會加 1。</div>'}
       </div>
       ${s === 'resolved' ? `<div class="field"><label for="resolution">我們怎麼解決的</label><textarea id="resolution" class="textarea" maxlength="${LIMITS.resolution}" style="min-height:70px" placeholder="例如：隔週輪流陪家人">${esc(r.resolution || '')}</textarea></div>` : ''}`}
-      ${r.reason ? `<div class="card"><div class="small bold" style="color:var(--fight)">原因</div><p class="prose">${esc(r.reason)}</p></div>` : ''}
+      ${r.reason ? `<div class="card"><div class="small bold" style="color:var(--fight-text)">原因</div><p class="prose">${esc(r.reason)}</p></div>` : ''}
       ${r.myView || r.theirView ? `<div class="grid2">
-        <div class="card"><div class="small bold" style="color:var(--fight)">${myLabel}</div><p class="prose" style="font-size:14px">${esc(r.myView || '—')}</p></div>
-        <div class="card"><div class="small bold" style="color:var(--fight)">${theirLabel}</div><p class="prose" style="font-size:14px">${esc(r.theirView || '—')}</p></div>
+        <div class="card"><div class="small bold" style="color:var(--fight-text)">${myLabel}</div><p class="prose" style="font-size:14px">${esc(r.myView || '—')}</p></div>
+        <div class="card"><div class="small bold" style="color:var(--fight-text)">${theirLabel}</div><p class="prose" style="font-size:14px">${esc(r.theirView || '—')}</p></div>
       </div>` : ''}
       <div class="field"><div class="label">後續</div>
         <div class="timeline">
