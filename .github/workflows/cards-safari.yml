@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
   push:
     branches: [main]
-    paths: ['js/cards.js', '.github/workflows/cards-safari.yml', 'tests/e2e/t64.js']
+    paths: ['js/cards.js', 'js/db-local.js', 'js/app/record.js', '.github/workflows/cards-safari.yml', 'tests/e2e/t64.js']
 jobs:
   webkit:
     runs-on: ubuntu-latest
