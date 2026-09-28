@@ -30,8 +30,16 @@ const LocalDB = (() => {
       const r = fn(s);
       if (r) r.onsuccess = () => { result = r.result; };
       t.oncomplete = () => resolve(result);
-      t.onerror = () => reject(t.error);
+      // Safari 有時錯誤是 null：換成看得懂的錯誤，免得按儲存沒反應
+      const fail = () => reject(t.error || new Error('存到手機時失敗了，請再試一次'));
+      t.onerror = fail;
+      t.onabort = fail;
     });
+  }
+
+  function fromStored(p) {
+    if (p && !p.blob && p.buf) { const { buf, type, ...rest } = p; return { ...rest, blob: new Blob([buf], { type: type || 'image/jpeg' }) }; }
+    return p;
   }
 
   function uid() {
@@ -44,10 +52,18 @@ const LocalDB = (() => {
     getRecord: (id) => tx('records', 'readonly', (s) => s.get(id)),
     putRecord: (rec) => tx('records', 'readwrite', (s) => s.put(rec)),
     deleteRecord: (id) => tx('records', 'readwrite', (s) => s.delete(id)),
-    getPhoto: (id) => tx('photos', 'readonly', (s) => s.get(id)),
-    putPhoto: (photo) => tx('photos', 'readwrite', (s) => s.put(photo)),
+    getPhoto: async (id) => fromStored(await tx('photos', 'readonly', (s) => s.get(id))),
+    // 有些 Safari（例如無痕模式）不能把照片檔直接存進 IndexedDB：失敗時改存成位元組，讀出來再變回照片
+    putPhoto: async (photo) => {
+      try { return await tx('photos', 'readwrite', (s) => s.put(photo)); } catch (e) {
+        if (!photo || !(photo.blob instanceof Blob)) throw e;
+        const buf = await photo.blob.arrayBuffer();
+        const { blob, ...rest } = photo;
+        return tx('photos', 'readwrite', (s) => s.put({ ...rest, buf, type: blob.type || 'image/jpeg' }));
+      }
+    },
     deletePhoto: (id) => tx('photos', 'readwrite', (s) => s.delete(id)),
-    allPhotos: () => tx('photos', 'readonly', (s) => s.getAll()),
+    allPhotos: async () => (await tx('photos', 'readonly', (s) => s.getAll())).map(fromStored),
     getSetting: async (key, fallback) => {
       const row = await tx('settings', 'readonly', (s) => s.get(key));
       return row ? row.value : fallback;
