@@ -244,6 +244,7 @@ async function viewSettings() {
       ${isPartner() ? '' : '<button class="btn small secondary" id="clean-photos">整理雲端照片</button>'}
       <button class="btn small secondary" id="logout">登出</button>
     </div>
+    ${usingCloud() && !CloudDB.isAnonymous() ? loginMethodsCard() : ''}
     ${localCount ? `<div class="card" style="background:var(--progress-bg);border-color:transparent">
       <div class="bold" style="color:var(--progress-ink)">把這支手機裡的紀錄搬上雲端</div>
       <div class="small" style="color:var(--progress-ink)">這支手機裡還有 ${localCount} 則以前存的紀錄。${migratedAt ? `上次搬的時間是 ${daysAgo(migratedAt) === 0 ? '今天' : daysAgo(migratedAt) + ' 天前'}，再搬一次也不會重複。` : '搬上去之後，手機裡的也會留著當備份。'}</div>
@@ -425,6 +426,24 @@ async function viewSettings() {
     toast(`已刪除 ${unused.length} 張用不到的照片`);
     viewSettings();
   }));
+  const linkG = document.getElementById('link-google');
+  if (linkG) linkG.addEventListener('click', () => withBusy(linkG, '前往 Google…', async () => {
+    try { sessionStorage.setItem('linkPending', '1'); } catch (e) { /* 略過 */ }
+    try { await CloudDB.linkGoogle(); } catch (e) {
+      try { sessionStorage.removeItem('linkPending'); } catch (x) { /* 略過 */ }
+      toast(/暫時不能用/.test(e.message) ? 'Google 連結功能還沒開好，晚點再試，或先用 Email 和密碼登入' : `連結 Google 沒有成功：${e.message}`);
+    }
+  }));
+  const pwForm = document.getElementById('set-password');
+  if (pwForm) pwForm.addEventListener('submit', (ev) => {
+    ev.preventDefault();
+    const pw = pwForm.querySelector('input').value;
+    if (pw.length < 6) { toast('密碼至少要 6 個字'); return; }
+    const btn = pwForm.querySelector('button');
+    withBusy(btn, '設定中…', async () => {
+      try { await CloudDB.updatePassword(pw); toast('密碼設好了，之後也能用 Email 和密碼登入'); viewSettings(); } catch (e) { toast(cloudErrorText(e)); }
+    });
+  });
   const logout = document.getElementById('logout');
   if (logout) logout.addEventListener('click', async () => {
     if (!confirm('要登出嗎？雲端的資料不會不見，之後登入就能看到。')) return;
@@ -571,4 +590,24 @@ async function viewArchive() {
       go('#/settings');
     });
   });
+}
+
+// 登入方式：同一個帳號可以同時用 Email 密碼和 Google 登入
+function loginMethodsCard() {
+  const m = CloudDB.loginMethods();
+  const email = CloudDB.currentEmail() || '';
+  const row = (name, on, note) => `<div class="legal-row" style="cursor:default"><span>${name}</span><span class="small ${on ? '' : 'muted'}">${on ? '已可以用' : '還沒設定'}${note ? `・${note}` : ''}</span></div>`;
+  return `<div class="card login-methods">
+    <div class="bold">登入方式</div>
+    <div class="small muted">同一個帳號可以同時用 Email 密碼和 Google 登入，紀錄都是同一份。</div>
+    ${row('Email 和密碼', m.email, m.email ? esc(email) : '')}
+    ${row('Google', m.google, '')}
+    ${m.google ? '' : `<div class="small muted">如果你的 Google 信箱就是 ${esc(email) || '註冊的信箱'}，直接按 Google 登入也會進到同一個帳號。信箱不一樣的話，按下面連結起來：</div>
+      <button class="btn small secondary" id="link-google">連結 Google 帳號</button>`}
+    ${m.email ? '' : `<form id="set-password" class="row" style="gap:8px;flex-wrap:wrap;margin-top:8px">
+      <input type="password" autocomplete="new-password" placeholder="設定一組密碼（至少 6 個字）" maxlength="72" style="flex:1;min-width:160px">
+      <button class="btn small secondary" type="submit">設定密碼</button>
+    </form>
+    <div class="small muted">設好之後，也可以用 ${esc(email)} 加這組密碼登入。</div>`}
+  </div>`;
 }

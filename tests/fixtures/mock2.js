@@ -301,7 +301,7 @@
           async getSession() { const u = me(); return { data: { session: u ? { user: u } : null }, error: null }; },
           async signInWithPassword({ email, password }) {
             if (password !== 'secret123') return { data: {}, error: { message: 'Invalid login credentials' } };
-            const S = load(); const id = 'owner-' + email.split('@')[0]; S.users[id] = { id, email, is_anonymous: false }; save(S);
+            const S = load(); const id = 'owner-' + email.split('@')[0]; S.users[id] = { id, email, is_anonymous: false, identities: [{ provider: 'email' }] }; save(S);
             sessionStorage.setItem('mockUid', id); return { data: { session: { user: S.users[id] } }, error: null };
           },
           async signInAnonymously() {
@@ -316,7 +316,7 @@
             return { data: {}, error: null };
           },
           async refreshSession() { return { data: { session: me() ? { user: me() } : null }, error: null }; },
-          async linkIdentity() { if (localStorage.getItem('mockLinkErr')) return { data: {}, error: { message: 'Manual linking is disabled' } }; const S = load(); const u = me(); S.users[u.id].is_anonymous = false; S.users[u.id].email = 'google@x.com'; save(S); return { data: {}, error: null }; },
+          async linkIdentity() { if (localStorage.getItem('mockLinkErr')) return { data: {}, error: { message: 'Manual linking is disabled' } }; const S = load(); const u = me(); const wasAnon = S.users[u.id].is_anonymous; S.users[u.id].is_anonymous = false; if (wasAnon) S.users[u.id].email = 'google@x.com'; S.users[u.id].identities = [...(S.users[u.id].identities || []), { provider: 'google' }]; save(S); return { data: {}, error: null }; },
           async signUp() { return { data: {}, error: { message: 'x' } }; },
           async signOut() { sessionStorage.removeItem('mockUid'); return { error: null }; },
           async exchangeCodeForSession() { return { data: {}, error: null }; },

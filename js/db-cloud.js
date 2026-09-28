@@ -140,6 +140,15 @@ const CloudDB = CLOUD_ENABLED ? (() => {
       check(await client.auth.updateUser({ password }));
     },
     currentEmail: () => (session ? session.user.email : null),
+    // 這個帳號可以用哪些方式登入：{ email: 有沒有 Email 身分, google: 有沒有連結 Google }
+    loginMethods: () => {
+      const u = session && session.user;
+      if (!u) return { email: false, google: false };
+      const ids = (u.identities || []).map((i) => i.provider);
+      const prov = (u.app_metadata && u.app_metadata.providers) || [];
+      const has = (p) => ids.includes(p) || prov.includes(p);
+      return { email: has('email'), google: has('google') };
+    },
     // 拿一次從網址帶回來的錯誤（拿過就清掉）
     takeUrlError: () => { const e = urlError; urlError = null; return e; },
     isSignedIn: () => !!session,

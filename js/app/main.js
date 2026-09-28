@@ -330,6 +330,8 @@ if ('serviceWorker' in navigator && (location.protocol === 'https:' || localStor
     }
     if (linking && CloudDB.isBoundPartner()) { bindError = ''; toast('帳號建立好了！'); }
     else if (linking && isPartner()) { bindError = googleBindErrorText(urlErr); go('#/bind'); }
+    else if (linking && !urlErr && CloudDB.loginMethods().google) toast('Google 帳號連結好了，之後兩種方式都能登入');
+    else if (linking && urlErr) toast(/identity_already_exists|already/i.test(`${urlErr.code} ${urlErr.message}`) ? '這個 Google 帳號已經是另一個啾啾日記帳號了，沒辦法連結。換一個 Google 帳號試試。' : /manual linking|disabled/i.test(`${urlErr.message}`) ? 'Google 連結功能還沒開好，晚點再試' : `連結 Google 沒有成功：${urlErr.message || urlErr.code}`);
     else if (urlErr) toast(/identity_already_exists|already/i.test(`${urlErr.code} ${urlErr.message}`) ? '這個 Google 帳號已經被用過了，換一個帳號或改用 Email。' : `Google 登入沒有成功：${urlErr.message || urlErr.code}`);
   }
   route();
