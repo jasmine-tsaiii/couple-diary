@@ -19,6 +19,10 @@ const OUT = (process.env.SHOT_DIR || '.') + '/';
     await p.click('#save');
     // 有照片時存檔要先壓縮照片，Safari 引擎比較慢：等到跳到紀錄頁才算存好
     const ok = await p.waitForFunction(() => location.hash.startsWith('#/view/'), null, { timeout: 30000 }).then(() => true).catch(() => false);
+    if (!ok) console.log('blob put test', await p.evaluate(() => Promise.race([
+      LocalDB.putPhoto({ id: 'probe', blob: new Blob(['abc'], { type: 'image/jpeg' }), createdAt: 1 }).then(() => 'ok', (e) => 'err ' + (e && (e.name + ' ' + e.message))),
+      new Promise((r) => setTimeout(() => r('hang'), 5000)),
+    ])), 'save btn', await p.evaluate(() => { const b = document.getElementById('save'); return b ? b.disabled + ' ' + b.textContent.trim() : 'none'; }));
     if (!ok) console.log('save stuck', title, JSON.stringify(((await p.textContent('#app').catch(() => '')) || '').slice(0, 200)));
     return p.url().split('/').pop();
   };
