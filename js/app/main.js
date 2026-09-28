@@ -18,6 +18,7 @@ async function renderRoute() {
   // 意見回饋會附上是從哪一頁來的（只有頁面名稱，不含紀錄內容）
   if (page !== 'feedback') { try { sessionStorage.setItem('fbFrom', page || 'home'); } catch (e) { /* 沒關係 */ } }
   app.className = '';
+  app.style.minHeight = '';
   app.oninput = null;
   formGuard = null;
   lastHash = location.hash;

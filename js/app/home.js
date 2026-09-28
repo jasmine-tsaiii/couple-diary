@@ -340,7 +340,7 @@ async function viewList(type, tagFilter) {
     <div class="grid2" id="grid"></div>
     ${!mine.length && examples ? examplesBlock([type]) : mine.length || (who !== 'mine' && lockedOthers.length) ? '' : partner && !CloudDB.isBoundPartner() ? `<div class="empty">${esc(ownerName())}還沒有分享${conf.label}<a class="btn small secondary" href="#/bind">建立帳號，自己也來寫</a></div>` : `<div class="empty">還沒有${who === 'other' ? `${esc(otherName())}分享的` : ''}${conf.label}${who === 'other' ? '' : `<a class="btn small" href="#/new/${type}">新增第一則</a>`}</div>`}
   `;
-  app.querySelectorAll('[data-tag]').forEach((b) => b.addEventListener('click', () => viewList(type, b.dataset.tag || null)));
+  app.querySelectorAll('[data-tag]').forEach((b) => b.addEventListener('click', () => keepPlace(() => viewList(type, b.dataset.tag || null))));
   app.querySelectorAll('[data-who]').forEach((b) => b.addEventListener('click', () => { listWho = b.dataset.who; viewList(type, tagFilter); }));
 
   const grid = document.getElementById('grid');
@@ -440,6 +440,6 @@ async function viewFights(catFilter, statusFilter) {
     ${lockedFights ? `<div class="card" style="background:var(--lock-bg);border-color:transparent;gap:4px;flex-direction:row;align-items:center">${ICON.lockSmall}<span class="small" style="color:var(--lock)">另外還有 ${lockedFights} 則上鎖的吵架議題</span></div>` : ''}
     ${!fights.length && examples ? examplesBlock(['fight']) : fights.length ? (shown.length ? '' : '<div class="empty">這個條件下沒有議題</div>') : isPartner() ? (lockedFights ? '' : '<div class="empty">還沒有吵架議題</div>') : `<div class="empty">還沒有吵架議題，很棒！<a class="btn small" href="#/new/fight">新增一個議題</a></div>`}
   `;
-  app.querySelectorAll('[data-cat]').forEach((b) => b.addEventListener('click', () => viewFights(b.dataset.cat || null, statusFilter)));
-  app.querySelectorAll('[data-st]').forEach((b) => b.addEventListener('click', () => viewFights(catFilter, b.dataset.st || null)));
+  app.querySelectorAll('[data-cat]').forEach((b) => b.addEventListener('click', () => keepPlace(() => viewFights(b.dataset.cat || null, statusFilter))));
+  app.querySelectorAll('[data-st]').forEach((b) => b.addEventListener('click', () => keepPlace(() => viewFights(catFilter, b.dataset.st || null))));
 }

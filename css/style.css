@@ -142,7 +142,7 @@ a.card:active { transform: scale(0.99); }
 .item-emoji { font-size: 20px; }
 
 .chips { display: flex; gap: 6px; flex-wrap: wrap; }
-.chips.scroll { flex-wrap: nowrap; overflow-x: auto; padding-bottom: 2px; }
+.chips.scroll { flex-wrap: nowrap; overflow-x: auto; padding-bottom: 2px; position: relative; }
 .chip {
   padding: 7px 14px; border-radius: 99px; background: var(--card); border: 1px solid var(--field);
   color: var(--soft); font-size: 13px; white-space: nowrap; min-height: 34px;

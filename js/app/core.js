@@ -99,6 +99,21 @@ function toast(msg) {
   toast.timer = setTimeout(() => t.classList.remove('show'), 1800);
 }
 function go(hash) { location.hash = hash; }
+// 同一頁換篩選條件時重畫：留在原本的位置，橫向捲動的標籤列也不要跳回最左邊（iPhone 點最右邊的分類會跳掉）
+async function keepPlace(render) {
+  const y = window.scrollY;
+  const lefts = [...app.querySelectorAll('.chips.scroll')].map((el) => el.scrollLeft);
+  app.style.minHeight = app.offsetHeight + 'px'; // 結果變少時頁面不會突然縮短、整頁往上跳
+  await render();
+  app.querySelectorAll('.chips.scroll').forEach((el, i) => {
+    el.scrollLeft = lefts[i] || 0;
+    const on = el.querySelector('.chip.on');
+    if (on && (on.offsetLeft < el.scrollLeft || on.offsetLeft + on.offsetWidth > el.scrollLeft + el.clientWidth)) {
+      el.scrollLeft = Math.max(0, on.offsetLeft - (el.clientWidth - on.offsetWidth) / 2);
+    }
+  });
+  window.scrollTo(0, y);
+}
 // 編輯頁還沒儲存時，手機返回鍵、滑動返回、重新整理都要先問（record.js 設定，換頁後清掉）
 let formGuard = null;
 // 按鈕處理中先停用，避免連點；失敗時說清楚並恢復按鈕讓人重試
