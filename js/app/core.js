@@ -266,16 +266,20 @@ async function loadNames() {
   try { NAMES = { me: '', partner: '', ...(await DB.getSetting('names', {})) }; } catch (e) { NAMES = { me: '', partner: '' }; }
   // 吉祥物的顏色：另一半看到的是主人選的顏色
   try { MASCOT_PICK = isPartner() ? (CloudDB.partnerInfo().mascot || null) : await DB.getSetting('mascot', null); } catch (e) { MASCOT_PICK = null; }
-  // 放到主畫面：從主畫面打開過一次就記在帳號上，之後在 Safari 也不再提醒（iPhone 的主畫面和 Safari 資料是分開的）
+  // 放到主畫面：從主畫面打開時把時間記在帳號上，30 天內在 Safari 也不再提醒（iPhone 的主畫面和 Safari 資料是分開的）。
+  // 超過 30 天沒從主畫面打開（可能圖示刪掉了、換手機），就恢復提醒。以前存的 true 沒有時間，當作很久以前。
   if (usingCloud() && !isPartner() && !CloudDB.isAnonymous()) {
     try {
-      HOME_APP_SEEN = !!(await DB.getSetting('usesHomeApp', false));
+      const v = await DB.getSetting('usesHomeApp', 0);
+      const last = typeof v === 'number' ? v : 0;
       const standalone = window.matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
-      if (standalone && !HOME_APP_SEEN) { HOME_APP_SEEN = true; DB.setSetting('usesHomeApp', true).catch(() => {}); }
+      if (standalone && Date.now() - last > 86400000) DB.setSetting('usesHomeApp', Date.now()).catch(() => {});
+      HOME_APP_SEEN = standalone || Date.now() - last < HOME_APP_FRESH_DAYS * 86400000;
     } catch (e) { /* 略過 */ }
   }
 }
 let HOME_APP_SEEN = false;
+const HOME_APP_FRESH_DAYS = 30;
 // ---------- 吉祥物「啾啾與啵啵」 ----------
 let MASCOT_PICK = null;
 function mascotHtml(mood, width, extraClass = '') {

@@ -14,7 +14,7 @@ const U = process.env.U || 'http://localhost:8770/';
   await p.fill('#email', 'jas@x.com'); await p.fill('#password', 'secret123'); await p.click('#login-btn');
   await p.waitForSelector('#role-owner', { timeout: 15000 }); await p.click('#role-owner'); await p.waitForTimeout(500);
   // 這個帳號從主畫面打開過（記在帳號上）
-  await p.evaluate(async () => { await DB.setSetting('usesHomeApp', true); await DB.setSetting('names', { me: '公主', partner: '馬鈴薯' }); await DB.setSetting('backupSnoozeAt', Date.now()); });
+  await p.evaluate(async () => { await DB.setSetting('usesHomeApp', Date.now()); await DB.setSetting('names', { me: '公主', partner: '馬鈴薯' }); await DB.setSetting('backupSnoozeAt', Date.now()); });
   await p.reload(); await p.waitForTimeout(800);
   await p.goto(U + '#/new/happy'); await p.waitForSelector('#f-title'); await p.fill('#f-title', '早餐'); await p.click('#save'); await p.waitForSelector('#done', { timeout: 8000 });
   await p.waitForTimeout(2000);
@@ -32,5 +32,10 @@ const U = process.env.U || 'http://localhost:8770/';
   console.log('record shows new partner name', txt.includes('小薯') && !txt.includes('舊名字'));
   const share = await p.evaluate(() => { const S = JSON.parse(localStorage.getItem('mockServer')); return (S.t.shares || []).map((x) => x.owner_name); });
   console.log('share name synced (if shared)', share.length === 0 || share.every((n) => n === '女王'));
+  // 以前存的 true（沒有時間）或 30 天以上沒從主畫面打開 → 恢復提醒
+  await p.evaluate(async () => { await DB.setSetting('usesHomeApp', true); localStorage.removeItem('a2hsShown'); localStorage.removeItem('a2hsCardHiddenAt'); });
+  await p.goto(U + '#/new/happy'); await p.reload(); await p.waitForSelector('#f-title'); await p.fill('#f-title', '晚餐'); await p.click('#save'); await p.waitForSelector('#done', { timeout: 8000 });
+  await p.waitForSelector('.a2hs-dlg', { timeout: 6000 }).catch(() => {});
+  console.log('old flag no longer blocks popup', await p.isVisible('.a2hs-dlg'));
   console.log('errors', errs); await b.close();
 })();
