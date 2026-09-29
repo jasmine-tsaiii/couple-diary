@@ -88,12 +88,20 @@ Deno.serve(async (req) => {
   if (!key) return new Response('RESEND_API_KEY not set', { status: 500 });
   const now = Date.now();
   const { data, error } = await db.from('notifications')
-    .select('id, recipient, actor_name, kind, record_id, extra, created_at')
+    .select('id, recipient, space_owner, actor, actor_name, kind, record_id, extra, created_at')
     .is('emailed_at', null).is('read_at', null)
     .lt('created_at', new Date(now - 5 * 60 * 1000).toISOString())
     .gt('created_at', new Date(now - 2 * 86400 * 1000).toISOString())
     .order('created_at', { ascending: true }).limit(500);
   if (error) return new Response(error.message, { status: 500 });
+  // 名字用現在的：改過名字後，信裡也是新名字
+  const names = new Map<string, string>();
+  for (const r of (data || []) as (Row & { space_owner: string; actor: string | null })[]) {
+    if (!r.actor) continue;
+    const k = `${r.space_owner}/${r.actor}`;
+    if (!names.has(k)) { const { data: nm } = await db.rpc('space_member_name', { p_owner: r.space_owner, p_uid: r.actor }); names.set(k, nm && nm !== '對方' ? nm : ''); }
+    if (names.get(k)) r.actor_name = names.get(k)!;
+  }
   const byUser = new Map<string, Row[]>();
   for (const r of (data || []) as Row[]) byUser.set(r.recipient, [...(byUser.get(r.recipient) || []), r]);
   let sent = 0;

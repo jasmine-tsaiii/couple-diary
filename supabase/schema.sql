@@ -1531,14 +1531,20 @@ drop policy if exists "notify_prefs_select_own" on public.notify_prefs;
 create policy "notify_prefs_select_own" on public.notify_prefs for select to authenticated using (uid = auth.uid());
 
 -- 誰的名字：主人用分享時填的名字，另一半用加入時的名字
+-- 2026-09-29：主人先用分享名字、再用設定裡「你的名字」；另一半先用主人幫他取的名字（設定裡「伴侶的名字」）、再用加入時的名字
 create or replace function public.space_member_name(p_owner uuid, p_uid uuid) returns text
 language sql stable security definer set search_path = public as $$
   select coalesce(
-    case when p_uid = p_owner then (select nullif(owner_name, '') from public.shares where owner = p_owner)
-         else (select name from public.partners where owner = p_owner and uid = p_uid) end,
+    case when p_uid = p_owner then coalesce(
+           (select nullif(owner_name, '') from public.shares where owner = p_owner),
+           (select nullif(value ->> 'me', '') from public.settings where owner = p_owner and key = 'names' and jsonb_typeof(value) = 'object'))
+         else coalesce(
+           (select nullif(value ->> 'partner', '') from public.settings where owner = p_owner and key = 'names' and jsonb_typeof(value) = 'object'),
+           (select nullif(name, '') from public.partners where owner = p_owner and uid = p_uid)) end,
     '對方')
 $$;
 revoke all on function public.space_member_name(uuid, uuid) from public, anon, authenticated;
+grant execute on function public.space_member_name(uuid, uuid) to service_role;
 
 -- 新增美好時刻（給對方看、或要完成任務才能看）時通知對方。上鎖的、烏雲、吵架不通知；搬家或匯入的舊紀錄也不通知
 create or replace function public.notify_new_record() returns trigger
@@ -1834,7 +1840,9 @@ revoke all on function public.notify_daily() from public, anon, authenticated;
 create or replace function public.my_notifications() returns jsonb
 language sql stable security definer set search_path = public as $$
   select coalesce(jsonb_agg(to_jsonb(x) order by x.created_at desc), '[]'::jsonb) from (
-    select id, actor_name, kind, record_id, extra, created_at, read_at from public.notifications
+    -- 名字用現在的（改過名字，舊通知也跟著改）
+    select id, case when actor is null then actor_name else coalesce(nullif(public.space_member_name(space_owner, actor), '對方'), actor_name) end as actor_name,
+      kind, record_id, extra, created_at, read_at from public.notifications
     where recipient = auth.uid() order by created_at desc limit 50
   ) x
 $$;

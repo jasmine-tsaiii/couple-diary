@@ -266,7 +266,16 @@ async function loadNames() {
   try { NAMES = { me: '', partner: '', ...(await DB.getSetting('names', {})) }; } catch (e) { NAMES = { me: '', partner: '' }; }
   // 吉祥物的顏色：另一半看到的是主人選的顏色
   try { MASCOT_PICK = isPartner() ? (CloudDB.partnerInfo().mascot || null) : await DB.getSetting('mascot', null); } catch (e) { MASCOT_PICK = null; }
+  // 放到主畫面：從主畫面打開過一次就記在帳號上，之後在 Safari 也不再提醒（iPhone 的主畫面和 Safari 資料是分開的）
+  if (usingCloud() && !isPartner() && !CloudDB.isAnonymous()) {
+    try {
+      HOME_APP_SEEN = !!(await DB.getSetting('usesHomeApp', false));
+      const standalone = window.matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
+      if (standalone && !HOME_APP_SEEN) { HOME_APP_SEEN = true; DB.setSetting('usesHomeApp', true).catch(() => {}); }
+    } catch (e) { /* 略過 */ }
+  }
 }
+let HOME_APP_SEEN = false;
 // ---------- 吉祥物「啾啾與啵啵」 ----------
 let MASCOT_PICK = null;
 function mascotHtml(mood, width, extraClass = '') {
@@ -302,7 +311,22 @@ function isMine(r) {
   return r.author ? r.author === CloudDB.myId() : !isPartner();
 }
 const otherName = () => (isPartner() ? ownerName() : partnerName());
-const authorLabel = (r) => (isMine(r) ? '你' : esc(r.authorName || otherName()));
+// 對方現在的名字：改過名字後，舊紀錄、通知、任務上顯示的也跟著用新的；都沒填才用當時存下來的名字
+const liveOther = (snap) => (isPartner() ? CloudDB.partnerInfo().owner_name : NAMES.partner) || snap || '對方';
+const authorLabel = (r) => (isMine(r) ? '你' : esc(liveOther(r.authorName)));
+// 吵架後續是誰寫的：新的有記 byUid，就用現在的名字
+function followUpBy(f) {
+  if (!f.byUid || !usingCloud()) return f.by || '';
+  if (f.byUid === CloudDB.myId()) return (isPartner() ? CloudDB.partnerInfo().name : NAMES.me) || f.by || '';
+  return liveOther(f.by);
+}
+// 改自己的名字：設定裡的名字和分享時對方看到的名字一起改，兩邊才不會不一樣
+async function saveNames(names) {
+  await DB.setSetting('names', names);
+  if (usingCloud() && !isPartner() && !CloudDB.isAnonymous() && names.me) {
+    try { const sh = await CloudDB.getShare(); if (sh && sh.owner_name !== names.me) await CloudDB.saveShare(sh.code, null, names.me); } catch (e) { /* 分享名字之後再同步 */ }
+  }
+}
 // 可見度的說明用伴侶的名字，例如「給小明看」
 const visLabel = (k) => (k === 'shared' && (isPartner() || NAMES.partner) ? `給${otherName()}看` : VISIBILITY[k]);
 // 日期要在 1970 年到今天之間

@@ -174,7 +174,7 @@ async function viewHome() {
     ${newFromOtherCard(all)}
     ${pending.length ? `<a class="card" href="#/view/${esc(pending[0].record_id)}" style="background:var(--lock-bg);border-color:transparent;gap:4px">
       <div class="bold" style="color:var(--lock)">有 ${pending.length} 個任務等你確認</div>
-      <div class="small" style="color:var(--lock)">${esc(pending[0].partner_name)} 完成了任務，點這裡去看看，確認後那則紀錄就會解鎖給對方看。</div>
+      <div class="small" style="color:var(--lock)">${esc(liveOther(pending[0].partner_name))} 完成了任務，點這裡去看看，確認後那則紀錄就會解鎖給對方看。</div>
     </a>` : ''}
     ${myTodo ? `<a class="card" href="#/tasks" id="my-tasks-card" style="background:var(--lock-bg);border-color:transparent;gap:4px">
       <div class="bold" style="color:var(--lock)">${esc(partnerName())}出了 ${myTodo} 個任務給你</div>
@@ -195,7 +195,7 @@ async function viewHome() {
       const me = document.getElementById('n-me').value.trim();
       const partner = document.getElementById('n-partner').value.trim();
       if (!me || !partner) { toast('兩個名字都填一下'); return; }
-      await DB.setSetting('names', { me, partner });
+      await saveNames({ ...NAMES, me, partner });
       await loadNames();
       viewHome();
     });
@@ -380,7 +380,7 @@ async function viewList(type, tagFilter) {
         ${(r.tags || []).length ? `<div class="tile-tags">${esc(r.tags.map((t) => '#' + t).join(' '))}</div>` : ''}
         ${(r.reflections || []).length ? `<div class="small muted">💭 ${r.reflections.length} 則反思</div>` : ''}
         ${r.clearedAt ? '<div class="small" style="color:var(--resolved-ink)">☀️ 已放晴</div>' : ''}
-        ${twoAuthors && who === 'all' ? `<div class="small muted">${isMine(r) ? '你寫的' : `${esc(r.authorName || otherName())}寫的`}</div>` : ''}
+        ${twoAuthors && who === 'all' ? `<div class="small muted">${isMine(r) ? '你寫的' : `${esc(liveOther(r.authorName))}寫的`}</div>` : ''}
         ${hearted.has(r.id) ? `<div class="small" style="color:var(--happy-dark)">❤️ ${isMine(r) ? `${esc(otherName())}按了愛心` : '你按了愛心'}</div>` : ''}
         ${lockNote ? `<div class="small row" style="color:var(--lock);gap:4px">${ICON.lockSmall}${lockNote}</div>` : ''}
       </div>`;
@@ -447,7 +447,7 @@ async function viewFights(catFilter, statusFilter) {
         return `<a class="card" href="#/view/${esc(f.id)}" style="gap:6px">
           <div class="row between"><span class="small bold" style="color:var(--fight-text)">${esc(f.category || '沒選分類')}</span><span class="badge ${s.cls}">${s.label}</span></div>
           <div class="bold" style="font-size:16px">${isNewFromOther(f) ? '<span class="new-dot" aria-label="新的"></span> ' : ''}${esc(f.title)}</div>
-          <div class="muted small">${shortDate(f.date)} · ${extra} ${esc((f.emojis || []).join(''))}${byOther(f) ? ` · ${esc(f.authorName || (partner ? ownerName() : partnerName()))}新增` : ''}</div>
+          <div class="muted small">${shortDate(f.date)} · ${extra} ${esc((f.emojis || []).join(''))}${byOther(f) ? ` · ${esc(liveOther(f.authorName))}新增` : ''}</div>
         </a>`;
       }).join('')}
     </div>

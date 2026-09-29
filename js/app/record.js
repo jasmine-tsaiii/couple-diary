@@ -75,7 +75,7 @@ async function viewDetail(id) {
         }
         const stText = { pending: '等你確認', approved: '已通過', rejected: '已退回' }[sub.status] + (sub.status === 'rejected' && sub.review_note ? `：${esc(sub.review_note)}` : '');
         subCards.push(`<div class="card" style="gap:6px">
-          <div class="row between"><span class="bold">${esc(sub.partner_name)} 送出的任務</span><span class="small muted">${shortDate(sub.created_at.slice(0, 10))}・${stText}</span></div>
+          <div class="row between"><span class="bold">${esc(liveOther(sub.partner_name))} 送出的任務</span><span class="small muted">${shortDate(sub.created_at.slice(0, 10))}・${stText}</span></div>
           ${sub.note ? `<div class="prose">${esc(sub.note)}</div>` : ''}
           ${img}
           ${sub.status === 'pending' ? `<div class="btn-row"><button class="btn small" data-approve="${esc(sub.id)}">通過並解鎖</button><button class="btn small secondary" data-reject="${esc(sub.id)}" data-photo="${esc(sub.photo_path || '')}">退回</button></div>` : ''}
@@ -129,7 +129,7 @@ async function viewDetail(id) {
       notesPart = `<div class="card" style="background:var(--happy-bg);border-color:transparent;flex-direction:row;align-items:center"><span style="font-size:20px">❤️</span><span class="bold" style="color:var(--happy-dark)">${esc(hearts[0].partner_name)} 按了愛心</span></div>`;
     } else if (r.type === 'fight' && ((partner && !bound) || pnotes.length)) {
       notesPart = `<div class="card theme-fight" style="gap:10px">
-        <div class="bold" style="color:var(--fight-text)">${partner ? '我的補充' : `${esc(pnotes[0].partner_name)}的補充`}</div>
+        <div class="bold" style="color:var(--fight-text)">${partner ? '我的補充' : `${esc(liveOther(pnotes[0].partner_name))}的補充`}</div>
         ${partner && !bound ? `<div class="muted small">${esc(ownerName())}寫的內容你不能改，但可以在這裡補充你的想法，${esc(ownerName())}看得到。</div>` : ''}
         ${pnotes.map((n) => `<div class="field" style="gap:4px">
           <div class="row between"><span class="small muted">${shortDate(n.created_at.slice(0, 10))}</span>${partner ? `<button class="btn small secondary" data-del-pn="${esc(n.id)}">刪除</button>` : ''}</div>
@@ -164,7 +164,7 @@ async function viewDetail(id) {
         <div class="timeline">
           ${fu.length ? fu.map((f, i) => `<div class="tl-item">
             <div class="tl-rail"><div class="tl-dot"></div>${i < fu.length - 1 ? '<div class="tl-line"></div>' : ''}</div>
-            <div class="tl-body"><div class="muted small">${shortDate(f.date)}${f.by ? `・${esc(f.by)}` : ''}</div><div>${esc(f.text)}</div>${fightEdit ? `<button class="tl-del" data-del-fu="${esc(f.id)}">刪除</button>` : ''}</div>
+            <div class="tl-body"><div class="muted small">${shortDate(f.date)}${followUpBy(f) ? `・${esc(followUpBy(f))}` : ''}</div><div>${esc(f.text)}</div>${fightEdit ? `<button class="tl-del" data-del-fu="${esc(f.id)}">刪除</button>` : ''}</div>
           </div>`).join('') : `<div class="muted">${fightEdit ? '還沒有後續，發生新進展時記下來吧。' : '還沒有後續。'}</div>`}
         </div>
       </div>
@@ -274,7 +274,7 @@ async function viewDetail(id) {
         await updateRecord(r.id, (x) => {
           const list = x.followUps || [];
           if (list.length >= LIMITS.followUpsPerFight) throw new Error(`每個議題最多 ${LIMITS.followUpsPerFight} 則後續`);
-          x.followUps = list.concat({ id: DB.uid(), date, text, by: partner ? CloudDB.partnerInfo().name : myName() }).sort((a, b) => a.date.localeCompare(b.date));
+          x.followUps = list.concat({ id: DB.uid(), date, text, by: partner ? CloudDB.partnerInfo().name : myName(), ...(usingCloud() ? { byUid: CloudDB.myId() } : {}) }).sort((a, b) => a.date.localeCompare(b.date));
           // 第一次加後續時，自動從「未解決」變成「處理中」
           if ((x.status || 'open') === 'open') { x.status = 'progress'; movedToProgress = true; }
         });

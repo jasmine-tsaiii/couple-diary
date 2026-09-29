@@ -104,7 +104,7 @@ async function viewWishes(show = 'todo') {
   const todo = list.filter((w) => !w.done);
   const done = list.filter((w) => w.done).sort((a, b) => (a.done_at < b.done_at ? 1 : -1));
   const partner = isPartner();
-  const who = (w) => (w.created_by === 'partner' ? (partner ? '你加的' : `${esc(w.created_by_name || partnerName())}加的`) : (partner ? `${esc(ownerName())}加的` : ''));
+  const who = (w) => (w.created_by === 'partner' ? (partner ? '你加的' : `${esc(liveOther(w.created_by_name))}加的`) : (partner ? `${esc(ownerName())}加的` : ''));
   const canDelete = (w) => !partner || w.created_by === 'partner';
   const item = (w) => `<div class="card" style="flex-direction:row;align-items:flex-start;gap:12px">
       <button class="wish-check ${w.done ? 'on' : ''}" data-wdone="${esc(w.id)}" aria-label="${w.done ? '取消完成' : '標成完成'}：${esc(w.title)}">${w.done ? '✓' : ''}</button>
@@ -296,7 +296,7 @@ function a2hsEligible() {
   const ua = navigator.userAgent;
   const mobile = /iphone|ipad|ipod|android/i.test(ua) || (navigator.maxTouchPoints > 1 && /Macintosh/.test(ua));
   const standalone = window.matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
-  if (!mobile || standalone) return false;
+  if (!mobile || standalone || HOME_APP_SEEN) return false;
   try {
     if (localStorage.getItem('a2hsNever')) return false;
     const st = JSON.parse(localStorage.getItem('a2hsShown') || '{"n":0,"at":0}');
@@ -452,7 +452,7 @@ function showA2hs(where = 'after_save') {
 const A2HS_CARD_SNOOZE_DAYS = 14;
 function a2hsCardEligible() {
   const pf = a2hsPlatform();
-  if (pf === 'standalone' || pf === 'desktop') return false;
+  if (pf === 'standalone' || pf === 'desktop' || HOME_APP_SEEN) return false;
   try {
     if (localStorage.getItem('a2hsNever')) return false;
     const at = Number(localStorage.getItem('a2hsCardHiddenAt') || 0);

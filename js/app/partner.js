@@ -591,6 +591,8 @@ function bindShareCard() {
     const name = $('s-name').value.trim();
     if (!name) { toast('請填你的名字'); return; }
     await CloudDB.saveShare(document.querySelector('.share-code').textContent, null, name);
+    // 設定裡「你的名字」也一起改，首頁、通知、紀錄上才會一致
+    if (NAMES.me !== name) { await DB.setSetting('names', { ...NAMES, me: name }); await loadNames(); }
     toast('已儲存');
   });
   if ($('s-save-pass')) $('s-save-pass').addEventListener('click', async () => {

@@ -318,7 +318,7 @@ async function viewSettings() {
   document.getElementById('save-names').addEventListener('click', async () => {
     const since = document.getElementById('set-since').value;
     if (since && !dateOk(since)) { toast('日期要在 1970 年到今天之間'); return; }
-    await DB.setSetting('names', { me: document.getElementById('set-me').value.trim(), partner: document.getElementById('set-partner').value.trim(), since });
+    await saveNames({ me: document.getElementById('set-me').value.trim(), partner: document.getElementById('set-partner').value.trim(), since });
     await loadNames();
     toast('已儲存');
   });
