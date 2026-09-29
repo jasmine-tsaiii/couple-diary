@@ -359,43 +359,123 @@ function showSignupSheet(title, text) {
   box.addEventListener('click', (ev) => { if (ev.target === box) close(); });
 }
 const SHARE_ICON = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-3px"><path d="M12 3v12"/><path d="m8 7 4-4 4 4"/><path d="M6 11H5a1 1 0 0 0-1 1v8a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-8a1 1 0 0 0-1-1h-1"/></svg>';
-function a2hsSteps() {
+const ADD_ICON = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" style="vertical-align:-3px"><rect x="4" y="4" width="16" height="16" rx="4"/><path d="M12 8v8M8 12h8"/></svg>';
+const MORE_ICON = '<b style="letter-spacing:1px">⋯</b>';
+// 現在是用什麼打開的：決定加到主畫面的教法
+function a2hsPlatform() {
   const ua = navigator.userAgent;
-  if (IN_APP) return ['這個畫面是在聊天 App 裡打開的，沒辦法加到主畫面', '點右上角的「⋯」，選「用瀏覽器開啟」', '在 Safari 或 Chrome 打開後，再照著提示加到主畫面'];
-  if (/iphone|ipad|ipod/i.test(ua) || /Macintosh/.test(ua)) return [`點畫面下方（或網址列旁）的分享按鈕 ${SHARE_ICON}`, '往下滑，選「加入主畫面」', '按右上角的「新增」'];
-  return ['點右上角的「⋮」', '選「加到主畫面」或「安裝應用程式」', '按「新增」或「安裝」'];
+  if (window.matchMedia('(display-mode: standalone)').matches || navigator.standalone === true) return 'standalone';
+  if (IN_APP) return /Line\//i.test(ua) ? 'line' : 'inapp';
+  if (/iphone|ipad|ipod/i.test(ua) || (navigator.maxTouchPoints > 1 && /Macintosh/.test(ua))) return /CriOS|FxiOS|EdgiOS/i.test(ua) ? 'ios-other' : 'ios';
+  if (/android/i.test(ua)) return 'android';
+  return 'desktop';
 }
-function showA2hs() {
+function a2hsSteps(pf = a2hsPlatform()) {
+  if (pf === 'line' || pf === 'inapp') return [
+    'LINE、IG 裡面沒辦法加到主畫面，要先換到瀏覽器',
+    `點右上角的 ${MORE_ICON}，選「用瀏覽器開啟」（或「在 Safari／Chrome 開啟」）`,
+    '在瀏覽器打開後，會再教你加到主畫面',
+  ];
+  if (pf === 'ios') return [
+    `點 Safari 最下面的分享按鈕 ${SHARE_ICON}（沒看到的話，先點右下角的 ${MORE_ICON}，再點「分享」）`,
+    `往下滑，點「加入主畫面」${ADD_ICON}`,
+    '按右上角的「新增」，主畫面就會出現啾啾的圖示',
+  ];
+  if (pf === 'ios-other') return [
+    `點網址列旁邊的分享按鈕 ${SHARE_ICON}`,
+    `往下滑，點「加入主畫面」${ADD_ICON}（沒有的話請改用 Safari 打開）`,
+    '按右上角的「新增」，主畫面就會出現啾啾的圖示',
+  ];
+  return [`點右上角的 ${MORE_ICON}（三個點）`, '選「加到主畫面」或「安裝應用程式」', '按「安裝」或「新增」，主畫面就會出現啾啾的圖示'];
+}
+// 在 LINE 裡打開：直接叫外部瀏覽器；Android 的其他 App：叫 Chrome；都不行就複製網址
+function openInBrowser() {
+  const pf = a2hsPlatform();
+  const url = location.origin + location.pathname;
+  track('a2hs_open_browser', { platform: pf });
+  if (pf === 'line') { location.href = `${url}?openExternalBrowser=1${location.hash}`; return; }
+  if (/android/i.test(navigator.userAgent)) { location.href = `intent://${location.host}${location.pathname}#Intent;scheme=https;package=com.android.chrome;end`; return; }
+  copyLink(url);
+}
+async function copyLink(url) {
+  try { await navigator.clipboard.writeText(url); toast('網址複製好了，打開 Safari 貼上就可以'); } catch (e) { prompt('複製這個網址，貼到 Safari 或 Chrome', url); }
+}
+// where：after_save（存好紀錄後）、home（首頁提示卡）、settings（設定頁）
+function showA2hs(where = 'after_save') {
   if (document.querySelector('.a2hs-dlg')) return;
-  try {
-    const st = JSON.parse(localStorage.getItem('a2hsShown') || '{"n":0,"at":0}');
-    localStorage.setItem('a2hsShown', JSON.stringify({ n: st.n + 1, at: Date.now() }));
-  } catch (e) { /* 略過 */ }
+  if (where === 'after_save') {
+    try {
+      const st = JSON.parse(localStorage.getItem('a2hsShown') || '{"n":0,"at":0}');
+      localStorage.setItem('a2hsShown', JSON.stringify({ n: st.n + 1, at: Date.now() }));
+    } catch (e) { /* 略過 */ }
+  }
+  const pf = a2hsPlatform();
+  track('a2hs_prompt', { where, platform: pf });
+  const inApp = pf === 'line' || pf === 'inapp';
+  const oneTap = installEvt && !inApp;
   const box = document.createElement('div');
   box.className = 'celebrate a2hs-dlg';
-  const steps = a2hsSteps();
+  const steps = a2hsSteps(pf);
   // 還沒登入的人：iPhone 主畫面和 Safari 的資料是分開的，先存上雲端再加，紀錄才不會像不見了
-  const guestFirst = isGuest() && /iphone|ipad|ipod|Macintosh/i.test(navigator.userAgent) && !IN_APP;
+  const guestFirst = isGuest() && (pf === 'ios' || pf === 'ios-other');
   box.innerHTML = `<div class="celebrate-box" role="dialog" aria-modal="true" aria-label="加到主畫面">
-    ${mascotHtml('celebrate', 130)}
-    <h2 style="font-size:20px">把啾啾日記放到主畫面</h2>
-    <div class="muted">像 App 一樣，點圖示就能打開，想記的時候不用再找網址。${/iphone|ipad|ipod/i.test(navigator.userAgent) ? '放在主畫面，手機也比較不會自動清掉資料。' : ''}</div>
+    <div class="a2hs-preview" aria-hidden="true">
+      <div class="a2hs-app"><img src="icons/icon-192.png" alt=""><span>啾啾日記</span></div>
+      <div class="a2hs-app ghost"></div><div class="a2hs-app ghost"></div><div class="a2hs-app ghost"></div>
+    </div>
+    <h2 style="font-size:20px">${inApp ? '先換到瀏覽器，再放到主畫面' : '把啾啾日記放到主畫面'}</h2>
+    <div class="muted">下次想記的時候，點主畫面的啾啾就打開了，不用再找網址或翻聊天紀錄。</div>
     ${guestFirst ? '<div class="small" style="background:var(--progress-bg);color:var(--progress-ink);border-radius:12px;padding:10px 12px;text-align:left">要先註冊或登入喔！iPhone 從主畫面打開時，看不到在 Safari 裡寫的紀錄。登入後紀錄會存到雲端，兩邊登入同一個帳號就都看得到。</div><a class="btn" href="#/login" id="a2hs-login">先註冊或登入</a>' : ''}
-    ${installEvt && !IN_APP ? '<button class="btn" id="a2hs-install">加到主畫面</button>' : `<ol class="a2hs-steps">${steps.map((x) => `<li>${x}</li>`).join('')}</ol>`}
-    <button class="btn ${(installEvt && !IN_APP) || guestFirst ? 'secondary' : ''}" id="a2hs-ok">${installEvt && !IN_APP ? '之後再說' : '知道了'}</button>
-    <button class="btn secondary small" id="a2hs-never">不要再提醒</button>
+    ${oneTap ? '<button class="btn" id="a2hs-install">一鍵加到主畫面</button>' : `<ol class="a2hs-steps">${steps.map((x) => `<li>${x}</li>`).join('')}</ol>`}
+    ${inApp ? `<button class="btn" id="a2hs-browser">${pf === 'line' ? '用瀏覽器打開' : /android/i.test(navigator.userAgent) ? '用 Chrome 打開' : '複製網址'}</button>` : ''}
+    <button class="btn ${oneTap || guestFirst || inApp ? 'secondary' : ''}" id="a2hs-ok">${oneTap || inApp ? '之後再說' : '知道了'}</button>
+    ${where === 'settings' ? '' : '<button class="btn secondary small" id="a2hs-never">不要再提醒</button>'}
   </div>`;
   document.body.appendChild(box);
   const close = () => box.remove();
-  box.querySelector('#a2hs-ok').addEventListener('click', () => { if (!installEvt || IN_APP) track('add_to_home', { how: 'steps' }); close(); });
+  box.querySelector('#a2hs-ok').addEventListener('click', () => { if (!oneTap && !inApp) track('add_to_home', { how: 'steps', where }); close(); });
+  box.addEventListener('click', (ev) => { if (ev.target === box) close(); });
   const lg = box.querySelector('#a2hs-login');
   if (lg) lg.addEventListener('click', close);
-  box.querySelector('#a2hs-never').addEventListener('click', () => { try { localStorage.setItem('a2hsNever', '1'); } catch (e) { /* 略過 */ } close(); });
+  const nv = box.querySelector('#a2hs-never');
+  if (nv) nv.addEventListener('click', () => { try { localStorage.setItem('a2hsNever', '1'); } catch (e) { /* 略過 */ } close(); document.getElementById('a2hs-card')?.remove(); });
+  const br = box.querySelector('#a2hs-browser');
+  if (br) br.addEventListener('click', () => openInBrowser());
   const inst = box.querySelector('#a2hs-install');
   if (inst) inst.addEventListener('click', async () => {
     const ev = installEvt; installEvt = null; close();
-    track('add_to_home', { how: 'prompt' });
+    track('add_to_home', { how: 'prompt', where });
     try { ev.prompt(); await ev.userChoice; } catch (e) { /* 使用者取消 */ }
+  });
+}
+// 首頁的提示卡：手機上、還沒放到主畫面、有寫過紀錄；按叉叉 14 天後再出現，按「不要再提醒」就不出現
+const A2HS_CARD_SNOOZE_DAYS = 14;
+function a2hsCardEligible() {
+  const pf = a2hsPlatform();
+  if (pf === 'standalone' || pf === 'desktop') return false;
+  try {
+    if (localStorage.getItem('a2hsNever')) return false;
+    const at = Number(localStorage.getItem('a2hsCardHiddenAt') || 0);
+    return Date.now() - at > A2HS_CARD_SNOOZE_DAYS * 86400000;
+  } catch (e) { return false; }
+}
+function a2hsCardHtml() {
+  const inApp = ['line', 'inapp'].includes(a2hsPlatform());
+  return `<div class="card has-x" id="a2hs-card" style="background:var(--happy-bg);border-color:transparent;gap:6px">
+    <button class="card-x" id="a2hs-card-x" aria-label="先不要，過幾天再提醒" style="color:var(--happy-dark)">${ICON.x}</button>
+    <div class="row" style="gap:10px"><img src="icons/icon-192.png" alt="" width="40" height="40" style="border-radius:10px;flex:none">
+      <div><div class="bold" style="color:var(--happy-dark)">把啾啾放到手機主畫面</div>
+      <div class="small" style="color:var(--happy-dark)">${inApp ? '你現在在 LINE／IG 裡面，關掉就不好找了。' : '下次點圖示就打開，不用再找網址。'}</div></div></div>
+    <button class="btn small" id="a2hs-card-go" style="align-self:flex-start">教我怎麼放</button>
+  </div>`;
+}
+function bindA2hsCard() {
+  const card = document.getElementById('a2hs-card');
+  if (!card) return;
+  document.getElementById('a2hs-card-go').addEventListener('click', () => showA2hs('home'));
+  document.getElementById('a2hs-card-x').addEventListener('click', () => {
+    try { localStorage.setItem('a2hsCardHiddenAt', String(Date.now())); } catch (e) { /* 略過 */ }
+    card.remove(); toast(`好，${A2HS_CARD_SNOOZE_DAYS} 天後再提醒你`);
   });
 }
 
@@ -752,20 +832,23 @@ async function viewUnsubscribe() {
 // 設定頁的「通知」卡片（有 Email 的帳號才有 Email 開關）
 function notifyCardHtml() {
   if (!usingCloud() || CloudDB.isAnonymous()) return '';
-  return `<div class="card" id="notify-card" hidden>
+  // 一開始就畫出來（不是讀完設定才冒出來）：iPhone 的 LINE 裡，卡片晚一點才出現會讓下面的按鈕畫錯位置
+  return `<div class="card" id="notify-card">
     <div class="bold">通知</div>
     <div class="small muted">另一半新增美好時刻、任務有進度、紀念日到了，打開啾啾日記會在右上角的小鈴鐺看到。</div>
-    <div class="row between" style="gap:12px"><div>收 Email 通知<div class="small muted">每天晚上 9 點最多一封，當天在 App 裡看過的不寄。不想收就按一下關掉</div></div>
-      <button class="btn small" id="notify-email" aria-pressed="true">開啟中</button></div>
+    <div class="setting-row"><div class="setting-text">收 Email 通知<div class="small muted">每天晚上 9 點最多一封，當天在 App 裡看過的不寄。不想收就按一下關掉</div></div>
+      <button class="btn small" id="notify-email" aria-pressed="true" disabled>…</button></div>
   </div>`;
 }
 async function bindNotifyCard() {
   const card = document.getElementById('notify-card');
   if (!card) return;
   const prefs = await CloudDB.notifyPrefs().catch(() => null);
-  if (!prefs || !document.body.contains(card)) return;
-  card.hidden = false;
+  if (!document.body.contains(card)) return;
   const b = document.getElementById('notify-email');
+  // 資料庫還沒更新：只留小鈴鐺的說明，拿掉 Email 開關
+  if (!prefs) { b.closest('.setting-row').remove(); return; }
+  b.disabled = false;
   const show = (on) => { b.setAttribute('aria-pressed', String(on)); b.textContent = on ? '開啟中' : '已關閉'; b.classList.toggle('secondary', !on); };
   show(prefs.email_on !== false);
   b.addEventListener('click', async () => {

@@ -43,10 +43,10 @@ const U = process.env.U || 'http://localhost:8770/';
   await p.goto(U + '#/'); await p.waitForSelector('#bell:not([hidden])'); await p.waitForTimeout(300);
   console.log('dot gone after reading', await p.locator('#bell .bell-dot:not([hidden])').count() === 0);
   // 設定頁 Email 開關
-  await p.goto(U + '#/settings'); await p.waitForSelector('#notify-card:not([hidden])', { timeout: 10000 });
+  await p.goto(U + '#/settings'); await p.waitForSelector('#notify-email:not([disabled])', { timeout: 10000 });
   console.log('email on by default', (await p.getAttribute('#notify-email', 'aria-pressed')) === 'true');
   await p.click('#notify-email'); await p.waitForTimeout(400);
-  await p.reload(); await p.waitForSelector('#notify-card:not([hidden])', { timeout: 10000 });
+  await p.reload(); await p.waitForSelector('#notify-email:not([disabled])', { timeout: 10000 });
   console.log('email off remembered', (await p.getAttribute('#notify-email', 'aria-pressed')) === 'false' && (await p.textContent('#notify-email')) === '已關閉');
   console.log('errors', errs); await b.close();
 })();

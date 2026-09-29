@@ -62,6 +62,8 @@ async function viewHome() {
   const askNames = wantNames;
   const showGuestCard = isGuest() && (!askNames || (IOS_SAFARI_TAB && all.length > 0));
   const needBackup = wantBackup && !askNames;
+  // 放到主畫面：沒有其他提醒卡時才出現（首頁一次只放一張）
+  const showA2hsCard = !askNames && !needBackup && !showGuestCard && all.length > 0 && a2hsCardEligible();
   let pending = [];
   if (usingCloud()) { try { pending = (await CloudDB.submissions({ status: 'pending' })).filter((t) => all.some((r) => r.id === t.record_id && isMine(r))); } catch (e) { pending = []; } }
   let myTasks = [];
@@ -149,6 +151,7 @@ async function viewHome() {
       <div class="bold" style="color:var(--progress-ink)">${usingCloud() ? '要不要多存一份備份？' : '該備份囉'}</div>
       <div class="small" style="color:var(--progress-ink)">${usingCloud() ? `紀錄已經存在雲端${lastBackup ? `，上次另外備份是 ${daysAgo(lastBackup)} 天前` : ''}。想多一份保險，可以到設定頁匯出一份，存在自己的手機或雲端硬碟。` : `${lastBackup ? `上次備份是 ${daysAgo(lastBackup)} 天前` : '還沒有備份過'}。紀錄只存在這支手機，點這裡到設定頁匯出備份，再存到 iCloud 雲碟或 Google 雲端硬碟。`}</div>
     </a>` : ''}
+    ${showA2hsCard ? a2hsCardHtml() : ''}
     ${isGuest() ? inAppNotice() : ''}
     ${showGuestCard ? `<div class="card" id="guest-account" style="background:var(--happy-bg);border-color:transparent;gap:4px">
       <div class="bold" style="color:var(--happy-dark)">${all.length ? '註冊，把紀錄存到雲端' : '免費註冊，保存你們的紀錄'}</div>
@@ -207,6 +210,7 @@ async function viewHome() {
     const el = document.getElementById(id);
     if (el && el.getAttribute('href') === '#/settings') el.addEventListener('click', () => { try { sessionStorage.setItem('jumpShare', '1'); } catch (e) { /* 略過 */ } });
   });
+  bindA2hsCard();
   const bs = document.getElementById('backup-snooze');
   if (bs) bs.addEventListener('click', async (e) => {
     e.preventDefault(); e.stopPropagation();

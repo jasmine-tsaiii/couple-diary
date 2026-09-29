@@ -574,3 +574,15 @@ body:has(.done-bar) .toast { bottom: calc(150px + env(safe-area-inset-bottom)); 
 .swipe-back.ready { background: var(--accent, #A63D52); color: #fff; border-color: transparent; }
 /* 左上角返回：點擊範圍大一點、貼齊畫面左邊，比較好按 */
 .topbar > a.icon-btn:first-child { width: 52px; height: 52px; margin-left: -10px; }
+/* 加到主畫面：上面畫一小塊「主畫面」，讓人知道加完會長什麼樣 */
+.a2hs-preview { display: flex; gap: 14px; justify-content: center; padding: 14px 12px 10px; margin: 0 auto; border-radius: 18px;
+  background: linear-gradient(160deg, #E9D8E6, #F6E3D5); width: max-content; }
+.a2hs-app { width: 52px; display: flex; flex-direction: column; align-items: center; gap: 4px; font-size: 11px; color: #3A2E2A; }
+.a2hs-app img { width: 52px; height: 52px; border-radius: 12px; box-shadow: 0 2px 6px rgba(0,0,0,.15); }
+.a2hs-app.ghost::before { content: ''; width: 52px; height: 52px; border-radius: 12px; background: rgba(255,255,255,.55); }
+.a2hs-steps li { line-height: 1.6; }
+/* 設定頁「文字＋右邊一顆按鈕」：文字可以換行，按鈕不會被擠成直排 */
+.setting-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.setting-row .setting-text { flex: 1 1 auto; min-width: 0; }
+.setting-row > .btn { flex: none; white-space: nowrap; }
+.card .btn.small { white-space: nowrap; }

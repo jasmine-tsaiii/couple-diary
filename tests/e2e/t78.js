@@ -63,7 +63,7 @@ const U = process.env.U || 'http://localhost:8770/';
   await p.screenshot({ path: (process.env.SHOT_DIR || '.') + '/unsubscribe.png' });
   await p.click('#unsub-yes'); await p.waitForTimeout(500);
   console.log('unsubscribed', (await p.textContent('#app')).includes('已經取消了'));
-  await p.goto(U + '#/settings'); await p.waitForSelector('#notify-card:not([hidden])', { timeout: 10000 });
+  await p.goto(U + '#/settings'); await p.waitForSelector('#notify-email:not([disabled])', { timeout: 10000 });
   console.log('settings shows off', (await p.getAttribute('#notify-email', 'aria-pressed')) === 'false');
   console.log('errors', errs); await b.close();
 })();
