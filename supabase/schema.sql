@@ -1911,3 +1911,204 @@ begin
 end $$;
 revoke all on function public.owner_set_partner_name(text) from public, anon;
 grant execute on function public.owner_set_partner_name(text) to authenticated;
+
+-- ============================================================
+-- 重新認識你（2026-09-29）：每 3 個月一回的情侶問答
+-- 兩人各自作答（可以猜對方會怎麼答），兩人都交卷才揭曉；揭曉後 7 天可以回味，之後答案封存。
+-- 封存是在伺服器擋：資料表沒有任何讀取權限，只能透過下面的函式拿，函式只在回味期內才回傳答案。
+-- 下一回兩人都交卷後，揭曉頁會把上一回的答案一起打開，並排「上次｜這次｜對方猜」。
+-- ============================================================
+create table if not exists public.quiz_rounds (
+  id           uuid primary key default gen_random_uuid(),
+  space        uuid not null references auth.users (id) on delete cascade,
+  members      uuid[] not null,               -- 開始時的兩個人（換了另一半，舊的回合就不算這一對的）
+  questions    jsonb not null,                -- [{id, text, core}]
+  started_by   uuid,
+  started_at   timestamptz not null default now(),
+  revealed_at  timestamptz
+);
+create index if not exists quiz_rounds_space_idx on public.quiz_rounds (space, started_at desc);
+create table if not exists public.quiz_answers (
+  round_id      uuid not null references public.quiz_rounds (id) on delete cascade,
+  uid           uuid not null references auth.users (id) on delete cascade,
+  answers       jsonb not null default '{}'::jsonb,   -- {題目 id: 答案}
+  guesses       jsonb not null default '{}'::jsonb,   -- {題目 id: 猜對方的答案}
+  hits          jsonb not null default '[]'::jsonb,   -- 對方猜中「我」的題目（由我判定）
+  submitted_at  timestamptz,
+  updated_at    timestamptz not null default now(),
+  primary key (round_id, uid)
+);
+alter table public.quiz_rounds enable row level security;
+alter table public.quiz_answers enable row level security;
+revoke all on public.quiz_rounds from anon, authenticated;
+revoke all on public.quiz_answers from anon, authenticated;
+
+alter table public.notifications drop constraint if exists notifications_kind_check;
+alter table public.notifications add constraint notifications_kind_check check (kind in (
+  'new_happy', 'new_task_record', 'task_submitted', 'task_approved',
+  'partner_request', 'partner_joined', 'anniversary', 'cloud_reflect', 'write_nudge',
+  'quiz_partner_done', 'quiz_revealed'));
+
+-- 目前這一對：主人 + 已同意的另一半（排序好，方便比對）
+create or replace function public.quiz_members(p_space uuid) returns uuid[]
+language sql stable security definer set search_path = public as $$
+  select array(select x from (select p_space as x union select uid from public.partners where owner = p_space and approved) m order by x)
+$$;
+revoke all on function public.quiz_members(uuid) from public, anon, authenticated;
+
+create or replace function public.quiz_space() returns uuid
+language sql stable security definer set search_path = public as $$
+  select coalesce(public.my_owner(), case when public.is_real_user() then auth.uid() end)
+$$;
+revoke all on function public.quiz_space() from public, anon, authenticated;
+
+-- 回味期：揭曉後 7 天
+create or replace function public.quiz_open_until(p_revealed timestamptz) returns timestamptz
+language sql immutable as $$ select p_revealed + interval '7 days' $$;
+
+-- 讀目前的狀態：這一回的題目、我寫到哪、對方交卷沒；回味期內才有兩人的答案和上一回的答案
+create or replace function public.quiz_state() returns jsonb
+language plpgsql stable security definer set search_path = public as $$
+declare
+  v_space uuid := public.quiz_space();
+  v_members uuid[];
+  cur public.quiz_rounds;
+  prev public.quiz_rounds;
+  v_open boolean := false;
+  v_next timestamptz;
+  v_round jsonb;
+  v_reveal jsonb;
+begin
+  if v_space is null or auth.uid() is null then return jsonb_build_object('ok', false); end if;
+  v_members := public.quiz_members(v_space);
+  select * into cur from public.quiz_rounds where space = v_space and members = v_members order by started_at desc limit 1;
+  if cur.id is not null then
+    v_open := cur.revealed_at is not null and now() < public.quiz_open_until(cur.revealed_at);
+    if cur.revealed_at is not null then v_next := greatest(cur.started_at + interval '90 days', public.quiz_open_until(cur.revealed_at)); end if;
+    v_round := jsonb_build_object(
+      'id', cur.id, 'questions', cur.questions, 'started_at', cur.started_at, 'revealed_at', cur.revealed_at,
+      'open_until', case when cur.revealed_at is not null then public.quiz_open_until(cur.revealed_at) end,
+      'no', (select count(*) from public.quiz_rounds r where r.space = v_space and r.members = v_members and r.started_at <= cur.started_at),
+      'submitted', (select coalesce(jsonb_object_agg(a.uid, a.submitted_at is not null), '{}'::jsonb) from public.quiz_answers a where a.round_id = cur.id),
+      -- 還沒揭曉：只給我自己寫的
+      'mine', case when cur.revealed_at is null then
+        (select jsonb_build_object('answers', a.answers, 'guesses', a.guesses, 'submitted_at', a.submitted_at) from public.quiz_answers a where a.round_id = cur.id and a.uid = auth.uid()) end);
+    if v_open then
+      select * into prev from public.quiz_rounds where space = v_space and members = v_members and started_at < cur.started_at order by started_at desc limit 1;
+      v_reveal := jsonb_build_object(
+        'answers', (select coalesce(jsonb_object_agg(a.uid, jsonb_build_object('answers', a.answers, 'guesses', a.guesses, 'hits', a.hits)), '{}'::jsonb) from public.quiz_answers a where a.round_id = cur.id),
+        'prev', case when prev.id is not null then jsonb_build_object('id', prev.id, 'started_at', prev.started_at, 'questions', prev.questions,
+          'answers', (select coalesce(jsonb_object_agg(a.uid, a.answers), '{}'::jsonb) from public.quiz_answers a where a.round_id = prev.id)) end);
+    end if;
+  end if;
+  return jsonb_build_object('ok', true, 'me', auth.uid(), 'members', to_jsonb(v_members),
+    'names', (select jsonb_object_agg(m, public.space_member_name(v_space, m)) from unnest(v_members) m),
+    'round', v_round, 'reveal', v_reveal,
+    'can_start', array_length(v_members, 1) = 2 and (cur.id is null or (cur.revealed_at is not null and now() >= v_next)),
+    'next_at', v_next,
+    'used', (select coalesce(jsonb_agg(distinct q ->> 'id'), '[]'::jsonb) from public.quiz_rounds r, jsonb_array_elements(r.questions) q where r.space = v_space and r.members = v_members),
+    'history', (select coalesce(jsonb_agg(jsonb_build_object('started_at', r.started_at, 'revealed_at', r.revealed_at,
+        'hits', (select coalesce(sum(jsonb_array_length(a.hits)), 0) from public.quiz_answers a where a.round_id = r.id)) order by r.started_at desc), '[]'::jsonb)
+      from public.quiz_rounds r where r.space = v_space and r.members = v_members));
+end $$;
+revoke all on function public.quiz_state() from public, anon;
+grant execute on function public.quiz_state() to authenticated;
+
+-- 開始新的一回（兩人都可以按）：題目由 App 從題庫挑好傳進來
+create or replace function public.quiz_start(p_questions jsonb) returns uuid
+language plpgsql security definer set search_path = public as $$
+declare
+  v_space uuid := public.quiz_space();
+  v_members uuid[];
+  cur public.quiz_rounds;
+  v_id uuid;
+begin
+  if v_space is null then raise exception '請先登入'; end if;
+  v_members := public.quiz_members(v_space);
+  if coalesce(array_length(v_members, 1), 0) <> 2 then raise exception '另一半加入後才能一起玩'; end if;
+  perform pg_advisory_xact_lock(hashtext('quiz:' || v_space::text));
+  select * into cur from public.quiz_rounds where space = v_space and members = v_members order by started_at desc limit 1;
+  if cur.id is not null and cur.revealed_at is null then return cur.id; end if;
+  if cur.id is not null and now() < greatest(cur.started_at + interval '90 days', public.quiz_open_until(cur.revealed_at)) then
+    raise exception '還沒到下一回的時間';
+  end if;
+  if jsonb_typeof(p_questions) <> 'array' or jsonb_array_length(p_questions) not between 3 and 20
+     or exists (select 1 from jsonb_array_elements(p_questions) q
+                where jsonb_typeof(q) <> 'object' or coalesce(q ->> 'id', '') !~ '^[a-z0-9_-]{1,40}$'
+                   or char_length(coalesce(q ->> 'text', '')) not between 1 and 120)
+     or (select count(distinct q ->> 'id') from jsonb_array_elements(p_questions) q) <> jsonb_array_length(p_questions) then
+    raise exception '題目格式不對';
+  end if;
+  insert into public.quiz_rounds (space, members, questions, started_by)
+    values (v_space, v_members,
+      (select jsonb_agg(jsonb_build_object('id', q ->> 'id', 'text', q ->> 'text', 'core', coalesce((q ->> 'core')::boolean, false))) from jsonb_array_elements(p_questions) q),
+      auth.uid())
+    returning id into v_id;
+  return v_id;
+end $$;
+revoke all on function public.quiz_start(jsonb) from public, anon;
+grant execute on function public.quiz_start(jsonb) to authenticated;
+
+-- 存草稿或交卷。交卷後不能再改；兩人都交卷就揭曉
+create or replace function public.quiz_save(p_round uuid, p_answers jsonb, p_guesses jsonb, p_submit boolean) returns jsonb
+language plpgsql security definer set search_path = public as $$
+declare
+  v_space uuid := public.quiz_space();
+  r public.quiz_rounds;
+  v_ids text[];
+  v_ans jsonb; v_gue jsonb;
+  v_left int;
+begin
+  select * into r from public.quiz_rounds where id = p_round for update;
+  if r.id is null or r.space is distinct from v_space or not (auth.uid() = any (r.members)) or r.members <> public.quiz_members(v_space) then
+    raise exception '找不到這一回';
+  end if;
+  if r.revealed_at is not null then raise exception '這一回已經揭曉了'; end if;
+  if exists (select 1 from public.quiz_answers where round_id = r.id and uid = auth.uid() and submitted_at is not null) then
+    raise exception '已經交卷了，不能再改';
+  end if;
+  v_ids := array(select q ->> 'id' from jsonb_array_elements(r.questions) q);
+  select coalesce(jsonb_object_agg(k, left(btrim(v), 300)), '{}'::jsonb) into v_ans
+    from jsonb_each_text(case when jsonb_typeof(p_answers) = 'object' then p_answers else '{}'::jsonb end) e(k, v) where k = any (v_ids) and btrim(v) <> '';
+  select coalesce(jsonb_object_agg(k, left(btrim(v), 300)), '{}'::jsonb) into v_gue
+    from jsonb_each_text(case when jsonb_typeof(p_guesses) = 'object' then p_guesses else '{}'::jsonb end) e(k, v) where k = any (v_ids) and btrim(v) <> '';
+  if p_submit and (select count(*) from jsonb_object_keys(v_ans)) < array_length(v_ids, 1) then
+    raise exception '還有題目沒寫';
+  end if;
+  insert into public.quiz_answers (round_id, uid, answers, guesses, submitted_at, updated_at)
+    values (r.id, auth.uid(), v_ans, v_gue, case when p_submit then now() end, now())
+    on conflict (round_id, uid) do update set answers = excluded.answers, guesses = excluded.guesses, submitted_at = excluded.submitted_at, updated_at = now();
+  if not p_submit then return jsonb_build_object('revealed', false); end if;
+  select count(*) into v_left from unnest(r.members) m
+    where not exists (select 1 from public.quiz_answers a where a.round_id = r.id and a.uid = m and a.submitted_at is not null);
+  if v_left = 0 then
+    update public.quiz_rounds set revealed_at = now() where id = r.id;
+    insert into public.notifications (recipient, space_owner, actor, actor_name, kind)
+      select m, r.space, auth.uid(), public.space_member_name(r.space, auth.uid()), 'quiz_revealed' from unnest(r.members) m where m <> auth.uid();
+    return jsonb_build_object('revealed', true);
+  end if;
+  insert into public.notifications (recipient, space_owner, actor, actor_name, kind)
+    select m, r.space, auth.uid(), public.space_member_name(r.space, auth.uid()), 'quiz_partner_done' from unnest(r.members) m where m <> auth.uid();
+  return jsonb_build_object('revealed', false);
+end $$;
+revoke all on function public.quiz_save(uuid, jsonb, jsonb, boolean) from public, anon;
+grant execute on function public.quiz_save(uuid, jsonb, jsonb, boolean) to authenticated;
+
+-- 揭曉後（回味期內）：對方猜「我」的答案，由我按「猜中了」
+create or replace function public.quiz_mark_hit(p_round uuid, p_qid text, p_hit boolean) returns void
+language plpgsql security definer set search_path = public as $$
+declare
+  v_space uuid := public.quiz_space();
+  r public.quiz_rounds;
+begin
+  select * into r from public.quiz_rounds where id = p_round;
+  if r.id is null or r.space is distinct from v_space or not (auth.uid() = any (r.members)) then raise exception '找不到這一回'; end if;
+  if r.revealed_at is null or now() >= public.quiz_open_until(r.revealed_at) then raise exception '這一回已經封存了'; end if;
+  if not exists (select 1 from jsonb_array_elements(r.questions) q where q ->> 'id' = p_qid) then raise exception '找不到這一題'; end if;
+  update public.quiz_answers set hits = case
+      when p_hit then (select jsonb_agg(distinct x) from jsonb_array_elements_text(hits || to_jsonb(p_qid)) x)
+      else coalesce((select jsonb_agg(x) from jsonb_array_elements_text(hits) x where x <> p_qid), '[]'::jsonb) end
+    where round_id = r.id and uid = auth.uid();
+end $$;
+revoke all on function public.quiz_mark_hit(uuid, text, boolean) from public, anon;
+grant execute on function public.quiz_mark_hit(uuid, text, boolean) to authenticated;

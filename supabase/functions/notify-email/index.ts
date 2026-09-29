@@ -21,7 +21,7 @@ type Row = {
 };
 
 // 另一半做的事（信的大標題用「你不在的時候」）；其他是給自己的提醒
-const FROM_PARTNER = ['new_happy', 'new_task_record', 'task_submitted', 'task_approved', 'partner_request', 'partner_joined'];
+const FROM_PARTNER = ['new_happy', 'new_task_record', 'task_submitted', 'task_approved', 'partner_request', 'partner_joined', 'quiz_partner_done'];
 
 function line(r: Row) {
   const who = r.actor_name || '對方';
@@ -35,6 +35,8 @@ function line(r: Row) {
     case 'anniversary': return r.extra && r.extra.years ? `今天是你們在一起滿 ${r.extra.years} 年` : `今天是你們在一起第 ${(r.extra && r.extra.days) || ''} 天`;
     case 'cloud_reflect': return '3 天前記下的烏雲，現在回頭看，有沒有新的想法？';
     case 'write_nudge': return '好幾天沒寫了，最近有什麼想記下來的嗎？';
+    case 'quiz_partner_done': return `${who}寫好「重新認識你」了，換你囉`;
+    case 'quiz_revealed': return '「重新認識你」兩個人都交卷了，來看答案吧';
     default: return `${who}有新的動態`;
   }
 }

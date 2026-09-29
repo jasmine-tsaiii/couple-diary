@@ -751,6 +751,8 @@ function notifyText(n) {
     case 'anniversary': return x.years ? `今天是你們在一起滿 ${x.years} 年 🎉` : `今天是你們在一起第 ${x.days || ''} 天 🎉`;
     case 'cloud_reflect': return '3 天前記下的烏雲，現在回頭看，有沒有新的想法？';
     case 'write_nudge': return '好幾天沒寫了，最近有什麼想記下來的嗎？';
+    case 'quiz_partner_done': return `${who}寫好「重新認識你」了，換你囉`;
+    case 'quiz_revealed': return '「重新認識你」兩個人都交卷了，來看答案吧';
     default: return `${who}有新動態`;
   }
 }
@@ -759,6 +761,7 @@ function notifyHref(n) {
   if (n.kind === 'partner_joined') return '#/';
   if (n.kind === 'anniversary') return '#/cards';
   if (n.kind === 'write_nudge') return '#/new/happy';
+  if (n.kind === 'quiz_partner_done' || n.kind === 'quiz_revealed') return '#/quiz';
   if (!n.record_id) return '#/';
   if (n.kind === 'task_submitted') return '#/tasks';
   if (n.kind === 'new_task_record') return `#/task/${encodeURIComponent(n.record_id)}`;

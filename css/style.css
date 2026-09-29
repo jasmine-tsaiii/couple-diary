@@ -601,3 +601,13 @@ h1, h2, h3, .tile-body .bold, .opt { text-wrap: balance; }
 .row > .btn, .row > a.btn { flex: none; white-space: nowrap; }
 /* 標籤只在標籤和標籤之間換行，不會把「#驚喜」拆成「#驚 / 喜」 */
 .tile-tags { word-break: keep-all; overflow-wrap: anywhere; }
+
+/* 重新認識你：揭曉頁每一題「上次｜這次｜對方猜」 */
+.quiz-person { display: flex; flex-direction: column; gap: 4px; padding: 8px 10px; border-radius: 12px; background: var(--bg); }
+.quiz-line { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; line-height: 1.5; overflow-wrap: anywhere; }
+.quiz-line > span:not(.quiz-tag):not(.quiz-diff) { flex: 1 1 60%; min-width: 0; }
+.quiz-tag { flex: none; font-size: 12px; padding: 1px 8px; border-radius: 999px; background: var(--card); color: var(--muted); border: 1px solid var(--line); white-space: nowrap; }
+.quiz-tag.now { background: var(--happy-bg); color: var(--happy-dark); border-color: transparent; }
+.quiz-diff { flex: none; font-size: 12px; color: var(--muted); white-space: nowrap; }
+.quiz-diff.changed { color: var(--happy-dark); font-weight: 700; }
+.quiz-line .btn.small { flex: none; }

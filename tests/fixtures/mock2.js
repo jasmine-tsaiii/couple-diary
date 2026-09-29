@@ -110,6 +110,68 @@
       const m = S.t.settings.find((x) => x.owner === p.owner && x.key === 'mascot');
       return { owner: p.owner, name: p.name, owner_name: s.owner_name, approved: p.approved !== false, mascot: m ? m.value : null, paused: pausedSp(S, p.owner) };
     },
+    // 重新認識你：簡化版的伺服器邏輯（回味期 7 天、90 天一回、兩人都交卷才揭曉）
+    quiz_state(S, u) {
+      const Q = S.quiz || { rounds: [], answers: [] };
+      const space = myOwner(S, u) || (real(u) ? u.id : null); if (!space) return { ok: false };
+      const members = [space, ...S.t.partners.filter((x) => x.owner === space && x.approved !== false).map((x) => x.uid)].sort();
+      const key = members.join(',');
+      const rounds = Q.rounds.filter((r) => r.space === space && r.members.join(',') === key).sort((a, b) => (a.started_at < b.started_at ? 1 : -1));
+      const cur = rounds[0]; const now = Date.now(); const DAY = 864e5;
+      const nameOf = (m) => { if (m === space) { const sh = S.t.shares.find((x) => x.owner === space); return (sh && sh.owner_name) || '對方'; } const st = S.t.settings.find((x) => x.owner === space && x.key === 'names'); const p = S.t.partners.find((x) => x.uid === m); return (st && st.value && st.value.partner) || (p && p.name) || '對方'; };
+      const ansOf = (rid) => Q.answers.filter((a) => a.round_id === rid);
+      let round = null, reveal = null, next = null;
+      if (cur) {
+        const openUntil = cur.revealed_at ? Date.parse(cur.revealed_at) + 7 * DAY : null;
+        if (cur.revealed_at) next = new Date(Math.max(Date.parse(cur.started_at) + 90 * DAY, openUntil)).toISOString();
+        const mine = ansOf(cur.id).find((a) => a.uid === u.id);
+        round = { id: cur.id, questions: cur.questions, started_at: cur.started_at, revealed_at: cur.revealed_at, open_until: openUntil && new Date(openUntil).toISOString(), no: rounds.length,
+          submitted: Object.fromEntries(ansOf(cur.id).map((a) => [a.uid, !!a.submitted_at])),
+          mine: cur.revealed_at ? null : mine ? { answers: mine.answers, guesses: mine.guesses, submitted_at: mine.submitted_at } : null };
+        if (cur.revealed_at && now < openUntil) {
+          const prev = rounds[1];
+          reveal = { answers: Object.fromEntries(ansOf(cur.id).map((a) => [a.uid, { answers: a.answers, guesses: a.guesses, hits: a.hits }])),
+            prev: prev ? { id: prev.id, started_at: prev.started_at, questions: prev.questions, answers: Object.fromEntries(ansOf(prev.id).map((a) => [a.uid, a.answers])) } : null };
+        }
+      }
+      return { ok: true, me: u.id, members, names: Object.fromEntries(members.map((m) => [m, nameOf(m)])), round, reveal,
+        can_start: members.length === 2 && (!cur || (!!cur.revealed_at && now >= Date.parse(next))), next_at: next,
+        used: [...new Set(rounds.flatMap((r) => r.questions.map((q) => q.id)))],
+        history: rounds.map((r) => ({ started_at: r.started_at, revealed_at: r.revealed_at, hits: ansOf(r.id).reduce((n, a) => n + a.hits.length, 0) })) };
+    },
+    quiz_start(S, u, a) {
+      const st = this.quiz_state(S, u); if (!st.ok) throw new Error('請先登入');
+      if (st.members.length !== 2) throw new Error('另一半加入後才能一起玩');
+      if (st.round && !st.round.revealed_at) return st.round.id;
+      if (!st.can_start) throw new Error('還沒到下一回的時間');
+      S.quiz = S.quiz || { rounds: [], answers: [] };
+      const id = 'qr' + (++S.n);
+      S.quiz.rounds.push({ id, space: myOwner(S, u) || u.id, members: st.members, questions: a.p_questions, started_at: new Date().toISOString(), revealed_at: null });
+      return id;
+    },
+    quiz_save(S, u, a) {
+      const r = (S.quiz || { rounds: [] }).rounds.find((x) => x.id === a.p_round);
+      if (!r || !r.members.includes(u.id)) throw new Error('找不到這一回');
+      if (r.revealed_at) throw new Error('這一回已經揭曉了');
+      const ids = r.questions.map((q) => q.id);
+      const clean = (o) => Object.fromEntries(Object.entries(o || {}).filter(([k, v]) => ids.includes(k) && String(v).trim()).map(([k, v]) => [k, String(v).trim().slice(0, 300)]));
+      let row = S.quiz.answers.find((x) => x.round_id === r.id && x.uid === u.id);
+      if (row && row.submitted_at) throw new Error('已經交卷了，不能再改');
+      const ans = clean(a.p_answers);
+      if (a.p_submit && Object.keys(ans).length < ids.length) throw new Error('還有題目沒寫');
+      if (!row) { row = { round_id: r.id, uid: u.id, hits: [] }; S.quiz.answers.push(row); }
+      Object.assign(row, { answers: ans, guesses: clean(a.p_guesses), submitted_at: a.p_submit ? new Date().toISOString() : null });
+      if (!a.p_submit) return { revealed: false };
+      const all = r.members.every((m) => S.quiz.answers.some((x) => x.round_id === r.id && x.uid === m && x.submitted_at));
+      if (all) r.revealed_at = new Date().toISOString();
+      return { revealed: all };
+    },
+    quiz_mark_hit(S, u, a) {
+      const r = (S.quiz || { rounds: [] }).rounds.find((x) => x.id === a.p_round);
+      if (!r || !r.revealed_at) throw new Error('找不到這一回');
+      const row = S.quiz.answers.find((x) => x.round_id === r.id && x.uid === u.id);
+      row.hits = a.p_hit ? [...new Set([...row.hits, a.p_qid])] : row.hits.filter((x) => x !== a.p_qid);
+    },
     partner_set_name(S, u, a) {
       const n = (a.p_name || '').trim(); if (!n || n.length > 20) throw new Error('名字要 1 到 20 個字');
       const p = S.t.partners.find((x) => x.uid === u.id); if (!p) throw new Error('你還沒加入對方的日記');

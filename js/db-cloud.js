@@ -259,6 +259,15 @@ const CloudDB = CLOUD_ENABLED ? (() => {
     async ownerSetPartnerName(name) {
       try { await client.rpc('owner_set_partner_name', { p_name: name }); } catch (e) { /* 之後再同步 */ }
     },
+    // ---- 重新認識你（每季問答）：資料表不能直接讀，全部透過函式 ----
+    async quizState() {
+      const r = await client.rpc('quiz_state');
+      if (r.error && !netDown(r.error) && /quiz_state|function|schema cache/i.test(r.error.message || '')) return { ok: false, missing: true };
+      return check(r);
+    },
+    async quizStart(questions) { return check(await client.rpc('quiz_start', { p_questions: questions })); },
+    async quizSave(round, answers, guesses, submit) { return check(await client.rpc('quiz_save', { p_round: round, p_answers: answers, p_guesses: guesses, p_submit: !!submit })); },
+    async quizMarkHit(round, qid, hit) { check(await client.rpc('quiz_mark_hit', { p_round: round, p_qid: qid, p_hit: !!hit })); },
     async deleteShare() {
       check(await client.from('shares').delete().eq('owner', userId()));
     },

@@ -24,6 +24,8 @@ const CASES = [
   ['在一起滿 1 年（同一天還有新紀錄）', [r('anniversary', { years: 1 }, ''), r('new_happy')]],
   ['烏雲 3 天後回顧', [r('cloud_reflect', null, '')]],
   ['7 天沒寫的提醒', [r('write_nudge', null, '')]],
+  ['重新認識你：對方交卷了', [r('quiz_partner_done')]],
+  ['重新認識你：兩人都交卷，揭曉', [r('quiz_revealed')]],
 ];
 const unsub = 'https://diary.jas-soul.com/#/unsubscribe?u=…&t=…';
 const out = `<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>通知信預覽</title>

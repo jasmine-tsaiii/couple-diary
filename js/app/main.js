@@ -98,6 +98,7 @@ async function renderRoute() {
       else if (page === 'task') { renderTabbar(null); await viewPartnerTaskForm(arg); }
       else if (page === 'settings') { renderTabbar(null); viewPartnerSettings(); }
       else if (page === 'notifications') { renderTabbar(null); await viewNotifications(); }
+      else if (page === 'quiz') { renderTabbar(null); await viewQuiz(); }
       else go('#/');
       afterRender();
       return;
@@ -120,6 +121,7 @@ async function renderRoute() {
     else if (page === 'end' && usingCloud()) { renderTabbar(null); await viewEnd(arg ? decodeURIComponent(arg) : ''); }
     else if (page === 'archive' && usingCloud()) { renderTabbar(null); await viewArchive(); }
     else if (page === 'task' && usingCloud()) { renderTabbar(null); await viewPartnerTaskForm(arg); }
+    else if (page === 'quiz' && usingCloud() && !CloudDB.isAnonymous()) { renderTabbar(null); await viewQuiz(); }
     else go('#/');
     afterRender();
     if (!page || page === 'view') checkNewStamps().catch(() => {});
