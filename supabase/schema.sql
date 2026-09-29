@@ -1488,7 +1488,7 @@ grant execute on function public.ping() to anon, authenticated;
 
 -- ============================================================
 -- 通知（2026-09-28）：另一半新增美好、任務等你確認、任務通過時，通知對方
--- App 內的小鈴鐺讀 notifications；Email 由 Edge Function notify-email 定時寄（每人每小時最多一封）
+-- App 內的小鈴鐺讀 notifications；Email 由 Edge Function notify-email 定時寄（每人每天晚上 9 點最多一封）
 -- 之後做 App 時，推播也從這張表送，不用改其他地方
 -- ============================================================
 create table if not exists public.notifications (

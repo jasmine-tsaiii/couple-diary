@@ -681,7 +681,7 @@ function notifyCardHtml() {
   return `<div class="card" id="notify-card" hidden>
     <div class="bold">通知</div>
     <div class="small muted">另一半新增美好時刻、任務等你確認時，打開啾啾日記會在右上角的小鈴鐺看到。</div>
-    <div class="row between" style="gap:12px"><div>Email 通知<div class="small muted">一小時最多一封，好幾則會合併成一封</div></div>
+    <div class="row between" style="gap:12px"><div>Email 通知<div class="small muted">每天晚上 9 點最多一封，當天沒看的合併寄</div></div>
       <button class="btn small" id="notify-email" aria-pressed="true">開啟中</button></div>
   </div>`;
 }

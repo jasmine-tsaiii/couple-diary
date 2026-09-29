@@ -1,8 +1,8 @@
 // 啾啾日記：把還沒讀的通知整理成 Email 寄出去（Supabase Edge Function：notify-email）
-// 由 supabase/notify-cron.sql 設定每 10 分鐘呼叫一次。重複呼叫沒關係：寄過的會標記，不會重寄。
+// 由 supabase/notify-cron.sql 設定每天晚上 9 點（台灣）呼叫一次，一人一天最多一封。重複呼叫沒關係：寄過的會標記，不會重寄。
 // 規則：
 // - 通知出現 5 分鐘後還沒在 App 裡看過，才寄 Email（人在用 App 就不吵）
-// - 每個人一小時最多一封，這段時間累積的通知合併成一封
+// - 每個人一天最多一封，當天沒看的通知合併成一封
 // - 設定頁關掉 Email、或沒有 Email 的臨時帳號，不寄
 // - 信裡不放紀錄的標題和內容，只說誰新增了什麼
 // 需要的密鑰（Supabase → Edge Functions → Secrets）：RESEND_API_KEY
@@ -69,7 +69,7 @@ Deno.serve(async () => {
     const ids = rows.map((r) => r.id);
     const markDone = () => db.from('notifications').update({ emailed_at: new Date().toISOString() }).in('id', ids);
     if (pref && pref.email_on === false) { await markDone(); continue; }
-    if (pref && pref.last_email_at && now - Date.parse(pref.last_email_at) < 60 * 60 * 1000) continue; // 一小時內寄過，下次再合併寄
+    if (pref && pref.last_email_at && now - Date.parse(pref.last_email_at) < 20 * 60 * 60 * 1000) continue; // 一天最多一封：今天寄過就等明天合併寄
     const { data: u } = await db.auth.admin.getUserById(uid);
     const email = u && u.user && !u.user.is_anonymous ? u.user.email : null;
     if (!email) { await markDone(); continue; }
