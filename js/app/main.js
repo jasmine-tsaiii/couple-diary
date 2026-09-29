@@ -12,12 +12,37 @@ function route() {
     .then(() => (my === routeSeq ? renderRoute() : null));
   return routeRunning;
 }
+// 從網址先猜這一頁的主題色；紀錄頁用列表上看過的類型
+const recordTheme = new Map();
+function predictTheme(page, arg) {
+  if ((page === 'list' || page === 'new') && TYPES[arg]) return TYPES[arg].theme;
+  if (page === 'fights') return 'theme-fight';
+  if (['view', 'edit', 'task'].includes(page) && recordTheme.has(arg)) return recordTheme.get(arg);
+  return '';
+}
+function pageTitle(page, arg) {
+  if (page === 'list' && TYPES[arg]) return TYPES[arg].label;
+  if (page === 'fights') return TYPES.fight.label;
+  return '';
+}
 async function renderRoute() {
   const parts = (location.hash.replace(/^#\/?/, '') || '').split('/');
   const [page, arg] = parts;
   // 意見回饋會附上是從哪一頁來的（只有頁面名稱，不含紀錄內容）
   if (page !== 'feedback') { try { sessionStorage.setItem('fbFrom', page || 'home'); } catch (e) { /* 沒關係 */ } }
-  app.className = '';
+  // 先換成這一頁的顏色（例如烏雲的咖啡色），不要等資料讀完才換，免得先閃一下上一頁的粉紅色
+  const theme = predictTheme(page, arg);
+  app.className = theme;
+  // 讀比較久（雲端）時，先把舊畫面換成這一頁的標題，不要讓人以為還停在上一頁
+  const shown = app.firstElementChild;
+  const title = pageTitle(page, arg);
+  if (title) {
+    setTimeout(() => {
+      if (lastHash === location.hash && app.firstElementChild === shown && shown) {
+        app.innerHTML = `<div class="topbar"><h1>${esc(title)}</h1></div><div class="empty no-mascot page-loading">讀取中…</div>`;
+      }
+    }, 150);
+  }
   app.style.minHeight = '';
   app.oninput = null;
   formGuard = null;

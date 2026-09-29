@@ -298,6 +298,7 @@ function examplesBlock(types) {
 }
 
 async function listItem(r) {
+  recordTheme.set(r.id, TYPES[r.type].theme);
   const a = document.createElement('a');
   a.className = `card item ${TYPES[r.type].theme}`;
   a.href = `#/view/${r.id}`;
