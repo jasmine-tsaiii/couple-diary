@@ -30,6 +30,8 @@ const STAT_TILES = [
   ['deleted_records_7d', '近 7 天刪除紀錄', '還在最近刪除裡的'],
   ['records_total', '紀錄總數', ''],
   ['interest', '按我有興趣', ''],
+  ['accounts_deleted_7d', '近 7 天刪帳號', ''],
+  ['accounts_deleted_total', '刪帳號總數', ''],
 ];
 const STAT_LINES = [
   ['signups', '新註冊'],
@@ -39,6 +41,7 @@ const STAT_LINES = [
   ['records', '新增紀錄'],
   ['deleted', '刪除紀錄'],
   ['interest', '按我有興趣'],
+  ['account_deletes', '刪帳號'],
 ];
 
 const pct = (yes, n) => (n ? `${Math.round((100 * yes) / n)}%` : '—');
@@ -118,8 +121,7 @@ async function viewStats() {
         <div class="stat-num">${Number(n[k]) || 0}</div>
         <div class="small">${label}</div>
         ${note ? `<div class="small muted">${note}</div>` : ''}
-      </div>`).join('')}
-      <div class="stat-tile"><div class="stat-num">${interestRate}</div><div class="small">我有興趣比例</div><div class="small muted">目標 5%</div></div>
+      </div>${k === 'interest' ? `<div class="stat-tile"><div class="stat-num">${interestRate}</div><div class="small">我有興趣比例</div><div class="small muted">目標 5%</div></div>` : ''}`).join('')}
     </div>
     <div class="small muted">最後有人寫：${lastWrite}</div>
     <h2 class="section-title">最近 30 天</h2>

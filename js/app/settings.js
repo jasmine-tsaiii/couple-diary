@@ -503,6 +503,7 @@ async function viewSettings() {
       clearDraft();
       await CloudDB.clearAll();
       await CloudDB.deleteAccount();
+      track('account_delete');
       await LocalDB.setSetting('hasAccount', false);
       photoUrlCache.clear(); thumbUrlCache.clear();
       toast('帳號已刪除');

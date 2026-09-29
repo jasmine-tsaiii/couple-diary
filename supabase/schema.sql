@@ -330,10 +330,20 @@ end $$;
 
 -- 刪除帳號：只能刪自己的正式帳號；紀錄、設定、分享、任務會跟著帳號一起刪掉（on delete cascade）
 -- 照片請 App 先刪（App 的「刪除帳號」會先清空資料再呼叫這個）
+-- 刪帳號紀錄（給數據看板算流失）：只記刪除時間和註冊了幾天，不記是誰、不記信箱
+create table if not exists public.account_deletions (
+  id                 bigint generated always as identity primary key,
+  deleted_at         timestamptz not null default now(),
+  days_since_signup  integer
+);
+alter table public.account_deletions enable row level security; -- 沒有任何規則：App 讀不到，只有函式寫、看板讀
+
 create or replace function public.delete_account() returns void
 language plpgsql security definer set search_path = public as $$
 begin
   if not public.is_real_user() then raise exception '請先登入'; end if;
+  insert into public.account_deletions (days_since_signup)
+    select floor(extract(epoch from now() - created_at) / 86400)::int from auth.users where id = auth.uid();
   delete from auth.users where id = auth.uid();
 end $$;
 
@@ -1659,6 +1669,8 @@ begin
         and to_timestamp((data ->> 'deletedAt')::bigint / 1000.0) >= now() - interval '7 days'),
     'records_total', (select count(*) from acts where (data ->> 'deletedAt') is null),
     'interest', (select count(*) from public.upgrade_interest),
+    'accounts_deleted_7d', (select count(*) from public.account_deletions where deleted_at >= now() - interval '7 days'),
+    'accounts_deleted_total', (select count(*) from public.account_deletions),
     'last_write_at', (select max(updated_at) from acts)
   ) into v_now;
 
@@ -1681,7 +1693,8 @@ begin
     'deleted', (select count(*) from acts a where a.dd = x.d),
     'writers', (select count(distinct a.who) from acts a where a.ud = x.d),
     'active_couples', (select count(distinct a.owner) from acts a join couples c on c.owner = a.owner where a.ud = x.d),
-    'interest', (select count(*) from public.upgrade_interest i where (i.first_at at time zone 'Asia/Taipei')::date = x.d)
+    'interest', (select count(*) from public.upgrade_interest i where (i.first_at at time zone 'Asia/Taipei')::date = x.d),
+    'account_deletes', (select count(*) from public.account_deletions z where (z.deleted_at at time zone 'Asia/Taipei')::date = x.d)
   ) order by x.d), '[]'::jsonb) into v_daily from days x;
 
   with weeks as (
