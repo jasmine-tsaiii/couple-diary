@@ -535,12 +535,12 @@ async function shareCardHtml() {
     <details class="share-more"><summary>忘記密碼、改名字、換新分享碼</summary>${settings}</details>`}
     ${waiting.length ? `<div class="field share-sec" id="join-requests"><div class="bold">想加入的人（要你同意）</div>
       <div class="muted small">另一半換手機或清掉瀏覽器重新加入時，也會出現在這裡；是同一個人的話，同意後會接回原本分享的紀錄。按「同意」時會再問你是同一個人還是新的對象。</div>
-      ${waiting.map((p) => `<div class="row between"><span>${esc(p.name)}<span class="muted small">・${shortDate(p.joined_at.slice(0, 10))} 送出</span></span>
+      ${waiting.map((p) => `<div class="row between"><span class="grow">${esc(p.name)}<span class="muted small nowrap">・${shortDate(p.joined_at.slice(0, 10))} 送出</span></span>
         <span class="row" style="gap:6px"><button class="btn small" data-approve-partner="${esc(p.uid)}" data-name="${esc(p.name)}">同意</button>
         <button class="btn small secondary" data-rm-partner="${esc(p.uid)}" data-name="${esc(p.name)}" data-pending="1">拒絕</button></span></div>`).join('')}
     </div>` : ''}
     <div class="field share-sec"><div class="bold">已加入的人</div>
-      ${joined.length ? joined.map((p) => `<div class="row between"><span>${esc(p.name)}<span class="muted small">・${shortDate(p.joined_at.slice(0, 10))} 加入</span></span>
+      ${joined.length ? joined.map((p) => `<div class="row between"><span class="grow">${esc(p.name)}<span class="muted small nowrap">・${shortDate(p.joined_at.slice(0, 10))} 加入</span></span>
         <button class="btn small secondary" data-rm-partner="${esc(p.uid)}" data-name="${esc(p.name)}">移除</button></div>`).join('') : '<div class="muted">還沒有人加入</div>'}
     </div>
     ${joined.length ? `<div class="field share-sec" id="pause-box"${paused ? ' style="background:var(--lock-bg)"' : ''}>

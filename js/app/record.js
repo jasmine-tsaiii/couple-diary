@@ -199,7 +199,7 @@ async function viewDetail(id) {
     </div>
     ${r.archivedAt ? `<div class="card" style="background:var(--lock-bg);border-color:transparent"><div class="small" style="color:var(--lock)">這是 ${shortDate(dateOf(r.archivedAt))} 封存的紀錄，只有你看得到。</div></div>` : ''}
     <div class="field" style="gap:6px">
-      <div class="row" style="gap:8px">
+      <div class="row meta-row">
         <span class="badge" style="background:var(--accent-bg);color:var(--accent-dark)">${r.type === 'fight' ? esc(r.category || '沒選分類') + (catDeleted ? '（已刪除的分類）' : '') : conf.label}</span>
         ${r.type === 'fight' ? `<span class="muted small">No. ${numberOf(r, all)}</span>` : ''}
         <span class="muted small">${longDate(r.date)}</span>

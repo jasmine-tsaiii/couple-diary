@@ -558,7 +558,7 @@ body:has(.done-bar) .toast { bottom: calc(150px + env(safe-area-inset-bottom)); 
 .home-head .title-xl { grid-column: 1; grid-row: 2; min-width: 0; overflow-wrap: anywhere; }
 .home-head .home-actions { grid-column: 2; grid-row: 2; }
 .home-head .home-days { grid-column: 1 / -1; }
-.nowrap { white-space: nowrap; }
+.nowrap { white-space: nowrap; display: inline-block; }
 /* 提醒卡右上角的叉叉 */
 .card.has-x { position: relative; padding-right: 44px; }
 .card-x { position: absolute; top: 8px; right: 8px; width: 36px; height: 36px; border: 0; background: transparent; display: grid; place-items: center; border-radius: 50%; cursor: pointer; }
@@ -586,3 +586,18 @@ body:has(.done-bar) .toast { bottom: calc(150px + env(safe-area-inset-bottom)); 
 .setting-row .setting-text { flex: 1 1 auto; min-width: 0; }
 .setting-row > .btn { flex: none; white-space: nowrap; }
 .card .btn.small { white-space: nowrap; }
+
+/* ===== 防跑版（文字變長、狀態改變、名字有 emoji 時不擠成直排） ===== */
+/* 最後一行不要只剩一個字；標題斷行時上下兩行長度平均 */
+body { text-wrap: pretty; }
+h1, h2, h3, .tile-body .bold, .opt { text-wrap: balance; }
+/* 首頁「🥔和🐻的紀錄」：窄螢幕字小一點，放不下才換行 */
+.home-head .title-xl { font-size: clamp(22px, 7.6vw, 30px); }
+/* 紀錄頁標題上面那一行（分類、No.、日期、誰新增的、編輯過）：放不下就整段換到下一行，不會把每段擠成直排 */
+.meta-row { flex-wrap: wrap; column-gap: 8px; row-gap: 2px; }
+.meta-row > * { white-space: nowrap; }
+.meta-row > .badge { white-space: normal; max-width: 100%; }
+/* 一排裡面的按鈕不會被旁邊的文字擠扁 */
+.row > .btn, .row > a.btn { flex: none; white-space: nowrap; }
+/* 標籤只在標籤和標籤之間換行，不會把「#驚喜」拆成「#驚 / 喜」 */
+.tile-tags { word-break: keep-all; overflow-wrap: anywhere; }
