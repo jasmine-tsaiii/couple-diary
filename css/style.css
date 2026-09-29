@@ -516,3 +516,9 @@ body.is-offline { padding-top: calc(30px + env(safe-area-inset-top)); }
 .notify-item:first-child { border-top: none; }
 .notify-item.unread .notify-text { font-weight: 700; }
 .notify-item.unread { background: var(--happy-bg); }
+
+/* 設定頁「登入方式」：名稱在左、狀態在右 */
+.login-method-row { display: flex; justify-content: space-between; align-items: center; gap: 12px; cursor: default; }
+.login-method-row > span:last-child { text-align: right; }
+#set-password { flex-wrap: nowrap !important; }
+#set-password .btn { flex-shrink: 0; }

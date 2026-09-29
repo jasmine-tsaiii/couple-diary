@@ -47,6 +47,6 @@ async function addOne(p, title) {
   const g = await page(b, IPHONE);
   await g.goto(U + '#/login'); await g.waitForSelector('#email');
   await g.evaluate(() => localStorage.setItem('mockGoogleOnly', '1'));
-  console.log('set-password has input class', fs.readFileSync(require('path').join(__dirname, '../../js/app/settings.js'), 'utf8').includes('<input type="password" class="input" autocomplete="new-password" placeholder="設定一組密碼'));
+  console.log('set-password has input class', fs.readFileSync(require('path').join(__dirname, '../../js/app/settings.js'), 'utf8').includes('<input type="password" class="input" autocomplete="new-password" placeholder="新密碼（至少 6 個字）"'));
   console.log('errors', [...s.errs, ...l.errs, ...g.errs]); await b.close();
 })();

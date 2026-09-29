@@ -624,7 +624,7 @@ async function viewArchive() {
 function loginMethodsCard() {
   const m = CloudDB.loginMethods();
   const email = CloudDB.currentEmail() || '';
-  const row = (name, on, note) => `<div class="legal-row" style="cursor:default"><span>${name}</span><span class="small ${on ? '' : 'muted'}">${on ? '已可以用' : '還沒設定'}${note ? `・${note}` : ''}</span></div>`;
+  const row = (name, on, note) => `<div class="legal-row login-method-row"><span>${name}</span><span class="small ${on ? '' : 'muted'}">${on ? '已可以用' : '還沒設定'}${note ? `・${note}` : ''}</span></div>`;
   return `<div class="card login-methods">
     <div class="bold">登入方式</div>
     <div class="small muted">同一個帳號可以同時用 Email 密碼和 Google 登入，紀錄都是同一份。</div>
@@ -633,7 +633,7 @@ function loginMethodsCard() {
     ${m.google ? '' : `<div class="small muted">如果你的 Google 信箱就是 ${esc(email) || '註冊的信箱'}，直接按 Google 登入也會進到同一個帳號。信箱不一樣的話，按下面連結起來：</div>
       <button class="btn small secondary" id="link-google">連結 Google 帳號</button>`}
     ${m.email ? '' : `<form id="set-password" class="row" style="gap:8px;flex-wrap:wrap;margin-top:8px">
-      <input type="password" class="input" autocomplete="new-password" placeholder="設定一組密碼（至少 6 個字）" maxlength="72" style="flex:1;min-width:160px">
+      <input type="password" class="input" autocomplete="new-password" placeholder="新密碼（至少 6 個字）" aria-label="設定一組密碼，至少 6 個字" maxlength="72" style="flex:1;min-width:0">
       <button class="btn small secondary" type="submit">設定密碼</button>
     </form>
     <div class="small muted">設好之後，也可以用 ${esc(email)} 加這組密碼登入。</div>`}
