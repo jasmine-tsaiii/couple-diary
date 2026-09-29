@@ -522,3 +522,11 @@ body.is-offline { padding-top: calc(30px + env(safe-area-inset-top)); }
 .login-method-row > span:last-child { text-align: right; }
 #set-password { flex-wrap: nowrap !important; }
 #set-password .btn { flex-shrink: 0; }
+
+/* 剛存好的紀錄頁：底部固定一顆「完成」 */
+.done-bar {
+  position: sticky; bottom: 0; margin: 4px -20px 0; padding: 12px 20px calc(12px + env(safe-area-inset-bottom));
+  background: linear-gradient(to bottom, transparent, var(--bg) 30%); z-index: 5;
+}
+.done-bar .btn { width: 100%; }
+body:has(.done-bar) .toast { bottom: calc(150px + env(safe-area-inset-bottom)); }

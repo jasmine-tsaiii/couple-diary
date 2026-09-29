@@ -408,7 +408,7 @@ async function viewCard(kind, id) {
   const nPhotos = kind === 'record' ? (data.photoIds || []).length : 0;
   app.className = 'theme-happy';
   app.innerHTML = `
-    <div class="topbar"><a class="icon-btn" href="#/cards" aria-label="返回">${ICON.back}</a><h1>${esc(title)}</h1><div style="width:44px"></div></div>
+    <div class="topbar"><a class="icon-btn" href="${kind === 'record' ? `#/view/${esc(id)}` : '#/cards'}" aria-label="返回">${ICON.back}</a><h1>${esc(title)}</h1><div style="width:44px"></div></div>
     ${inAppNotice()}
     <div class="card-preview"><img id="card-img" alt="小卡預覽"><div class="small muted" id="card-wait">小卡製作中…</div></div>
     <div class="field"><div class="label">尺寸</div><div class="theme-pick" style="grid-template-columns:repeat(2,minmax(0,1fr))">

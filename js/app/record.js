@@ -45,6 +45,10 @@ async function viewDetail(id) {
   const authorText = usingCloud() && r.author ? `${authorLabel(r)}新增的` : '';
   const canDelete = partner ? bound && mine : mine;
   const backHref = r.archivedAt ? '#/archive' : r.type === 'fight' ? '#/fights' : `#/list/${r.type}`;
+  // 剛存好跳過來的：底部放「完成」，回到這一類的列表（從願望清單寫的回到願望清單）
+  let justSaved = null;
+  try { justSaved = JSON.parse(sessionStorage.getItem('justSaved') || 'null'); sessionStorage.removeItem('justSaved'); } catch (e) { /* 略過 */ }
+  const doneHref = justSaved && justSaved.id === r.id ? (justSaved.wish ? '#/wishes' : backHref) : '';
   const urls = [];
   for (const pid of r.photoIds || []) { const u = await photoUrl(pid); if (u) urls.push(u); }
 
@@ -213,6 +217,7 @@ async function viewDetail(id) {
     ${notesPart}
     ${r.type === 'happy' && !r.archivedAt && cardSafe(r) ? `<a class="btn secondary small" href="#/card/record/${esc(r.id)}" style="align-self:flex-start">做成回憶小卡</a>` : ''}
     ${relatedPart}
+    ${doneHref ? `<div class="done-bar"><a class="btn" id="done" href="${doneHref}">完成</a></div>` : ''}
     ${canDelete ? '<button class="btn danger" id="delete" style="margin-top:12px">刪除這則紀錄</button>' : ''}
     ${!partner && !canDelete ? `<div class="small muted" style="text-align:center">這則是${authorLabel(r)}寫的，只有${authorLabel(r)}能${r.type === 'fight' ? '刪除' : '修改和刪除'}。</div>` : ''}
   `;
@@ -725,7 +730,9 @@ async function viewForm(mode, arg) {
       markA2hsPending();
       if (mode === 'new' && isGuest()) { try { if ((await liveRecords()).length >= (IOS_SAFARI_TAB ? 1 : 3)) sessionStorage.setItem('signupNudge', '1'); } catch (e) { /* 略過 */ } }
       formGuard = null;
-      go(`#/view/${rec.id}`);
+      try { sessionStorage.setItem('justSaved', JSON.stringify({ id: rec.id, wish: !!(mode === 'new' && rec.wishId) })); } catch (e) { /* 略過 */ }
+      // 用 replace：在紀錄頁按返回（或手機返回鍵）不會再回到剛剛的表單
+      location.replace(`#/view/${rec.id}`);
     }));
   }
 
