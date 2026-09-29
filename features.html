@@ -1,0 +1,396 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data:; object-src 'none'; base-uri 'self'">
+  <meta name="theme-color" content="#EFE6D6">
+  <meta name="color-scheme" content="light">
+  <title>啾啾日記功能介紹｜情侶日記、吵架紀錄、交換日記 App</title>
+  <meta name="description" content="啾啾日記是兩個人一起寫的情侶日記。記下 100 個美好時刻，把烏雲時刻和吵架議題好好收著，還能上鎖、出任務讓對方解鎖、做回憶小卡。手機瀏覽器打開就能用。">
+  <link rel="canonical" href="https://diary.jas-soul.com/features.html">
+  <meta property="og:type" content="website">
+  <meta property="og:site_name" content="啾啾日記">
+  <meta property="og:locale" content="zh_TW">
+  <meta property="og:url" content="https://diary.jas-soul.com/features.html">
+  <meta property="og:title" content="啾啾日記有哪些功能？情侶交換日記一次看懂">
+  <meta property="og:description" content="記下 100 個美好時刻，把烏雲和吵架好好收著。上鎖、任務解鎖、回憶小卡，兩個人一起寫的情侶日記。">
+  <meta property="og:image" content="https://diary.jas-soul.com/og.png?v=2">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  <meta name="twitter:card" content="summary_large_image">
+  <link rel="icon" href="icons/icon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="icons/icon-180.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Serif+TC:wght@500;900&family=LXGW+WenKai+TC:wght@400;700&family=Cormorant+Garamond:ital,wght@0,600;1,500&display=swap">
+  <style>
+    :root {
+      --desk: #EFE6D6; --paper: #FBF7EF; --ink: #3A2C27; --soft: #76635A; --line: #E4D8C6;
+      --rose: #B04A5C; --rose-hl: #F29BAE; --honey: #9A6B2C; --honey-hl: #E9C97A;
+      --blue: #5B76A3; --blue-hl: #A9BEDD; --plum: #8A5A8F; --plum-hl: #D6BEDE;
+      --c: var(--rose); --hl: var(--rose-hl);
+      --serif: 'Noto Serif TC', 'Songti TC', serif;
+      --hand: 'LXGW WenKai TC', 'Noto Serif TC', serif;
+      --latin: 'Cormorant Garamond', 'Noto Serif TC', serif;
+    }
+    * { box-sizing: border-box; }
+    html { -webkit-text-size-adjust: 100%; }
+    body {
+      margin: 0; color: var(--ink); font-family: var(--hand); font-size: 17px; line-height: 1.85; letter-spacing: .04em;
+      background: var(--desk) url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='240' height='240'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 .45 0 0 0 0 .36 0 0 0 0 .25 0 0 0 .07 0'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>");
+    }
+    img { max-width: 100%; display: block; }
+    a { color: var(--c); }
+    .wrap { max-width: 1080px; margin: 0 auto; padding: 0 16px; }
+
+    /* 頂部 */
+    .top { display: flex; align-items: center; justify-content: space-between; padding: 18px 0; gap: 12px; }
+    .brand { font-family: var(--serif); font-weight: 900; font-size: 20px; color: var(--ink); text-decoration: none; letter-spacing: .08em; }
+    .brand i { font-family: var(--latin); font-weight: 500; font-size: 17px; color: var(--soft); margin-left: 6px; letter-spacing: .02em; }
+    .top-link { font-family: var(--serif); font-weight: 500; font-size: 15px; color: var(--ink); text-decoration: none; border-bottom: 1.5px solid var(--rose-hl); padding-bottom: 1px; white-space: nowrap; }
+
+    /* 紙張 */
+    .paper {
+      position: relative; background: var(--paper); border-radius: 4px; margin: 28px 0;
+      box-shadow: 0 1px 0 rgba(58,44,39,.04), 0 18px 40px -22px rgba(58,44,39,.35);
+      background-image: radial-gradient(rgba(118,99,90,.14) 1px, transparent 1.2px); background-size: 22px 22px;
+    }
+    .paper-in { padding: 56px clamp(22px, 6vw, 72px) 52px; }
+    .tape { position: absolute; top: -14px; left: 50%; width: 130px; height: 30px; transform: translateX(-50%) rotate(-3deg);
+      background: repeating-linear-gradient(135deg, rgba(242,170,186,.72) 0 8px, rgba(250,208,216,.72) 8px 16px); }
+    .theme-cloud .tape { background: repeating-linear-gradient(135deg, rgba(233,201,122,.7) 0 8px, rgba(245,225,170,.7) 8px 16px); }
+    .theme-fight .tape { background: repeating-linear-gradient(135deg, rgba(169,190,221,.72) 0 8px, rgba(205,218,238,.72) 8px 16px); }
+    .theme-task .tape { background: repeating-linear-gradient(135deg, rgba(214,190,222,.75) 0 8px, rgba(234,220,238,.75) 8px 16px); }
+
+    .theme-cloud { --c: var(--honey); --hl: var(--honey-hl); }
+    .theme-fight { --c: var(--blue); --hl: var(--blue-hl); }
+    .theme-task { --c: var(--plum); --hl: var(--plum-hl); }
+
+    .kicker { display: flex; align-items: baseline; gap: 12px; margin: 0 0 14px; color: var(--c); }
+    .kicker .no { font-family: var(--latin); font-style: italic; font-weight: 500; font-size: 26px; color: var(--soft); letter-spacing: .02em; }
+    .kicker .dash { width: 36px; height: 1px; background: currentColor; opacity: .6; align-self: center; }
+    .kicker .cat { font-family: var(--serif); font-weight: 500; font-size: 15px; letter-spacing: .32em; }
+
+    h1, h2, h3 { font-family: var(--serif); font-weight: 900; letter-spacing: .04em; line-height: 1.34; margin: 0; color: var(--ink); }
+    h1 { font-size: clamp(34px, 6.2vw, 56px); }
+    h2 { font-size: clamp(26px, 4.2vw, 38px); margin-bottom: 18px; }
+    h3 { font-size: 20px; margin-bottom: 6px; }
+    mark { background: linear-gradient(transparent 58%, var(--hl) 58%, var(--hl) 92%, transparent 92%); color: inherit; padding: 0 .08em; }
+    p { margin: 0 0 14px; color: var(--soft); }
+    .lead { font-size: 19px; color: var(--soft); margin: 20px 0 26px; max-width: 32em; }
+    ul.dots { list-style: none; padding: 0; margin: 18px 0 0; }
+    ul.dots li { position: relative; padding-left: 1.3em; margin: 8px 0; color: var(--soft); }
+    ul.dots li::before { content: '・'; position: absolute; left: -.1em; color: var(--c); font-weight: 700; }
+    ul.dots b, p b { color: var(--ink); font-weight: 700; }
+
+    .cta { display: inline-block; font-family: var(--serif); font-weight: 900; font-size: 18px; letter-spacing: .1em; color: var(--paper); background: var(--ink);
+      text-decoration: none; padding: 14px 28px; border-radius: 3px; box-shadow: 4px 4px 0 var(--rose-hl); }
+    .cta:hover { transform: translate(-1px,-1px); box-shadow: 5px 5px 0 var(--rose-hl); }
+    .cta-sub { display: block; margin-top: 14px; font-size: 14px; color: var(--soft); }
+
+    /* 圖文排版 */
+    .row { display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(0, .85fr); gap: clamp(28px, 6vw, 72px); align-items: center; }
+    .row.rev > .copy { order: 2; }
+    .row.rev > .shots { order: 1; }
+    .shots { position: relative; display: flex; justify-content: center; gap: 18px; }
+    .phone { position: relative; width: min(270px, 70vw); flex: none; border-radius: 30px; padding: 8px; background: #fff; border: 1px solid var(--line);
+      box-shadow: 0 24px 40px -24px rgba(58,44,39,.45); }
+    .phone img { width: 100%; height: auto; aspect-ratio: 390 / 844; object-fit: cover; object-position: top; border-radius: 22px; background: var(--paper); }
+    .phone.tilt-l { transform: rotate(-2deg); }
+    .phone.tilt-r { transform: rotate(2deg); }
+    .phone.small { width: min(210px, 44vw); }
+    .phone::before { content: ''; position: absolute; top: -12px; left: 50%; width: 96px; height: 26px; transform: translateX(-50%) rotate(3deg); z-index: 2;
+      background: repeating-linear-gradient(135deg, rgba(242,170,186,.7) 0 8px, rgba(250,208,216,.7) 8px 16px); }
+    .theme-cloud .phone::before { background: repeating-linear-gradient(135deg, rgba(233,201,122,.7) 0 8px, rgba(245,225,170,.7) 8px 16px); }
+    .theme-fight .phone::before { background: repeating-linear-gradient(135deg, rgba(169,190,221,.72) 0 8px, rgba(205,218,238,.72) 8px 16px); }
+    .theme-task .phone::before { background: repeating-linear-gradient(135deg, rgba(214,190,222,.75) 0 8px, rgba(234,220,238,.75) 8px 16px); }
+    .pair .phone:nth-child(2) { margin-top: 56px; }
+
+    .note { position: relative; background: #FFFDF6; border: 1px solid var(--line); padding: 16px 20px; margin-top: 26px; transform: rotate(-1.5deg);
+      box-shadow: 0 10px 20px -16px rgba(58,44,39,.5); max-width: 26em; }
+    .note p { margin: 0; color: var(--ink); }
+    .note .by { display: block; margin-top: 6px; font-size: 14px; color: var(--soft); text-align: right; }
+
+    .stamp { position: absolute; right: -6px; bottom: 40px; z-index: 3; width: 104px; height: 104px; border-radius: 50%; border: 3px solid var(--c); display: grid; place-items: center;
+      transform: rotate(12deg); color: var(--c); font-family: var(--serif); font-weight: 900; font-size: 20px; letter-spacing: .12em; background: rgba(251,247,239,.86); }
+    .stamp::after { content: ''; position: absolute; inset: 5px; border-radius: 50%; border: 1.5px solid var(--c); }
+
+    .flow { display: flex; align-items: center; gap: 0; margin: 22px 0 6px; font-family: var(--serif); font-weight: 500; font-size: 15px; color: var(--soft); flex-wrap: wrap; row-gap: 8px; }
+    .flow span { display: inline-flex; align-items: center; gap: 8px; }
+    .flow span::before { content: ''; width: 11px; height: 11px; border-radius: 50%; border: 2px solid var(--c); }
+    .flow span.on { color: var(--ink); }
+    .flow span.on::before { background: var(--c); }
+    .flow i { width: 34px; border-top: 1.5px dashed var(--c); margin: 0 10px; opacity: .7; }
+
+    .bird { width: clamp(150px, 22vw, 210px); height: auto; }
+    .hero-bird { height: auto; position: absolute; left: -28px; bottom: -34px; width: 150px; z-index: 3; }
+
+    /* 其他功能格 */
+    .grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 28px 40px; margin-top: 28px; }
+    .grid > div { border-top: 1px dashed var(--line); padding-top: 18px; }
+    .grid p { margin: 0; }
+
+    /* FAQ */
+    .faq details { border-top: 1px dashed var(--line); padding: 16px 0; }
+    .faq details:last-child { border-bottom: 1px dashed var(--line); }
+    .faq summary { cursor: pointer; list-style: none; font-family: var(--serif); font-weight: 900; font-size: 18px; color: var(--ink); display: flex; gap: 12px; }
+    .faq summary::-webkit-details-marker { display: none; }
+    .faq summary::before { content: 'Q.'; font-family: var(--latin); font-style: italic; font-weight: 500; font-size: 20px; color: var(--rose); flex: none; }
+    .faq details p { margin: 10px 0 0 34px; }
+
+    .end { text-align: left; }
+    .end .row { grid-template-columns: minmax(0, 1fr) auto; }
+
+    footer { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; flex-wrap: wrap; border-top: 1px dashed #CDBFA9; padding: 18px 0 40px; margin-top: 12px; font-size: 14px; color: var(--soft); }
+    footer .brand { font-size: 16px; }
+    footer .url { font-family: var(--latin); font-weight: 600; font-size: 17px; color: var(--rose); text-decoration: none; }
+    footer nav a { color: var(--soft); margin-left: 14px; }
+    .demo-note { font-size: 13px; color: var(--soft); text-align: center; margin: -8px 0 8px; }
+
+    @media (max-width: 760px) {
+      body { font-size: 16px; }
+      .row, .row.rev, .end .row { grid-template-columns: minmax(0, 1fr); }
+      .row.rev > .copy, .row > .copy { order: 1; }
+      .row.rev > .shots, .row > .shots { order: 2; }
+      .paper-in { padding: 44px 22px 40px; }
+      .grid { grid-template-columns: minmax(0, 1fr); gap: 18px; }
+      .hero-bird { width: 112px; left: -8px; bottom: -26px; }
+      .stamp { width: 86px; height: 86px; font-size: 17px; right: 0; }
+      .pair .phone:nth-child(2) { margin-top: 36px; }
+      .phone.small { width: calc(50% - 9px); padding: 6px; border-radius: 22px; }
+      .phone.small img { border-radius: 17px; }
+      .end .bird { justify-self: start; }
+      .faq details p { margin-left: 0; }
+      .flow i { width: 16px; margin: 0 6px; }
+      .flow { font-size: 14px; }
+    }
+  </style>
+  <script type="application/ld+json">{"@context":"https://schema.org","@type":"SoftwareApplication","name":"啾啾日記","url":"https://diary.jas-soul.com/","applicationCategory":"LifestyleApplication","operatingSystem":"iOS, Android, Web","inLanguage":"zh-TW","description":"兩個人一起寫的情侶日記：記下 100 個美好時刻，整理烏雲時刻和吵架議題，上鎖、任務解鎖、回憶小卡。","offers":{"@type":"Offer","price":"0","priceCurrency":"TWD"}}</script>
+  <script type="application/ld+json">{"@context":"https://schema.org","@type":"FAQPage","mainEntity":[
+    {"@type":"Question","name":"啾啾日記要下載嗎？","acceptedAnswer":{"@type":"Answer","text":"不用到 App Store 下載。用手機的 Safari 或 Chrome 打開 diary.jas-soul.com 就能用，也可以加到主畫面，之後像一般 App 一樣從桌面打開。"}},
+    {"@type":"Question","name":"需要註冊才能用嗎？","acceptedAnswer":{"@type":"Answer","text":"打開就能先試用，紀錄會先存在手機裡。想換手機也看得到、或想分享給另一半，再用 Email 或 Google 註冊就好，之前寫的紀錄會自動搬上雲端。"}},
+    {"@type":"Question","name":"另一半看得到我寫的所有東西嗎？","acceptedAnswer":{"@type":"Answer","text":"不會。每一則紀錄都可以選「給對方看」、「上鎖」或「任務解鎖」。上鎖的紀錄對方只看得到「有一則上鎖」，看不到內容。你也可以隨時暫停分享。"}},
+    {"@type":"Question","name":"吵架後可以怎麼用啾啾日記？","acceptedAnswer":{"@type":"Answer","text":"先用烏雲時刻把當下的感受寫下來，不用急著給對方看。冷靜之後，再開一個吵架議題，兩個人各自寫下自己的想法，一起決定怎麼處理，之後的進展也可以一直補上去。"}},
+    {"@type":"Question","name":"任務解鎖是什麼？","acceptedAnswer":{"@type":"Answer","text":"你可以幫一則紀錄出一個小任務，例如「帶我去吃早午餐」。對方完成、送出後由你確認，紀錄才會打開給對方看。任務可以要求上傳照片當作證明。"}},
+    {"@type":"Question","name":"照片有張數限制嗎？","acceptedAnswer":{"@type":"Answer","text":"每則紀錄最多 9 張。沒登入時照片存在手機，沒有總張數限制；雲端帳號目前可以存 30 張照片，兩個人共用。"}},
+    {"@type":"Question","name":"資料會不會不見？","acceptedAnswer":{"@type":"Answer","text":"註冊後紀錄和照片存在雲端，換手機登入就看得到。刪掉的紀錄會在「最近刪除」保留 30 天，你也可以隨時匯出備份檔。"}},
+    {"@type":"Question","name":"分手了紀錄怎麼辦？","acceptedAnswer":{"@type":"Answer","text":"設定頁有「結束這段關係」，可以把紀錄封存起來只留給自己，或全部刪除。兩種做法都會讓對方無法再看到。"}},
+    {"@type":"Question","name":"適合什麼樣的情侶？","acceptedAnswer":{"@type":"Answer","text":"想留下相處點滴的情侶、遠距離戀愛、常為同一件事吵架想好好談開的，或是想和另一半一起完成 100 件事的，都很適合。"}}
+  ]}</script>
+</head>
+<body>
+<div class="wrap">
+  <header class="top">
+    <a class="brand" href="./">啾啾日記<i>Jiujiu Diary</i></a>
+    <a class="top-link" href="./">開始寫</a>
+  </header>
+
+  <main>
+    <!-- 開頭 -->
+    <section class="paper">
+      <div class="tape" aria-hidden="true"></div>
+      <div class="paper-in row">
+        <div class="copy">
+          <div class="kicker"><span class="no">Features</span><span class="dash"></span><span class="cat">功能介紹</span></div>
+          <h1>兩個人一起寫的<br><mark>情侶日記</mark></h1>
+          <p class="lead">在一起久了，好的事會忘，吵過的架卻一直記得。啾啾日記是一本給兩個人的交換日記，把甜的時刻存起來，把吵過的架好好收著，等心情放晴再回頭看。</p>
+          <a class="cta" href="./">寫下第一個美好時刻</a>
+          <span class="cta-sub">用手機瀏覽器打開就能寫，也能加到主畫面，用起來跟 App 一樣。</span>
+        </div>
+        <div class="shots">
+          <figure class="phone tilt-r" style="margin:0">
+            <img src="img/features/home.jpg" width="780" height="1688" alt="啾啾日記首頁：在一起天數、記美好、記烏雲、記吵架三個快速按鈕和所有功能" fetchpriority="high">
+          </figure>
+          <img class="hero-bird" src="img/features/bird-happy.svg" width="160" height="112" alt="">
+        </div>
+      </div>
+    </section>
+
+    <!-- 01 美好 -->
+    <section class="paper" id="happy">
+      <div class="paper-in row rev">
+        <div class="copy">
+          <div class="kicker"><span class="no">No.01</span><span class="dash"></span><span class="cat">美好時刻</span></div>
+          <h2>一起存滿<mark>100 個美好時刻</mark></h2>
+          <p>每一則都可以寫標題、日期和描述，放最多 9 張照片，選最多 3 個心情表情，再加上自己取名的感受標籤。看著進度條一點一點變長，會想起原來你們一起做過這麼多事。</p>
+          <ul class="dots">
+            <li>往年同一天有美好時刻，首頁會出現<b>一年前的今天</b>回顧卡</li>
+            <li>美好時刻滿 1、5、10、30、50、100 個，印章冊會蓋一個章</li>
+            <li>另一半可以對你寫的美好時刻<b>按愛心</b></li>
+            <li>用標籤篩選，想找「在家約會」的那幾次，一下就找到</li>
+          </ul>
+        </div>
+        <div class="shots">
+          <figure class="phone tilt-l" style="margin:0"><img src="img/features/happy-list.jpg" width="780" height="1688" alt="美好時刻列表：23 / 100 的進度條、標籤篩選和一格一格的紀錄" loading="lazy"></figure>
+        </div>
+      </div>
+    </section>
+
+    <!-- 02 烏雲 -->
+    <section class="paper theme-cloud" id="cloud">
+      <div class="tape" aria-hidden="true"></div>
+      <div class="paper-in row">
+        <div class="copy">
+          <div class="kicker"><span class="no">No.02</span><span class="dash"></span><span class="cat">烏雲時刻</span></div>
+          <h2>不開心的事，<br><mark>先寫給自己看</mark></h2>
+          <p>不是每一天都很甜。烏雲時刻讓你把當下的委屈、失望先寫下來，預設是上鎖的，只有自己看得到。</p>
+          <ul class="dots">
+            <li><b>事後反思</b>：冷靜之後可以隨時補寫，想法怎麼改變，會依日期排成一條時間軸</li>
+            <li><b>已放晴</b>：心情過去了按一下，這朵烏雲就散了</li>
+            <li><b>美好和烏雲的比例</b>：首頁會顯示「美好 : 烏雲」，距離 5 : 1 還差幾個，提醒你們好的時刻其實比較多</li>
+          </ul>
+          <div class="note"><p>其實我氣的不是遲到，是覺得自己不被在乎。說出來之後輕鬆很多。</p><span class="by">── 9/22 的事後反思</span></div>
+        </div>
+        <div class="shots">
+          <figure class="phone tilt-r" style="margin:0"><img src="img/features/cloud-detail.jpg" width="780" height="1688" alt="烏雲時刻詳情：上鎖、已放晴，下面是兩則事後反思的時間軸" loading="lazy"></figure>
+          <img class="hero-bird" src="img/features/bird-cloud.svg" width="160" height="112" alt="">
+        </div>
+      </div>
+    </section>
+
+    <!-- 03 吵架 -->
+    <section class="paper theme-fight" id="fight">
+      <div class="paper-in row rev">
+        <div class="copy">
+          <div class="kicker"><span class="no">No.03</span><span class="dash"></span><span class="cat">吵架議題</span></div>
+          <h2>同一件事一直吵，<br>是因為<mark>上次沒講完</mark></h2>
+          <p>吵架議題把每一次爭執整理成一張卡，兩個人都看得到，也能一起更新。</p>
+          <ul class="dots">
+            <li><b>分類</b>：溝通、金錢、家人朋友、生活習慣……分類也能自己新增</li>
+            <li><b>原因</b>和<b>雙方各自的想法</b>分開寫，不會混在一起</li>
+            <li><b>後續紀錄</b>：之後想到什麼、做了什麼改變，都能一直補上，標示是誰寫的</li>
+            <li>按分類統計，看得出你們最常為什麼吵</li>
+          </ul>
+          <div class="flow" aria-label="狀態：未解決、處理中、已解決"><span>未解決</span><i></i><span class="on">處理中</span><i></i><span>已解決</span></div>
+          <p style="margin-top:10px">和好之後按「已解決」，印章冊會多一個和好章。</p>
+        </div>
+        <div class="shots pair">
+          <figure class="phone small tilt-l" style="margin:0"><img src="img/features/fights.jpg" width="780" height="1688" alt="吵架議題列表：按分類統計、狀態篩選，每個議題標示未解決、處理中或已解決" loading="lazy"></figure>
+          <figure class="phone small tilt-r" style="margin:0"><img src="img/features/fight-detail.jpg" width="780" height="1688" alt="吵架議題詳情：原因、兩個人各自的想法、狀態和後續時間軸" loading="lazy"></figure>
+          <div class="stamp" aria-hidden="true">已和好</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 04 誰可以看 -->
+    <section class="paper theme-task" id="task">
+      <div class="tape" aria-hidden="true"></div>
+      <div class="paper-in row">
+        <div class="copy">
+          <div class="kicker"><span class="no">No.04</span><span class="dash"></span><span class="cat">上鎖與任務解鎖</span></div>
+          <h2>誰可以看，<br><mark>由寫的人決定</mark></h2>
+          <p>每一則紀錄都能選：</p>
+          <ul class="dots">
+            <li><b>給對方看</b>：另一半直接看得到</li>
+            <li><b>上鎖</b>：只有自己看得到，對方只會看到「有一則上鎖的紀錄」</li>
+            <li><b>任務解鎖</b>：幫這則紀錄出一個小任務，對方完成後由你確認，紀錄才打開。任務可以要求上傳照片當證明</li>
+          </ul>
+          <p style="margin-top:14px">美好時刻預設給對方看，烏雲時刻預設上鎖。兩個人都能出任務給對方，想說又說不出口的話，就讓它變成一個小遊戲。</p>
+          <div class="note"><p>帶我去吃早午餐，拍一張合照給我。</p><span class="by">── 任務範例</span></div>
+        </div>
+        <div class="shots">
+          <figure class="phone tilt-l" style="margin:0"><img src="img/features/task-form.jpg" width="780" height="1688" alt="新增紀錄的「誰可以看」：給對方看、上鎖、任務解鎖，以及任務內容和完成方式" loading="lazy"></figure>
+          <img class="hero-bird" src="img/features/bird-celebrate.svg" width="160" height="112" alt="">
+        </div>
+      </div>
+    </section>
+
+    <!-- 05 一起完成的事 + 印章冊 -->
+    <section class="paper" id="together">
+      <div class="paper-in row rev">
+        <div class="copy">
+          <div class="kicker"><span class="no">No.05</span><span class="dash"></span><span class="cat">一起完成的事・印章冊</span></div>
+          <h2>想一起做的事，<br><mark>做完就蓋一個章</mark></h2>
+          <p><b>一起完成的事</b>是兩個人共用的待辦清單。想去的餐廳、想看的電影、想一起做的 100 件事都可以寫進來，完成後打勾，一鍵就能記成一則美好時刻。</p>
+          <p><b>印章冊</b>收著你們一路走來的里程碑：美好時刻的數量、吵架和好、烏雲放晴、寫下反思、完成任務、在一起的天數。達到就蓋章，還會跳出慶祝畫面。</p>
+        </div>
+        <div class="shots pair">
+          <figure class="phone small tilt-l" style="margin:0"><img src="img/features/wishes.jpg" width="780" height="1688" alt="一起完成的事：兩個人共用的待辦清單，分成還沒完成和完成了" loading="lazy"></figure>
+          <figure class="phone small tilt-r" style="margin:0"><img src="img/features/stamps.jpg" width="780" height="1688" alt="印章冊：美好時刻和吵架和好的印章，已經蓋到的和還沒拿到的" loading="lazy"></figure>
+        </div>
+      </div>
+    </section>
+
+    <!-- 06 回憶小卡 -->
+    <section class="paper" id="cards">
+      <div class="tape" aria-hidden="true"></div>
+      <div class="paper-in row">
+        <div class="copy">
+          <div class="kicker"><span class="no">No.06</span><span class="dash"></span><span class="cat">回憶小卡・紀念日</span></div>
+          <h2>把回憶做成<mark>一張小卡</mark></h2>
+          <p>每週、每月的回顧，單則美好時刻，或是在一起的天數、週年紀念，都可以做成一張手帳風的小卡。有限動直式和貼文方形兩種尺寸，存到相簿或分享到 IG、LINE。</p>
+          <ul class="dots">
+            <li>小卡只放美好時刻和統計數字，烏雲、吵架和上鎖的內容一律不會出現</li>
+            <li>填上在一起的日期，首頁會顯示<b>在一起第幾天</b>；每週、每月的回顧小卡準備好了，首頁也會提醒你</li>
+          </ul>
+        </div>
+        <div class="shots pair">
+          <figure class="phone small tilt-l" style="margin:0"><img src="img/features/card-record.jpg" width="780" height="1688" alt="美好時刻小卡：手帳紙感的卡片，寫著他記得我不吃香菜" loading="lazy"></figure>
+          <figure class="phone small tilt-r" style="margin:0"><img src="img/features/card-days.jpg" width="780" height="1688" alt="紀念日小卡：在一起第 473 天" loading="lazy"></figure>
+        </div>
+      </div>
+    </section>
+
+    <!-- 07 兩個人 + 其他 -->
+    <section class="paper" id="more">
+      <div class="paper-in">
+        <div class="kicker"><span class="no">No.07</span><span class="dash"></span><span class="cat">兩個人一起寫</span></div>
+        <div class="row end">
+          <div class="copy">
+            <h2>邀請另一半，<mark>一起寫</mark>，也能各寫各的</h2>
+            <p>註冊後在設定頁產生分享碼，把邀請連結傳給另一半。對方加入時要你按「同意」才算數，所以一組分享碼同時只會有一位另一半。另一半綁定 Email 或 Google 後，也能寫自己的美好時刻、烏雲時刻，放自己的照片。美好時刻的 100 個目標兩個人一起累積，列表可以切換「全部、我的、對方的」。</p>
+          </div>
+          <img class="bird" src="img/features/bird-clear.svg" width="160" height="112" alt="">
+        </div>
+        <div class="grid">
+          <div><h3>對方有新動態，你會知道</h3><p>另一半新增了美好時刻、完成任務或確認了你的任務，App 裡會有通知。一陣子沒打開的話，會合併成一封 Email，一小時最多一封，信裡不放紀錄內容。</p></div>
+          <div><h3>需要空間的時候</h3><p>「暫停分享」讓另一半暫時看不到你寫的東西，隨時可以恢復。</p></div>
+          <div><h3>隱私和安全</h3><p>每個人只讀得到被允許看的內容，照片空間不公開。還可以開 4 位數的 App 密碼鎖。</p></div>
+          <div><h3>刪錯了也救得回來</h3><p>刪掉的紀錄會先放在「最近刪除」30 天。也可以隨時匯出備份，或匯出點開就能閱讀、列印的版本。</p></div>
+          <div><h3>先試用，再註冊</h3><p>打開就能直接寫，資料先存在手機。註冊後會自動搬上雲端，換手機也不會不見。</p></div>
+          <div><h3>貼心的小地方</h3><p>寫到一半離開會存草稿、深色模式、標籤改名、吉祥物啾啾和啵啵的顏色也能自己挑。</p></div>
+          <div><h3>如果這段關係結束了</h3><p>可以把回憶封存起來只留給自己，或全部刪除。兩種做法都會讓對方無法再看到。</p></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- FAQ -->
+    <section class="paper" id="faq">
+      <div class="tape" aria-hidden="true"></div>
+      <div class="paper-in faq">
+        <div class="kicker"><span class="no">Q&amp;A</span><span class="dash"></span><span class="cat">常見問題</span></div>
+        <h2>常見問題</h2>
+        <details open><summary>啾啾日記要下載嗎？</summary><p>不用到 App Store 下載。用手機的 Safari 或 Chrome 打開 diary.jas-soul.com 就能用，也可以加到主畫面，之後像一般 App 一樣從桌面打開。</p></details>
+        <details><summary>需要註冊才能用嗎？</summary><p>打開就能先試用，紀錄會先存在手機裡。想換手機也看得到、或想分享給另一半，再用 Email 或 Google 註冊就好，之前寫的紀錄會自動搬上雲端。</p></details>
+        <details><summary>另一半看得到我寫的所有東西嗎？</summary><p>不會。每一則紀錄都可以選「給對方看」、「上鎖」或「任務解鎖」。上鎖的紀錄對方只看得到「有一則上鎖」，看不到內容。你也可以隨時暫停分享。</p></details>
+        <details><summary>吵架後可以怎麼用啾啾日記？</summary><p>先用烏雲時刻把當下的感受寫下來，不用急著給對方看。冷靜之後，再開一個吵架議題，兩個人各自寫下自己的想法，一起決定怎麼處理，之後的進展也可以一直補上去。</p></details>
+        <details><summary>任務解鎖是什麼？</summary><p>你可以幫一則紀錄出一個小任務，例如「帶我去吃早午餐」。對方完成、送出後由你確認，紀錄才會打開給對方看。任務可以要求上傳照片當作證明。</p></details>
+        <details><summary>照片有張數限制嗎？</summary><p>每則紀錄最多 9 張。沒登入時照片存在手機，沒有總張數限制；雲端帳號目前可以存 30 張照片，兩個人共用。</p></details>
+        <details><summary>資料會不會不見？</summary><p>註冊後紀錄和照片存在雲端，換手機登入就看得到。刪掉的紀錄會在「最近刪除」保留 30 天，你也可以隨時匯出備份檔。</p></details>
+        <details><summary>分手了紀錄怎麼辦？</summary><p>設定頁有「結束這段關係」，可以把紀錄封存起來只留給自己，或全部刪除。兩種做法都會讓對方無法再看到。</p></details>
+        <details><summary>適合什麼樣的情侶？</summary><p>想留下相處點滴的情侶、遠距離戀愛、常為同一件事吵架想好好談開的，或是想和另一半一起完成 100 件事的，都很適合。</p></details>
+      </div>
+    </section>
+
+    <!-- 結尾 -->
+    <section class="paper" id="start">
+      <div class="paper-in row end">
+        <div class="copy">
+          <h2>把你們的<mark>第一個美好時刻</mark><br>寫下來吧</h2>
+          <p>甜的存起來，吵過的也好好收著。</p>
+          <a class="cta" href="./">開始寫啾啾日記</a>
+        </div>
+        <img class="bird" src="img/features/bird-happy.svg" width="160" height="112" alt="啾啾日記的吉祥物，兩隻靠在一起的小鸚鵡">
+      </div>
+    </section>
+    <p class="demo-note">頁面上的畫面都是 App 的實際畫面，名字和內容是示範用的。</p>
+  </main>
+
+  <footer>
+    <span class="brand">啾啾日記<i>Jiujiu Diary</i></span>
+    <span><a class="url" href="./">diary.jas-soul.com</a><nav style="display:inline"><a href="privacy.html">隱私權政策</a><a href="terms.html">使用條款</a></nav></span>
+  </footer>
+</div>
+</body>
+</html>

@@ -93,6 +93,7 @@
 - `sw.js`：離線用的 service worker
 - `tests/`：畫面測試，`cd tests && npm install && npm test`
 - `manifest.json`、`icons/`：加到主畫面時的名稱和圖示
+- `features.html`、`img/features/`：給搜尋引擎看的功能介紹頁（https://diary.jas-soul.com/features.html），截圖是用示範資料拍的 App 實際畫面。功能有改的話記得一起更新這頁
 
 ## 資料存在哪裡
 
