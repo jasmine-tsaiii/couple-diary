@@ -218,7 +218,7 @@ async function viewDetail(id) {
     ${notesPart}
     ${r.type === 'happy' && !r.archivedAt && cardSafe(r) ? `<a class="btn secondary small" href="#/card/record/${esc(r.id)}" style="align-self:flex-start">做成回憶小卡</a>` : ''}
     ${relatedPart}
-    ${doneHref ? `<div class="done-bar"><a class="btn" id="done" href="${doneHref}">完成</a></div>` : ''}
+    ${doneHref ? `<div class="done-bar"><a class="btn" id="done" href="${doneHref}"${doneHref === backHref ? ' data-back' : ''}>完成</a></div>` : ''}
     ${canDelete ? '<button class="btn danger" id="delete" style="margin-top:12px">刪除這則紀錄</button>' : ''}
     ${!partner && !canDelete ? `<div class="small muted" style="text-align:center">這則是${authorLabel(r)}寫的，只有${authorLabel(r)}能${r.type === 'fight' ? '刪除' : '修改和刪除'}。</div>` : ''}
   `;
@@ -732,8 +732,10 @@ async function viewForm(mode, arg) {
       if (mode === 'new' && isGuest()) { try { if ((await liveRecords()).length >= (IOS_SAFARI_TAB ? 1 : 3)) sessionStorage.setItem('signupNudge', '1'); } catch (e) { /* 略過 */ } }
       formGuard = null;
       try { sessionStorage.setItem('justSaved', JSON.stringify({ id: rec.id, wish: !!(mode === 'new' && rec.wishId) })); } catch (e) { /* 略過 */ }
-      // 用 replace：在紀錄頁按返回（或手機返回鍵）不會再回到剛剛的表單
-      location.replace(`#/view/${rec.id}`);
+      // 編輯完：直接退回原本那頁紀錄（不多一層）；新增完：用 replace 換掉表單，返回不會再回到剛剛的表單
+      const viewHash = `#/view/${rec.id}`;
+      if (mode === 'edit' && navPrev() === viewHash) history.back();
+      else replaceHash(viewHash);
     }));
   }
 

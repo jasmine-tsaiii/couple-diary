@@ -100,6 +100,28 @@ function toast(msg) {
   toast.timer = setTimeout(() => t.classList.remove('show'), 1800);
 }
 function go(hash) { location.hash = hash; }
+// ---------- 返回 ----------
+// 記住這次打開後走過的頁面。按左上角返回、「完成」、從左邊滑：有上一頁就真的退回上一頁（跟手機返回手勢一致，
+// 不會多疊一層、退回剛剛那一步）；沒有上一頁（例如從通知信直接打開）才去預設的頁面
+let navStack = [location.hash || '#/'];
+let navReplacing = false;
+function trackNav(h) {
+  h = h || '#/';
+  if (navReplacing) { navReplacing = false; navStack[navStack.length - 1] = h; }
+  else if (navStack.length > 1 && navStack[navStack.length - 2] === h) navStack.pop();
+  else if (navStack[navStack.length - 1] !== h) navStack.push(h);
+  if (navStack.length > 60) navStack = navStack.slice(-60);
+}
+const navPrev = () => (navStack.length > 1 ? navStack[navStack.length - 2] : null);
+function replaceHash(h) {
+  if ((location.hash || '#/') === h) return;
+  navReplacing = true;
+  location.replace(h);
+}
+function goBack(fallback) {
+  if (navStack.length > 1) history.back();
+  else replaceHash(fallback || '#/');
+}
 // 同一頁換篩選條件時重畫：留在原本的位置，橫向捲動的標籤列也不要跳回最左邊（iPhone 點最右邊的分類會跳掉）
 async function keepPlace(render) {
   const y = window.scrollY;

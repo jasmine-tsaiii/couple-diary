@@ -566,3 +566,11 @@ body:has(.done-bar) .toast { bottom: calc(150px + env(safe-area-inset-bottom)); 
 /* 底部分頁的小紅點：對方寫了你還沒點開的 */
 .tab { position: relative; }
 .tab.has-new::after { content: ''; position: absolute; top: 6px; left: calc(50% + 9px); width: 8px; height: 8px; border-radius: 99px; background: var(--accent, #A63D52); box-shadow: 0 0 0 2px var(--bg, #fff); }
+/* 從左邊滑回上一頁時，左邊跟著手指出現的返回圓鈕；滑夠遠會變色，放開就返回 */
+.swipe-back { position: fixed; left: 0; top: 50%; width: 44px; height: 44px; border-radius: 99px; display: grid; place-items: center;
+  background: var(--card); color: var(--ink); border: 1px solid var(--line); box-shadow: 0 4px 14px rgba(0,0,0,.15);
+  transform: translate(-56px, -50%); opacity: 0; pointer-events: none; z-index: 60; transition: opacity .12s, background .12s; }
+.swipe-back.on { opacity: 1; }
+.swipe-back.ready { background: var(--accent, #A63D52); color: #fff; border-color: transparent; }
+/* 左上角返回：點擊範圍大一點、貼齊畫面左邊，比較好按 */
+.topbar > a.icon-btn:first-child { width: 52px; height: 52px; margin-left: -10px; }

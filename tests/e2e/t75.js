@@ -26,7 +26,7 @@ const U = process.env.U || 'http://localhost:8770/';
   await p.goto(U + `#/edit/${id}`); await p.waitForSelector('#f-title'); await p.fill('#f-title', '我寶送我搭接駁車！');
   await p.click('#save'); await p.waitForSelector('#done', { timeout: 8000 });
   await p.click('#done'); await p.waitForTimeout(600);
-  console.log('done goes to happy list', p.url().endsWith('#/list/happy'));
+  console.log('done goes back to previous page', /#\/?$/.test(p.url()));
   // 小卡的返回回到這則紀錄
   await p.goto(U + `#/card/record/${id}`); await p.waitForSelector('.topbar .icon-btn');
   console.log('card back to record', (await p.getAttribute('.topbar .icon-btn', 'href')) === `#/view/${id}`);

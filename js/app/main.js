@@ -304,22 +304,44 @@ toTop.addEventListener('click', () => window.scrollTo({ top: 0, behavior: window
 document.body.appendChild(toTop);
 window.addEventListener('scroll', () => { toTop.hidden = window.scrollY < 500; }, { passive: true });
 window.addEventListener('hashchange', () => { toTop.hidden = true; });
-// 從畫面左邊往右滑：等於按左上角的返回（加到主畫面後沒有瀏覽器的返回鍵，這樣比較方便）
+// 從畫面左邊往右滑回上一頁。只在「加到主畫面」打開時做：那裡沒有瀏覽器的返回手勢。
+// 在 Safari、Chrome 裡用瀏覽器自己的手勢就好（兩個一起做會退兩次、或像卡住）
+const STANDALONE = (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches) || navigator.standalone === true;
+const swipeHint = document.createElement('div');
+swipeHint.className = 'swipe-back';
+swipeHint.setAttribute('aria-hidden', 'true');
+swipeHint.innerHTML = ICON.back;
+document.body.appendChild(swipeHint);
 let swipe = null;
+const backTarget = () => document.querySelector('.topbar a.icon-btn[aria-label="返回"], .topbar a.icon-btn[aria-label="取消"]');
 document.addEventListener('touchstart', (ev) => {
   const t = ev.touches[0];
-  swipe = ev.touches.length === 1 && t.clientX < 30 && !document.querySelector('.celebrate, .pin-lock') ? { x: t.clientX, y: t.clientY } : null;
+  swipe = (STANDALONE || window.__forceSwipeBack) && ev.touches.length === 1 && t.clientX < 44 && backTarget() && !document.querySelector('.celebrate, .pin-lock, .dlg-back')
+    ? { x: t.clientX, y: t.clientY, dx: 0, locked: false } : null;
 }, { passive: true });
-document.addEventListener('touchend', (ev) => {
+document.addEventListener('touchmove', (ev) => {
   if (!swipe) return;
-  const t = ev.changedTouches[0];
-  const dx = t.clientX - swipe.x;
-  const dy = Math.abs(t.clientY - swipe.y);
-  swipe = null;
-  if (dx < 80 || dy > 60) return;
-  const back = document.querySelector('.topbar .icon-btn[aria-label="返回"]');
-  if (back) back.click();
+  const t = ev.touches[0];
+  const dx = t.clientX - swipe.x; const dy = Math.abs(t.clientY - swipe.y);
+  if (!swipe.locked) {
+    if (dy > 24 && dy > dx) { swipe = null; swipeHint.classList.remove('on', 'ready'); return; } // 其實是在上下捲
+    if (dx > 12) swipe.locked = true;
+  }
+  swipe.dx = dx;
+  if (swipe.locked) {
+    swipeHint.classList.add('on');
+    swipeHint.style.transform = `translate(${Math.min(dx, 90) - 56}px, -50%)`;
+    swipeHint.classList.toggle('ready', dx >= 60);
+  }
 }, { passive: true });
+const endSwipe = () => {
+  const go = swipe && swipe.locked && swipe.dx >= 60;
+  swipe = null;
+  swipeHint.classList.remove('on', 'ready'); swipeHint.style.transform = '';
+  if (go) { const back = backTarget(); if (back) back.click(); }
+};
+document.addEventListener('touchend', endSwipe, { passive: true });
+document.addEventListener('touchcancel', () => { swipe = null; swipeHint.classList.remove('on', 'ready'); swipeHint.style.transform = ''; }, { passive: true });
 
 let lastHash = location.hash;
 window.addEventListener('hashchange', () => {
@@ -333,7 +355,15 @@ window.addEventListener('hashchange', () => {
   }
   formGuard = null;
   lastHash = location.hash;
+  trackNav(location.hash);
   route();
+});
+// 左上角返回、取消、「完成」：退回上一頁，不是再開一個新頁（表單自己的「還沒儲存」確認會先跑）
+document.addEventListener('click', (ev) => {
+  const a = ev.target.closest('a[data-back], .topbar a.icon-btn[aria-label="返回"], .topbar a.icon-btn[aria-label="取消"]');
+  if (!a || ev.defaultPrevented || ev.button || ev.metaKey || ev.ctrlKey || ev.shiftKey) return;
+  ev.preventDefault();
+  goBack(a.getAttribute('href'));
 });
 window.addEventListener('beforeunload', (ev) => {
   if (formGuard && formGuard.dirty()) { ev.preventDefault(); ev.returnValue = ''; }
