@@ -52,9 +52,15 @@ const U = process.env.U || 'http://localhost:8770/';
   console.log('one read, four left', await p.locator('.notify-item.unread').count() === 4 && !(await p.getAttribute('[data-nid="12"]', 'class')).includes('unread'));
   // 直接打開那則紀錄：它的通知也讀掉、美好分頁紅點消失
   await p.goto(U + `#/view/${rid}`); await p.waitForTimeout(800);
-  await p.goto(U + '#/'); await p.waitForSelector('#bell .bell-dot:not([hidden])'); await p.waitForTimeout(600);
-  console.log('record opened -> 3 left', (await p.textContent('#bell .bell-dot')) === '3');
+  await p.goto(U + '#/'); await p.waitForSelector('#bell:not([hidden])'); await p.waitForTimeout(600);
+  console.log('bell number gone after opening list', await p.locator('#bell .bell-dot:not([hidden])').count() === 0);
   console.log('happy tab dot gone', await p.locator('a.tab.has-new').count() === 0);
+  await p.goto(U + '#/notifications'); await p.waitForSelector('.notify-item');
+  console.log('record opened -> 3 left in list', await p.locator('.notify-item.unread').count() === 3);
+  // 之後新來的通知：數字又出現
+  await p.evaluate(() => { const S = JSON.parse(localStorage.getItem('mockServer')); const uid = Object.keys(S.users).find((k) => S.users[k].email === 'jas@x.com'); S.notifs.push({ id: 16, recipient: uid, actor_name: '小明', kind: 'new_happy', record_id: 'zz', created_at: new Date(Date.now() + 5000).toISOString(), read_at: null }); localStorage.setItem('mockServer', JSON.stringify(S)); });
+  await p.goto(U + '#/'); await p.reload(); await p.waitForSelector('#bell .bell-dot:not([hidden])', { timeout: 8000 });
+  console.log('new one after seen shows 1', (await p.textContent('#bell .bell-dot')) === '1');
   // 一鍵取消：錯的暗號不行、對的可以；設定頁跟著變成已關閉
   const uid = await p.evaluate(() => Object.keys(JSON.parse(localStorage.getItem('mockServer')).users).find((k) => JSON.parse(localStorage.getItem('mockServer')).users[k].email === 'jas@x.com'));
   await p.goto(U + `#/unsubscribe?u=${uid}&t=wrong`); await p.waitForSelector('#unsub-yes'); await p.click('#unsub-yes'); await p.waitForTimeout(500);

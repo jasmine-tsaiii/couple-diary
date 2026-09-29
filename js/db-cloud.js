@@ -422,14 +422,18 @@ const CloudDB = CLOUD_ENABLED ? (() => {
       const { data, error } = await client.rpc('my_notifications');
       return error ? null : (data || []);
     },
+    // 標成已讀後通知畫面重算小鈴鐺和紅點（標已讀是背景做的，畫面可能比它先重畫）
     async markNotificationsRead() {
       await client.rpc('mark_notifications_read');
+      window.dispatchEvent(new Event('notify-changed'));
     },
     async markNotificationRead(id) {
       await client.rpc('mark_notification_read', { p_id: id });
+      window.dispatchEvent(new Event('notify-changed'));
     },
     async markRecordNotificationsRead(recordId) {
       await client.rpc('mark_record_notifications_read', { p_record: recordId });
+      window.dispatchEvent(new Event('notify-changed'));
     },
     // 打開通知頁看過：不另外寄 Email
     async notificationsSeen() {

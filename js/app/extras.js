@@ -703,15 +703,25 @@ function bellBtnHtml() {
   return `<a class="icon-btn gear-btn bell-btn" href="#/notifications" id="bell" aria-label="通知" hidden>${ICON.bell}<span>通知</span><b class="bell-dot" hidden></b></a>`;
 }
 // 每一頁畫好後：更新小鈴鐺數字、另一半「任務」分頁的小紅點
+// 小鈴鐺上的數字：打開過通知頁就歸零（只算之後新來的）；列表裡沒點過的那幾則還是會標出來
+const notifySeenKey = () => `notifySeenAt:${CloudDB.myId() || ''}`;
+function notifySeenAt() { try { return Number(localStorage.getItem(notifySeenKey()) || 0); } catch (e) { return 0; } }
+function markNotifySeen(list) {
+  const latest = Math.max(Date.now(), ...list.map((n) => Date.parse(n.created_at) || 0));
+  try { localStorage.setItem(notifySeenKey(), String(latest)); } catch (e) { /* 略過 */ }
+}
+const notifyLocalRead = new Set();
+window.addEventListener('notify-changed', () => { refreshBell().catch(() => {}); });
 async function refreshBell() {
   if (!usingCloud()) return;
   const list = await CloudDB.notifications().catch(() => null);
   if (!list) return;
-  const unreadList = list.filter((n) => !n.read_at);
+  const unreadList = list.filter((n) => !n.read_at && !notifyLocalRead.has(Number(n.id)));
   const btn = document.getElementById('bell');
   if (btn && document.body.contains(btn)) {
     btn.hidden = false;
-    const unread = unreadList.length;
+    const seenAt = notifySeenAt();
+    const unread = unreadList.filter((n) => (Date.parse(n.created_at) || 0) > seenAt).length;
     const dot = btn.querySelector('.bell-dot');
     dot.hidden = !unread;
     dot.textContent = unread > 9 ? '9+' : String(unread || '');
@@ -800,8 +810,10 @@ async function viewNotifications() {
   `;
   // 看過通知頁就不另外寄 Email；點哪一則，哪一則才算已讀
   if (unread) CloudDB.notificationsSeen().catch(() => {});
+  // 打開通知頁，小鈴鐺的數字就消失
+  if (list) markNotifySeen(list);
   app.querySelectorAll('[data-nid]').forEach((a) => a.addEventListener('click', () => {
-    if (a.classList.contains('unread')) CloudDB.markNotificationRead(Number(a.dataset.nid)).catch(() => {});
+    if (a.classList.contains('unread')) { notifyLocalRead.add(Number(a.dataset.nid)); CloudDB.markNotificationRead(Number(a.dataset.nid)).catch(() => {}); }
   }));
   const all = document.getElementById('notify-all-read');
   if (all) all.addEventListener('click', async () => {
