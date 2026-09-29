@@ -407,6 +407,22 @@ const CloudDB = CLOUD_ENABLED ? (() => {
     async markNotificationsRead() {
       await client.rpc('mark_notifications_read');
     },
+    async markNotificationRead(id) {
+      await client.rpc('mark_notification_read', { p_id: id });
+    },
+    async markRecordNotificationsRead(recordId) {
+      await client.rpc('mark_record_notifications_read', { p_record: recordId });
+    },
+    // 打開通知頁看過：不另外寄 Email
+    async notificationsSeen() {
+      await client.rpc('notifications_seen');
+    },
+    // 信裡的「取消 Email 通知」：不用登入
+    async emailUnsubscribe(uid, token) {
+      const { data, error } = await client.rpc('email_unsubscribe', { p_uid: uid, p_token: token });
+      if (error) throw new Error(error.message);
+      return data === true;
+    },
     async notifyPrefs() {
       const { data, error } = await client.rpc('notify_prefs_get');
       return error ? null : (data || { email_on: true });

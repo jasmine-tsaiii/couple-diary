@@ -35,6 +35,7 @@ async function viewDetail(id) {
   const conf = TYPES[r.type];
   const partner = isPartner();
   markSeen(r);
+  if (usingCloud()) CloudDB.markRecordNotificationsRead(r.id).catch(() => {});
   const bound = partner && CloudDB.isBoundPartner();
   // 吵架議題兩個人都能改：主人全部都能改；另一半要綁定帳號，而且是分享給他的議題
   const fightEdit = r.type === 'fight' && (!partner || (bound && r.visibility === 'shared'));

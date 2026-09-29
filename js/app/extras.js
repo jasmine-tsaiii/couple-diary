@@ -622,27 +622,63 @@ function bellBtnHtml() {
   if (!usingCloud()) return '';
   return `<a class="icon-btn gear-btn bell-btn" href="#/notifications" id="bell" aria-label="通知" hidden>${ICON.bell}<span>通知</span><b class="bell-dot" hidden></b></a>`;
 }
+// 每一頁畫好後：更新小鈴鐺數字、另一半「任務」分頁的小紅點
 async function refreshBell() {
-  const btn = document.getElementById('bell');
-  if (!btn) return;
+  if (!usingCloud()) return;
   const list = await CloudDB.notifications().catch(() => null);
-  if (!list || !document.body.contains(btn)) return;
-  btn.hidden = false;
-  const unread = list.filter((n) => !n.read_at).length;
-  const dot = btn.querySelector('.bell-dot');
-  dot.hidden = !unread;
-  dot.textContent = unread > 9 ? '9+' : String(unread || '');
-  btn.setAttribute('aria-label', unread ? `通知，${unread} 則沒看過` : '通知');
+  if (!list) return;
+  const unreadList = list.filter((n) => !n.read_at);
+  const btn = document.getElementById('bell');
+  if (btn && document.body.contains(btn)) {
+    btn.hidden = false;
+    const unread = unreadList.length;
+    const dot = btn.querySelector('.bell-dot');
+    dot.hidden = !unread;
+    dot.textContent = unread > 9 ? '9+' : String(unread || '');
+    btn.setAttribute('aria-label', unread ? `通知，${unread} 則沒看過` : '通知');
+  }
+  const taskTab = tabbar.querySelector('a.tab[href="#/tasks"]');
+  if (taskTab) setTabDot(taskTab, unreadList.some((n) => n.kind === 'new_task_record' || n.kind === 'task_approved'));
+}
+function setTabDot(tab, on) {
+  tab.classList.toggle('has-new', on);
+  const label = tab.querySelector('span');
+  if (label) tab.setAttribute('aria-label', on ? `${label.textContent}，有新的` : label.textContent);
+}
+// 底部分頁的小紅點：對方寫了你還沒點開的美好、烏雲、吵架
+async function refreshTabDots() {
+  if (!usingCloud() || tabbar.hidden) return;
+  const all = await DB.allRecords().catch(() => null);
+  if (!all) return;
+  initSeen(all);
+  const fresh = new Set(all.filter((r) => !r.deletedAt && isNewFromOther(r)).map((r) => r.type));
+  const tabs = { happy: '#/list/happy', cloud: '#/list/cloud', fight: '#/fights' };
+  for (const [type, href] of Object.entries(tabs)) {
+    const tab = tabbar.querySelector(`a.tab[href="${href}"]`);
+    if (tab) setTabDot(tab, fresh.has(type));
+  }
 }
 function notifyText(n) {
   const who = n.actor_name || '對方';
-  if (n.kind === 'new_happy') return `${who}新增了一則美好時刻`;
-  if (n.kind === 'new_task_record') return `${who}新增了一則美好時刻，完成任務就能看`;
-  if (n.kind === 'task_submitted') return `${who}完成了任務，等你確認`;
-  if (n.kind === 'task_approved') return `${who}確認了你的任務，紀錄解鎖了`;
-  return `${who}有新動態`;
+  const x = n.extra || {};
+  switch (n.kind) {
+    case 'new_happy': return `${who}新增了一則美好時刻`;
+    case 'new_task_record': return `${who}新增了一則美好時刻，完成任務就能看`;
+    case 'task_submitted': return `${who}完成了任務，等你確認`;
+    case 'task_approved': return `${who}確認了你的任務，紀錄解鎖了`;
+    case 'partner_request': return `${who}想加入你們的日記，到設定頁按同意`;
+    case 'partner_joined': return `${who}同意了，你們的日記連起來了`;
+    case 'anniversary': return x.years ? `今天是你們在一起滿 ${x.years} 年 🎉` : `今天是你們在一起第 ${x.days || ''} 天 🎉`;
+    case 'cloud_reflect': return '3 天前記下的烏雲，現在回頭看，有沒有新的想法？';
+    case 'write_nudge': return '好幾天沒寫了，最近有什麼想記下來的嗎？';
+    default: return `${who}有新動態`;
+  }
 }
 function notifyHref(n) {
+  if (n.kind === 'partner_request') return '#/settings';
+  if (n.kind === 'partner_joined') return '#/';
+  if (n.kind === 'anniversary') return '#/cards';
+  if (n.kind === 'write_nudge') return '#/new/happy';
   if (!n.record_id) return '#/';
   if (n.kind === 'task_submitted') return '#/tasks';
   if (n.kind === 'new_task_record') return `#/task/${encodeURIComponent(n.record_id)}`;
@@ -660,28 +696,66 @@ function notifyWhen(ts) {
 async function viewNotifications() {
   app.className = '';
   const list = await CloudDB.notifications().catch(() => null);
+  const dayOf = (ts) => { const d = new Date(ts); return `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`; };
+  const todayKey = dayOf(Date.now());
+  const item = (n) => `<a class="notify-item${n.read_at ? '' : ' unread'}" href="${notifyHref(n)}" data-nid="${Number(n.id)}">
+      <span class="notify-text">${esc(notifyText(n))}</span>
+      <span class="small muted">${notifyWhen(n.created_at)}</span>
+    </a>`;
+  const group = (title, rows) => (rows.length ? `<h2 class="section-title">${title}</h2><div class="card notify-list">${rows.map(item).join('')}</div>` : '');
+  const unread = list ? list.filter((n) => !n.read_at).length : 0;
   app.innerHTML = `
     <div class="topbar">
       <a class="icon-btn" href="#/" aria-label="返回">${ICON.back}</a>
       <h1>通知</h1>
+      ${unread ? '<button class="btn small secondary" id="notify-all-read" style="margin-left:auto">全部標成已讀</button>' : ''}
     </div>
     ${list == null ? '<div class="empty">通知功能還在準備中，過幾天再來看看。</div>'
-      : !list.length ? `<div class="empty">${mascotHtml('happy', 90)}<div>還沒有通知。${esc(otherName())}新增美好時刻、或任務有進度時，會在這裡告訴你。</div></div>`
-      : `<div class="card notify-list">${list.map((n) => `<a class="notify-item${n.read_at ? '' : ' unread'}" href="${notifyHref(n)}">
-          <span class="notify-text">${esc(notifyText(n))}</span>
-          <span class="small muted">${notifyWhen(n.created_at)}</span>
-        </a>`).join('')}</div>`}
+      : !list.length ? `<div class="empty">${mascotHtml('happy', 90)}<div>還沒有通知。${esc(otherName())}新增美好時刻、任務有進度、或紀念日到了，會在這裡告訴你。</div></div>`
+      : group('今天', list.filter((n) => dayOf(n.created_at) === todayKey)) + group('更早', list.filter((n) => dayOf(n.created_at) !== todayKey))}
     ${list && list.length && !CloudDB.isAnonymous() ? '<div class="small muted" style="text-align:center">想改 Email 通知，到「設定 → 通知」。</div>' : ''}
   `;
-  if (list && list.some((n) => !n.read_at)) CloudDB.markNotificationsRead().catch(() => {});
+  // 看過通知頁就不另外寄 Email；點哪一則，哪一則才算已讀
+  if (unread) CloudDB.notificationsSeen().catch(() => {});
+  app.querySelectorAll('[data-nid]').forEach((a) => a.addEventListener('click', () => {
+    if (a.classList.contains('unread')) CloudDB.markNotificationRead(Number(a.dataset.nid)).catch(() => {});
+  }));
+  const all = document.getElementById('notify-all-read');
+  if (all) all.addEventListener('click', async () => {
+    all.disabled = true;
+    try {
+      await CloudDB.markNotificationsRead();
+      app.querySelectorAll('.notify-item.unread').forEach((a) => a.classList.remove('unread'));
+      all.remove(); toast('都標成已讀了');
+    } catch (e) { all.disabled = false; toast(cloudErrorText(e)); }
+  });
+}
+// Email 裡的「取消 Email 通知」連結打開這頁（不用登入）
+async function viewUnsubscribe() {
+  const q = new URLSearchParams(location.hash.split('?')[1] || '');
+  const uid = q.get('u'); const token = q.get('t');
+  const shell = (body) => `<div class="topbar"><a class="icon-btn" href="#/" aria-label="回首頁">${ICON.back}</a><h1>取消 Email 通知</h1></div>
+    <div class="card" style="gap:12px">${body}</div>`;
+  if (!uid || !token) { app.innerHTML = shell('<div>這個連結不完整。登入後到「設定 → 通知」也可以關掉 Email 通知。</div>'); return; }
+  app.innerHTML = shell(`<div>確定不要再收到啾啾日記的通知信嗎？</div>
+    <div class="small muted">App 裡的小鈴鐺還是會提醒你。之後想再收信，到「設定 → 通知」打開就好。</div>
+    <div class="btn-row"><button class="btn" id="unsub-yes">不要再寄信給我</button><a class="btn secondary" href="#/">先不要</a></div>`);
+  const b = document.getElementById('unsub-yes');
+  b.addEventListener('click', () => withBusy(b, '處理中…', async () => {
+    let ok = false;
+    try { ok = await CloudDB.emailUnsubscribe(uid, token); } catch (e) { ok = false; }
+    app.innerHTML = shell(ok ? '<div class="bold">已經取消了</div><div class="small muted">之後不會再寄通知信給你。想再收，到「設定 → 通知」打開就好。</div><a class="btn" href="#/">打開啾啾日記</a>'
+      : '<div>這個連結已經失效了。登入後到「設定 → 通知」可以直接關掉 Email 通知。</div><a class="btn" href="#/">打開啾啾日記</a>');
+    track('email_unsubscribe', { ok });
+  }));
 }
 // 設定頁的「通知」卡片（有 Email 的帳號才有 Email 開關）
 function notifyCardHtml() {
   if (!usingCloud() || CloudDB.isAnonymous()) return '';
   return `<div class="card" id="notify-card" hidden>
     <div class="bold">通知</div>
-    <div class="small muted">另一半新增美好時刻、任務等你確認時，打開啾啾日記會在右上角的小鈴鐺看到。</div>
-    <div class="row between" style="gap:12px"><div>Email 通知<div class="small muted">每天晚上 9 點最多一封，當天沒看的合併寄</div></div>
+    <div class="small muted">另一半新增美好時刻、任務有進度、紀念日到了，打開啾啾日記會在右上角的小鈴鐺看到。</div>
+    <div class="row between" style="gap:12px"><div>收 Email 通知<div class="small muted">每天晚上 9 點最多一封，當天在 App 裡看過的不寄。不想收就按一下關掉</div></div>
       <button class="btn small" id="notify-email" aria-pressed="true">開啟中</button></div>
   </div>`;
 }

@@ -98,6 +98,10 @@
     // 通知（真的資料庫由觸發器寫入；這裡測試直接放進 S.notifs）
     my_notifications(S, u) { return (S.notifs || []).filter((n) => n.recipient === u.id).sort((a, b) => (a.created_at < b.created_at ? 1 : -1)).slice(0, 50).map(({ recipient, ...n }) => n); },
     mark_notifications_read(S, u) { (S.notifs || []).forEach((n) => { if (n.recipient === u.id && !n.read_at) n.read_at = new Date().toISOString(); }); },
+    mark_notification_read(S, u, a) { (S.notifs || []).forEach((n) => { if (n.recipient === u.id && n.id === a.p_id && !n.read_at) n.read_at = new Date().toISOString(); }); },
+    mark_record_notifications_read(S, u, a) { (S.notifs || []).forEach((n) => { if (n.recipient === u.id && n.record_id === a.p_record && !n.read_at) n.read_at = new Date().toISOString(); }); },
+    notifications_seen(S, u) { (S.notifs || []).forEach((n) => { if (n.recipient === u.id && !n.read_at) n.emailed_at = n.emailed_at || new Date().toISOString(); }); },
+    email_unsubscribe(S, u, a) { const ok = (S.unsubTokens || {})[a.p_uid] === a.p_token; if (ok) { S.prefs = S.prefs || {}; S.prefs[a.p_uid] = { email_on: false }; } return ok; },
     notify_prefs_get(S, u) { return { email_on: ((S.prefs || {})[u.id] || { email_on: true }).email_on }; },
     notify_prefs_set(S, u, a) { S.prefs = S.prefs || {}; S.prefs[u.id] = { email_on: !!a.p_email_on }; },
     partner_info(S, u) {
@@ -343,7 +347,7 @@
         async rpc(name, args) {
           if (!navigator.onLine) return err('TypeError: Failed to fetch');
           const S = load(); const u = me();
-          if (!u) return err('not authenticated');
+          if (!u && name !== 'email_unsubscribe') return err('not authenticated');
           try { const d = rpcs[name](S, u, args || {}); save(S); return { data: d === undefined ? null : d, error: null }; } catch (e) { return err(e.message); }
         },
         storage: {

@@ -95,6 +95,7 @@ async function viewPartnerTasks() {
 async function viewPartnerTaskForm(id) {
   const t = (await CloudDB.partnerTasks()).find((x) => x.id === id);
   if (!t) { go('#/tasks'); return; }
+  CloudDB.markRecordNotificationsRead(id).catch(() => {});
   const needPhoto = t.task.mode === 'photo';
   let photo = null;
   app.className = TYPES[t.type].theme;

@@ -1732,3 +1732,139 @@ begin
 end $$;
 revoke all on function public.admin_stats() from public, anon;
 grant execute on function public.admin_stats() to authenticated;
+
+-- ============================================================
+-- 通知第二批（2026-09-29）：加入要求／加入成功、紀念日、烏雲回顧、好幾天沒寫的提醒；一則一則標已讀；Email 一鍵取消
+-- 紀念日、烏雲回顧、沒寫提醒由 notify_daily() 每天早上跑一次（supabase/notify-cron.sql 設定）
+-- ============================================================
+alter table public.notifications add column if not exists extra jsonb;
+alter table public.notifications drop constraint if exists notifications_kind_check;
+alter table public.notifications add constraint notifications_kind_check check (kind in (
+  'new_happy', 'new_task_record', 'task_submitted', 'task_approved',
+  'partner_request', 'partner_joined', 'anniversary', 'cloud_reflect', 'write_nudge'));
+-- Email 信裡「取消收信」連結用的暗號：每個人一組亂數，不用登入就能取消
+alter table public.notify_prefs add column if not exists unsub_token uuid not null default gen_random_uuid();
+
+-- 有人用分享碼要求加入 → 通知主人去同意；主人同意了 → 通知加入的人
+create or replace function public.notify_partner() returns trigger
+language plpgsql security definer set search_path = public as $$
+begin
+  if not new.approved and (tg_op = 'INSERT' or old.approved or old.owner <> new.owner or old.joined_at is distinct from new.joined_at) then
+    if not exists (select 1 from public.notifications where recipient = new.owner and kind = 'partner_request' and actor = new.uid and read_at is null) then
+      insert into public.notifications (recipient, space_owner, actor, actor_name, kind)
+        values (new.owner, new.owner, new.uid, new.name, 'partner_request');
+    end if;
+  elsif new.approved and (tg_op = 'INSERT' or not old.approved) then
+    update public.notifications set read_at = now() where recipient = new.owner and kind = 'partner_request' and actor = new.uid and read_at is null;
+    insert into public.notifications (recipient, space_owner, actor, actor_name, kind)
+      values (new.uid, new.owner, new.owner, public.space_member_name(new.owner, new.owner), 'partner_joined');
+  end if;
+  return new;
+end $$;
+drop trigger if exists partners_notify on public.partners;
+create trigger partners_notify after insert or update on public.partners for each row execute function public.notify_partner();
+
+-- 日期字串轉日期，格式不對就當作沒填（不讓一筆壞資料擋住所有人的通知）
+create or replace function public.safe_date(p text) returns date
+language plpgsql immutable as $$
+begin
+  if p is null or p !~ '^\d{4}-\d{2}-\d{2}$' then return null; end if;
+  return p::date;
+exception when others then return null;
+end $$;
+
+-- 每天跑一次：紀念日（第 100、200… 天、滿 N 年）、烏雲寫下 3 天後提醒回頭看、7 天沒寫提醒一次
+create or replace function public.notify_daily() returns jsonb
+language plpgsql security definer set search_path = public as $$
+declare
+  v_today date := (now() at time zone 'Asia/Taipei')::date;
+  n_ann int; n_cloud int; n_nudge int;
+begin
+  with sp as (
+    select owner, public.safe_date(value ->> 'since') as since from public.settings
+    where key = 'names' and jsonb_typeof(value) = 'object'
+  ), hit as (
+    select owner,
+      case when extract(year from age(v_today, since)) >= 1 and to_char(v_today, 'MM-DD') = to_char(since, 'MM-DD')
+             then jsonb_build_object('years', extract(year from age(v_today, since))::int)
+           when (v_today - since + 1) % 100 = 0 then jsonb_build_object('days', v_today - since + 1) end as extra
+    from sp where since is not null and since <= v_today
+  ), who as (
+    select owner, owner as recipient, extra from hit where extra is not null
+    union
+    select h.owner, p.uid, h.extra from hit h join public.partners p on p.owner = h.owner and p.approved where h.extra is not null
+  ), ins as (
+    insert into public.notifications (recipient, space_owner, kind, extra)
+    select w.recipient, w.owner, 'anniversary', w.extra from who w
+    where not exists (select 1 from public.notifications n where n.recipient = w.recipient and n.kind = 'anniversary' and n.created_at >= now() - interval '20 hours')
+    returning 1
+  ) select count(*) into n_ann from ins;
+
+  with c as (
+    select coalesce(r.author, r.owner) as who, r.owner, r.id,
+      coalesce(to_timestamp(nullif(r.data ->> 'createdAt', '')::bigint / 1000.0), r.created_at) as at
+    from public.records r
+    where r.type = 'cloud' and not r.archived and (r.data ->> 'deletedAt') is null
+      and (jsonb_typeof(r.data -> 'reflections') is distinct from 'array' or jsonb_array_length(r.data -> 'reflections') = 0)
+  ), ins as (
+    insert into public.notifications (recipient, space_owner, kind, record_id)
+    select c.who, c.owner, 'cloud_reflect', c.id from c join auth.users u on u.id = c.who
+    where c.at < now() - interval '3 days' and c.at > now() - interval '10 days'
+      and not exists (select 1 from public.notifications n where n.kind = 'cloud_reflect' and n.record_id = c.id)
+    returning 1
+  ) select count(*) into n_cloud from ins;
+
+  -- 7 天沒寫：同一段沒寫的時間只提醒一次；超過 60 天沒來的人不吵
+  with l as (
+    select coalesce(author, owner) as who, max(updated_at) as at, (array_agg(owner order by updated_at desc))[1] as owner
+    from public.records group by 1
+  ), ins as (
+    insert into public.notifications (recipient, space_owner, kind)
+    select l.who, l.owner, 'write_nudge' from l join auth.users u on u.id = l.who and not coalesce(u.is_anonymous, false)
+    where l.at < now() - interval '7 days' and l.at > now() - interval '60 days'
+      and not exists (select 1 from public.notifications n where n.recipient = l.who and n.kind = 'write_nudge' and n.created_at > l.at)
+    returning 1
+  ) select count(*) into n_nudge from ins;
+
+  return jsonb_build_object('anniversary', n_ann, 'cloud_reflect', n_cloud, 'write_nudge', n_nudge);
+end $$;
+revoke all on function public.notify_daily() from public, anon, authenticated;
+
+-- 通知列表多回傳 extra（紀念日第幾天）
+create or replace function public.my_notifications() returns jsonb
+language sql stable security definer set search_path = public as $$
+  select coalesce(jsonb_agg(to_jsonb(x) order by x.created_at desc), '[]'::jsonb) from (
+    select id, actor_name, kind, record_id, extra, created_at, read_at from public.notifications
+    where recipient = auth.uid() order by created_at desc limit 50
+  ) x
+$$;
+-- 點一則通知、或打開那則紀錄時，只把相關的標成已讀
+create or replace function public.mark_notification_read(p_id bigint) returns void
+language sql security definer set search_path = public as $$
+  update public.notifications set read_at = now() where recipient = auth.uid() and id = p_id and read_at is null
+$$;
+create or replace function public.mark_record_notifications_read(p_record text) returns void
+language sql security definer set search_path = public as $$
+  update public.notifications set read_at = now() where recipient = auth.uid() and record_id = p_record and read_at is null
+$$;
+revoke all on function public.mark_notification_read(bigint) from public, anon;
+revoke all on function public.mark_record_notifications_read(text) from public, anon;
+grant execute on function public.mark_notification_read(bigint) to authenticated;
+grant execute on function public.mark_record_notifications_read(text) to authenticated;
+
+-- 信裡的「取消 Email 通知」：不用登入，靠信裡那組暗號
+create or replace function public.email_unsubscribe(p_uid uuid, p_token uuid) returns boolean
+language plpgsql security definer set search_path = public as $$
+begin
+  update public.notify_prefs set email_on = false, updated_at = now() where uid = p_uid and unsub_token = p_token;
+  return found;
+end $$;
+revoke all on function public.email_unsubscribe(uuid, uuid) from public;
+grant execute on function public.email_unsubscribe(uuid, uuid) to anon, authenticated, service_role;
+-- 打開通知頁看過的，就不另外寄 Email（但還是算沒點開，小鈴鐺數字不變）
+create or replace function public.notifications_seen() returns void
+language sql security definer set search_path = public as $$
+  update public.notifications set emailed_at = now() where recipient = auth.uid() and read_at is null and emailed_at is null
+$$;
+revoke all on function public.notifications_seen() from public, anon;
+grant execute on function public.notifications_seen() to authenticated;

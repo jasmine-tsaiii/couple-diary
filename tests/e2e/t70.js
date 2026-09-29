@@ -36,7 +36,11 @@ const U = process.env.U || 'http://localhost:8770/';
   console.log('links', (await p.getAttribute('.notify-item >> nth=0', 'href')) === '#/view/r1' && (await p.getAttribute('.notify-item >> nth=1', 'href')) === '#/tasks');
   await p.screenshot({ path: (process.env.SHOT_DIR || '.') + '/notifications.png' });
   await p.waitForTimeout(500);
-  await p.goto(U + '#/'); await p.waitForSelector('#bell:not([hidden])');
+  await p.goto(U + '#/'); await p.waitForSelector('#bell .bell-dot:not([hidden])');
+  console.log('just looking keeps count', (await p.textContent('#bell .bell-dot')) === '2');
+  await p.click('#bell'); await p.waitForSelector('#notify-all-read'); await p.click('#notify-all-read'); await p.waitForTimeout(400);
+  console.log('all read clears highlight', await p.locator('.notify-item.unread').count() === 0);
+  await p.goto(U + '#/'); await p.waitForSelector('#bell:not([hidden])'); await p.waitForTimeout(300);
   console.log('dot gone after reading', await p.locator('#bell .bell-dot:not([hidden])').count() === 0);
   // 設定頁 Email 開關
   await p.goto(U + '#/settings'); await p.waitForSelector('#notify-card:not([hidden])', { timeout: 10000 });

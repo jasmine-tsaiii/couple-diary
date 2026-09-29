@@ -563,3 +563,6 @@ body:has(.done-bar) .toast { bottom: calc(150px + env(safe-area-inset-bottom)); 
 .card.has-x { position: relative; padding-right: 44px; }
 .card-x { position: absolute; top: 8px; right: 8px; width: 36px; height: 36px; border: 0; background: transparent; display: grid; place-items: center; border-radius: 50%; cursor: pointer; }
 .card-x:active { background: rgba(0, 0, 0, .06); }
+/* 底部分頁的小紅點：對方寫了你還沒點開的 */
+.tab { position: relative; }
+.tab.has-new::after { content: ''; position: absolute; top: 6px; left: calc(50% + 9px); width: 8px; height: 8px; border-radius: 99px; background: var(--accent, #A63D52); box-shadow: 0 0 0 2px var(--bg, #fff); }

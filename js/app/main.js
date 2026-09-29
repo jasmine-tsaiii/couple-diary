@@ -25,6 +25,8 @@ async function renderRoute() {
   window.scrollTo(0, 0);
   try { if (window.Analytics) window.Analytics.pageView(); } catch (e) { /* 略過 */ }
   try {
+    // Email 裡的「取消 Email 通知」：不用登入也能用
+    if (CLOUD_ENABLED && /^unsubscribe(\?|$)/.test(page)) { renderTabbar(null); await viewUnsubscribe(); return; }
     if (isGuest()) {
       if (page === 'join') { renderTabbar(null); viewJoin('', arg); return; }
       // 登入過的手機登出後回到登入畫面；新使用者可以直接試用（資料先存在手機）
@@ -107,6 +109,7 @@ async function renderRoute() {
 // 畫面出來之後再慢慢讀：小鈴鐺的未讀數、設定頁的通知開關（讀不到就不顯示）
 function afterRender() {
   refreshBell().catch(() => {});
+  refreshTabDots().catch(() => {});
   bindNotifyCard().catch(() => {});
   bindAdminCard().catch(() => {});
 }
