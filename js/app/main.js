@@ -87,6 +87,7 @@ async function renderRoute() {
     else if (page === 'cards') { renderTabbar(null); await viewCards(); }
     else if (page === 'card') { renderTabbar(null); await viewCard(arg, parts[2]); }
     else if (page === 'feedback') { renderTabbar(null); viewFeedback(); }
+    else if (page === 'stats' && usingCloud()) { renderTabbar(null); await viewStats(); }
     else if (page === 'notifications' && usingCloud()) { renderTabbar(null); await viewNotifications(); }
     else if (page === 'tasks' && usingCloud()) { renderTabbar(null); await viewPartnerTasks(); }
     else if (page === 'end' && usingCloud()) { renderTabbar(null); await viewEnd(arg ? decodeURIComponent(arg) : ''); }
@@ -107,6 +108,7 @@ async function renderRoute() {
 function afterRender() {
   refreshBell().catch(() => {});
   bindNotifyCard().catch(() => {});
+  bindAdminCard().catch(() => {});
 }
 
 // 向瀏覽器申請「不要自動清除這個網站的資料」

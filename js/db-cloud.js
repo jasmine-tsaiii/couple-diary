@@ -415,6 +415,16 @@ const CloudDB = CLOUD_ENABLED ? (() => {
       const { error } = await client.rpc('notify_prefs_set', { p_email_on: !!on });
       if (error) throw new Error(/notify_prefs|function/i.test(error.message) ? '通知設定還沒開好，請稍後再試' : error.message);
     },
+    // 數據看板（只有管理員）：還沒重跑 schema.sql 時 amIAdmin 回 false
+    async amIAdmin() {
+      const { data, error } = await client.rpc('am_i_admin');
+      return !error && data === true;
+    },
+    async adminStats() {
+      const { data, error } = await client.rpc('admin_stats');
+      if (error) throw new Error(/沒有權限/.test(error.message) ? '沒有權限' : error.message);
+      return data;
+    },
     async endRelationship(mode, keepUid = null) {
       // keepUid：結束後要讓哪個還在等同意的新對象加入（分享碼保留）
       check(await client.rpc('end_relationship', keepUid ? { p_mode: mode, p_keep: keepUid } : { p_mode: mode }));

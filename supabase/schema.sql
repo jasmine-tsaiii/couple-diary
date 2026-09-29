@@ -1606,3 +1606,116 @@ grant execute on function public.my_notifications() to authenticated;
 grant execute on function public.mark_notifications_read() to authenticated;
 grant execute on function public.notify_prefs_get() to authenticated;
 grant execute on function public.notify_prefs_set(boolean) to authenticated;
+
+-- ============================================================
+-- 數據看板（2026-09-29）：只有管理員看得到，只回統計數字，不回任何內容或 Email
+-- 管理員名單 app_admins 不寫在這個檔案裡（避免把信箱放上 GitHub），在 SQL Editor 另外跑一次：
+--   insert into public.app_admins (uid) select id from auth.users where email = '你的信箱' on conflict do nothing;
+-- ============================================================
+create table if not exists public.app_admins (
+  uid        uuid primary key references auth.users (id) on delete cascade,
+  added_at   timestamptz not null default now()
+);
+alter table public.app_admins enable row level security; -- 沒有任何規則：App 直接讀不到，只有下面的函式用
+
+create or replace function public.is_admin() returns boolean
+language sql stable security definer set search_path = public as $$
+  select public.is_real_user() and exists (select 1 from public.app_admins where uid = auth.uid())
+$$;
+revoke all on function public.is_admin() from public, anon, authenticated;
+
+-- 我是不是管理員（設定頁決定要不要顯示「數據」入口）
+create or replace function public.am_i_admin() returns boolean
+language sql stable security definer set search_path = public as $$ select public.is_admin() $$;
+revoke all on function public.am_i_admin() from public, anon;
+grant execute on function public.am_i_admin() to authenticated;
+
+-- 看板的全部數字：即時總覽、最近 30 天、最近 12 週留存。時間用台灣時間
+create or replace function public.admin_stats() returns jsonb
+language plpgsql stable security definer set search_path = public as $$
+declare
+  v_today timestamptz := date_trunc('day', now() at time zone 'Asia/Taipei') at time zone 'Asia/Taipei';
+  v_now jsonb; v_daily jsonb; v_weekly jsonb;
+begin
+  if not public.is_admin() then raise exception '沒有權限'; end if;
+
+  with owners as (select id, created_at from auth.users where not coalesce(is_anonymous, false)),
+  couples as (select owner from public.partners where approved group by owner),
+  acts as (select coalesce(author, owner) as who, owner, created_at, updated_at, data from public.records)
+  select jsonb_build_object(
+    'owners', (select count(*) from owners),
+    'owners_today', (select count(*) from owners where created_at >= v_today),
+    'owners_7d', (select count(*) from owners where created_at >= now() - interval '7 days'),
+    'couples', (select count(*) from couples),
+    'active_couples_7d', (select count(distinct a.owner) from acts a join couples c on c.owner = a.owner where a.updated_at >= now() - interval '7 days'),
+    'both_wrote_7d', (select count(*) from (select a.owner from acts a join couples c on c.owner = a.owner
+        where a.updated_at >= now() - interval '7 days' group by a.owner
+        having bool_or(a.who = a.owner) and bool_or(a.who <> a.owner)) x),
+    'writers_today', (select count(distinct who) from acts where updated_at >= v_today),
+    'writers_7d', (select count(distinct who) from acts where updated_at >= now() - interval '7 days'),
+    'records_today', (select count(*) from acts where created_at >= v_today),
+    'edits_today', (select count(*) from acts where updated_at >= v_today and created_at < v_today and (data ->> 'deletedAt') is null),
+    'deleted_records_7d', (select count(*) from acts where (data ->> 'deletedAt') is not null
+        and to_timestamp((data ->> 'deletedAt')::bigint / 1000.0) >= now() - interval '7 days'),
+    'records_total', (select count(*) from acts where (data ->> 'deletedAt') is null),
+    'interest', (select count(*) from public.upgrade_interest),
+    'last_write_at', (select max(updated_at) from acts)
+  ) into v_now;
+
+  with days as (
+    select generate_series((now() at time zone 'Asia/Taipei')::date - 29, (now() at time zone 'Asia/Taipei')::date, interval '1 day')::date as d
+  ),
+  owners as (select (created_at at time zone 'Asia/Taipei')::date as d from auth.users where not coalesce(is_anonymous, false)),
+  couples as (select owner, (min(joined_at) at time zone 'Asia/Taipei')::date as d from public.partners where approved group by owner),
+  acts as (
+    select coalesce(author, owner) as who, owner,
+      (created_at at time zone 'Asia/Taipei')::date as cd, (updated_at at time zone 'Asia/Taipei')::date as ud,
+      case when (data ->> 'deletedAt') is not null then (to_timestamp((data ->> 'deletedAt')::bigint / 1000.0) at time zone 'Asia/Taipei')::date end as dd
+    from public.records
+  )
+  select coalesce(jsonb_agg(jsonb_build_object(
+    'd', to_char(x.d, 'YYYY-MM-DD'),
+    'signups', (select count(*) from owners o where o.d = x.d),
+    'pairs', (select count(*) from couples c where c.d = x.d),
+    'records', (select count(*) from acts a where a.cd = x.d),
+    'deleted', (select count(*) from acts a where a.dd = x.d),
+    'writers', (select count(distinct a.who) from acts a where a.ud = x.d),
+    'active_couples', (select count(distinct a.owner) from acts a join couples c on c.owner = a.owner where a.ud = x.d),
+    'interest', (select count(*) from public.upgrade_interest i where (i.first_at at time zone 'Asia/Taipei')::date = x.d)
+  ) order by x.d), '[]'::jsonb) into v_daily from days x;
+
+  with weeks as (
+    select generate_series(date_trunc('week', now()) - interval '11 weeks', date_trunc('week', now()), interval '1 week') as wk
+  ),
+  owners as (select id, created_at from auth.users where not coalesce(is_anonymous, false)),
+  acts as (select coalesce(author, owner) as who, owner, created_at, updated_at from public.records),
+  per_user as (
+    select o.id, o.created_at,
+      exists (select 1 from acts a where a.who = o.id and a.created_at < o.created_at + interval '24 hours') as activated,
+      exists (select 1 from public.partners p where p.owner = o.id and p.approved) as paired,
+      case when now() >= o.created_at + interval '14 days' then
+        exists (select 1 from acts a where a.who = o.id and a.updated_at >= o.created_at + interval '7 days' and a.updated_at < o.created_at + interval '14 days') end as d7,
+      case when now() >= o.created_at + interval '37 days' then
+        exists (select 1 from acts a where a.who = o.id and a.updated_at >= o.created_at + interval '30 days' and a.updated_at < o.created_at + interval '37 days') end as d30
+    from owners o
+  ),
+  wk as (
+    select w.wk,
+      count(u.id) as signups,
+      count(u.id) filter (where u.activated) as activated,
+      count(u.id) filter (where u.paired) as paired,
+      count(u.d7) as d7_n, count(u.id) filter (where u.d7) as d7_yes,
+      count(u.d30) as d30_n, count(u.id) filter (where u.d30) as d30_yes,
+      (select count(distinct a.who) from acts a where a.updated_at >= w.wk and a.updated_at < w.wk + interval '1 week') as writers
+    from weeks w left join per_user u on u.created_at >= w.wk and u.created_at < w.wk + interval '1 week'
+    group by w.wk
+  )
+  select coalesce(jsonb_agg(jsonb_build_object(
+    'wk', to_char(wk, 'YYYY-MM-DD'), 'signups', signups, 'activated', activated, 'paired', paired,
+    'd7_n', d7_n, 'd7_yes', d7_yes, 'd30_n', d30_n, 'd30_yes', d30_yes, 'writers', writers
+  ) order by wk desc), '[]'::jsonb) into v_weekly from wk;
+
+  return jsonb_build_object('now', v_now, 'daily', v_daily, 'weekly', v_weekly, 'at', now());
+end $$;
+revoke all on function public.admin_stats() from public, anon;
+grant execute on function public.admin_stats() to authenticated;

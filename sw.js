@@ -23,6 +23,7 @@ const PRECACHE = [
   'js/app/settings.js',
   'js/app/partner.js',
   'js/app/auth.js',
+  'js/app/stats.js',
   'js/app/main.js',
   'vendor/supabase-2.117.2.js',
   'manifest.json',

@@ -530,3 +530,24 @@ body.is-offline { padding-top: calc(30px + env(safe-area-inset-top)); }
 }
 .done-bar .btn { width: 100%; }
 body:has(.done-bar) .toast { bottom: calc(150px + env(safe-area-inset-bottom)); }
+
+/* 數據看板 */
+.stat-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+.stat-tile { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 10px; display: flex; flex-direction: column; gap: 2px; }
+.stat-tile.hero { grid-column: 1 / -1; background: var(--happy-bg); border-color: transparent; }
+.stat-tile.hero .stat-num { font-size: 36px; }
+.stat-num { font-size: 22px; font-weight: 700; color: var(--ink); font-variant-numeric: tabular-nums; }
+.stat-ink { color: var(--ink); }
+.stat-chart { position: relative; display: flex; flex-direction: column; gap: 4px; }
+.stat-chart svg { width: 100%; height: 90px; display: block; touch-action: pan-y; }
+.stat-path { fill: none; stroke: var(--happy); stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; vector-effect: non-scaling-stroke; }
+.stat-base { stroke: var(--line); stroke-width: 1; vector-effect: non-scaling-stroke; }
+.stat-gridline { stroke: var(--line); stroke-width: 1; stroke-dasharray: 3 3; vector-effect: non-scaling-stroke; }
+.stat-cross { stroke: var(--muted); stroke-width: 1; vector-effect: non-scaling-stroke; }
+.stat-dot { fill: var(--happy); stroke: var(--card); stroke-width: 2; }
+.stat-axis { font-size: 10px; fill: var(--muted); }
+.stat-tip { position: absolute; right: 0; top: 22px; background: var(--toast-bg); color: var(--toast-ink); padding: 2px 8px; border-radius: 8px; }
+.stat-table { border-collapse: collapse; width: 100%; font-size: 13px; white-space: nowrap; }
+.stat-table th, .stat-table td { padding: 8px 10px; text-align: right; border-bottom: 1px solid var(--line); font-variant-numeric: tabular-nums; }
+.stat-table th:first-child, .stat-table td:first-child { text-align: left; }
+.stat-table th { color: var(--muted); font-weight: 600; }

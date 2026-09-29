@@ -247,6 +247,7 @@ async function viewSettings() {
     </div>
     ${usingCloud() && !CloudDB.isAnonymous() ? loginMethodsCard() : ''}
     ${notifyCardHtml()}
+    ${adminCardHtml()}
     ${localCount ? `<div class="card" style="background:var(--progress-bg);border-color:transparent">
       <div class="bold" style="color:var(--progress-ink)">把這支手機裡的紀錄搬上雲端</div>
       <div class="small" style="color:var(--progress-ink)">這支手機裡還有 ${localCount} 則以前存的紀錄。${migratedAt ? `上次搬的時間是 ${daysAgo(migratedAt) === 0 ? '今天' : daysAgo(migratedAt) + ' 天前'}，再搬一次也不會重複。` : '搬上去之後，手機裡的也會留著當備份。'}</div>
