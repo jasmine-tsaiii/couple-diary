@@ -30,6 +30,7 @@ const U = process.env.U || 'http://localhost:8770/';
   console.log('eight charts', await p.locator('.stat-chart').count() === 8);
   console.log('deletions tile', (await p.textContent('.stat-grid')).includes('刪帳號總數'));
   console.log('weekly rows', await p.locator('.stat-table tbody tr').count() === 12);
+  await p.evaluate(() => document.querySelector('.stat-chart svg').scrollIntoView({ block: 'center' })); await p.waitForTimeout(200);
   const box = await p.locator('.stat-chart svg').first().boundingBox();
   await p.mouse.move(box.x + box.width - 3, box.y + box.height / 2); await p.waitForTimeout(200);
   console.log('hover tip', /\d+\/\d+：\d+/.test((await p.textContent('.stat-chart .stat-tip')) || ''));

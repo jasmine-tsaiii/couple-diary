@@ -14,6 +14,7 @@ const r = (kind, extra = null, actor = '小明') => ({ id: 1, recipient: 'u', ac
 const CASES = [
   ['另一半新增 1 則美好時刻', [r('new_happy')]],
   ['另一半一天新增 3 則', [r('new_happy'), r('new_happy'), r('new_task_record')]],
+  ['另一半一天新增 2 則，還完成了 2 個任務', [r('new_happy'), r('new_happy'), r('task_submitted'), r('task_submitted')]],
   ['要完成任務才能看的紀錄', [r('new_task_record')]],
   ['對方完成任務，等你確認', [r('task_submitted')]],
   ['你的任務通過了', [r('task_approved')]],

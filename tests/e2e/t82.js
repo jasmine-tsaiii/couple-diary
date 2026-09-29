@@ -27,13 +27,14 @@ const U = process.env.U || 'http://localhost:8770/';
     const l = await p.evaluate(() => window.__log);
     return l.slice(1); // 第一格是點之前的首頁
   };
-  const log1 = await run('.tab[href="#/list/cloud"]');
+  await p.evaluate(() => localStorage.setItem('recordsType', 'cloud'));
+  const log1 = await run('.tab[data-tab="records"]');
   console.log('tab: cloud color from the first frame', log1.length > 0 && log1.every((x) => x.startsWith('theme-cloud')), JSON.stringify(log1));
-  console.log('shows cloud title while loading', log1.some((x) => x === 'theme-cloud|烏雲時刻'));
-  await p.goto(U + '#/'); await p.waitForSelector('.home-head'); await p.waitForTimeout(800);
+  console.log('shows cloud title while loading', log1.some((x) => x === 'theme-cloud|紀錄'));
+  await p.goto(U + '#/records/happy'); await p.waitForSelector('.rec-seg'); await p.waitForTimeout(800);
   await p.evaluate(() => { const o = CloudDB.othersLocked; CloudDB.othersLocked = async (...a) => { await new Promise((r) => setTimeout(r, 800)); return o.apply(CloudDB, a); }; });
-  const log2 = await run('#app a.ftile[href="#/list/cloud"], #app a[href="#/list/cloud"]');
-  console.log('home tile: cloud color from the first frame', log2.every((x) => x.startsWith('theme-cloud')), JSON.stringify(log2));
+  const log2 = await run('.seg-btn[data-rec-seg="cloud"]');
+  console.log('segment: cloud color from the first frame', log2.every((x) => x.startsWith('theme-cloud')), JSON.stringify(log2));
   // 列表 → 那則紀錄：也是一開始就是烏雲色
   await p.evaluate(() => { window.__log = []; });
   await p.locator('#app a[href^="#/view/"]').first().click({ timeout: 8000 }); await p.waitForTimeout(800);

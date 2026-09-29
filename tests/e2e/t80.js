@@ -52,7 +52,7 @@ const AND = devices['Pixel 5'].userAgent;
     await p.goto(U + '#/login'); await p.waitForSelector('#email');
     await p.fill('#email', 'jas@x.com'); await p.fill('#password', 'secret123'); await p.click('#login-btn');
     await p.waitForSelector('#role-owner', { timeout: 15000 }); await p.click('#role-owner'); await p.waitForTimeout(500);
-    await p.evaluate(async () => { await DB.setSetting('names', { me: '👸', partner: '🥔' }); await DB.setSetting('backupSnoozeAt', Date.now()); localStorage.setItem('a2hsShown', JSON.stringify({ n: 3, at: Date.now() })); });
+    await p.evaluate(async () => { await DB.setSetting('names', { me: '👸', partner: '🥔' }); await DB.setSetting('backupSnoozeAt', Date.now()); localStorage.setItem('a2hsShown', JSON.stringify({ n: 3, at: Date.now() })); localStorage.setItem('inviteCardHidden', '1'); });
     await saveOne(p, '早餐');
     await p.goto(U + '#/'); await p.reload(); await p.waitForSelector('.home-head'); await p.waitForTimeout(600);
     console.log('home card shows', await p.isVisible('#a2hs-card'));

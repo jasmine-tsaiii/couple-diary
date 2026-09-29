@@ -25,6 +25,7 @@ const PRECACHE = [
   'js/app/auth.js',
   'js/app/stats.js',
   'js/app/quiz.js',
+  'js/app/tabs.js',
   'js/app/main.js',
   'vendor/supabase-2.117.2.js',
   'manifest.json',

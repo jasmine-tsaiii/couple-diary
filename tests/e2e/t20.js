@@ -25,6 +25,7 @@ const U = (process.env.U || 'http://localhost:8770/');
   log('5 stamp', await p.textContent('.celebrate h2').catch(() => 'none'));
   await p.click('#cel-ok');
   log('ratio', await p.textContent('.theme-cloud'));
+  await p.goto(U + '#/together'); await p.waitForSelector('a[href="#/stamps"]');
   log('stamp card', (await p.textContent('a[href="#/stamps"]')).replace(/\s+/g, ' '));
   await p.screenshot({ path: 'st2-home.png', fullPage: true });
   await p.goto(U + '#/stamps'); await p.waitForTimeout(600);

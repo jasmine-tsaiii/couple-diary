@@ -16,12 +16,16 @@ function route() {
 const recordTheme = new Map();
 function predictTheme(page, arg) {
   if ((page === 'list' || page === 'new') && TYPES[arg]) return TYPES[arg].theme;
+  if (page === 'records') return TYPES[REC_TYPES.includes(arg) ? arg : currentRecType()].theme;
   if (page === 'fights') return 'theme-fight';
   if (['view', 'edit', 'task'].includes(page) && recordTheme.has(arg)) return recordTheme.get(arg);
   return '';
 }
 function pageTitle(page, arg) {
   if (page === 'list' && TYPES[arg]) return TYPES[arg].label;
+  if (page === 'records') return '紀錄';
+  if (page === 'together') return '一起';
+  if (page === 'me') return '我的';
   if (page === 'fights') return TYPES.fight.label;
   return '';
 }
@@ -84,44 +88,49 @@ async function renderRoute() {
     if (page === 'reset' && usingCloud() && !CloudDB.isAnonymous()) { renderTabbar(null); viewResetPassword(); return; }
     if (isPartner()) {
       if (!page) { renderTabbar('home'); await viewPartnerHome(); }
-      else if (page === 'list' && TYPES[arg] && arg !== 'fight') { renderTabbar(arg); await viewList(arg); }
-      else if (page === 'fights') { renderTabbar('fight'); await viewFights(); }
+      else if (page === 'records') { renderTabbar('records'); await viewRecords(arg); }
+      else if (page === 'list' && TYPES[arg] && arg !== 'fight') { renderTabbar(arg); await viewRecords(arg); }
+      else if (page === 'fights') { renderTabbar('fight'); await viewRecords('fight'); }
+      else if (page === 'together') { renderTabbar('together'); await viewTogether(); }
+      else if (page === 'me' || page === 'settings') { renderTabbar('me'); viewPartnerSettings(); }
       else if (page === 'view') { renderTabbar(null); await viewDetail(arg); }
       else if (page === 'new' && TYPES[arg]) { renderTabbar(null); await viewForm('new', arg); }
       else if (page === 'edit') { renderTabbar(null); await viewForm('edit', arg); }
       else if (page === 'bind') { renderTabbar(null); viewBind(); }
       else if (page === 'tasks') { renderTabbar('tasks'); await viewPartnerTasks(); }
-      else if (page === 'wishes') { renderTabbar(null); await viewWishes(); }
-      else if (page === 'cards') { renderTabbar(null); await viewCards(); }
+      else if (page === 'wishes') { renderTabbar('together'); await viewWishes(); }
+      else if (page === 'cards') { renderTabbar('together'); await viewCards(); }
       else if (page === 'card') { renderTabbar(null); await viewCard(arg, parts[2]); }
       else if (page === 'feedback') { renderTabbar(null); viewFeedback(); }
       else if (page === 'task') { renderTabbar(null); await viewPartnerTaskForm(arg); }
-      else if (page === 'settings') { renderTabbar(null); viewPartnerSettings(); }
-      else if (page === 'notifications') { renderTabbar(null); await viewNotifications(); }
-      else if (page === 'quiz') { renderTabbar(null); await viewQuiz(); }
+      else if (page === 'notifications') { renderTabbar('me'); await viewNotifications(); }
+      else if (page === 'quiz') { renderTabbar('together'); await viewQuiz(); }
       else go('#/');
       afterRender();
       return;
     }
     if (!page) { renderTabbar('home'); await viewHome(); }
-    else if (page === 'list' && TYPES[arg] && arg !== 'fight') { renderTabbar(arg); await viewList(arg); }
-    else if (page === 'fights') { renderTabbar('fight'); await viewFights(); }
+    else if (page === 'records') { renderTabbar('records'); await viewRecords(arg); }
+    else if (page === 'list' && TYPES[arg] && arg !== 'fight') { renderTabbar(arg); await viewRecords(arg); }
+    else if (page === 'fights') { renderTabbar('fight'); await viewRecords('fight'); }
+    else if (page === 'together') { renderTabbar('together'); await viewTogether(); }
+    else if (page === 'me') { renderTabbar('me'); await viewMe(); }
     else if (page === 'view') { renderTabbar(null); await viewDetail(arg); }
     else if (page === 'new') { renderTabbar(null); await viewForm('new', arg); }
     else if (page === 'edit') { renderTabbar(null); await viewForm('edit', arg); }
-    else if (page === 'settings') { renderTabbar(null); await viewSettings(); }
-    else if (page === 'stamps') { renderTabbar(null); await viewStamps(); }
-    else if (page === 'wishes') { renderTabbar(null); await viewWishes(); }
-    else if (page === 'cards') { renderTabbar(null); await viewCards(); }
+    else if (page === 'settings') { renderTabbar('me'); await viewSettings(); }
+    else if (page === 'stamps') { renderTabbar('together'); await viewStamps(); }
+    else if (page === 'wishes') { renderTabbar('together'); await viewWishes(); }
+    else if (page === 'cards') { renderTabbar('together'); await viewCards(); }
     else if (page === 'card') { renderTabbar(null); await viewCard(arg, parts[2]); }
     else if (page === 'feedback') { renderTabbar(null); viewFeedback(); }
-    else if (page === 'stats' && usingCloud()) { renderTabbar(null); await viewStats(); }
-    else if (page === 'notifications' && usingCloud()) { renderTabbar(null); await viewNotifications(); }
-    else if (page === 'tasks' && usingCloud()) { renderTabbar(null); await viewPartnerTasks(); }
+    else if (page === 'stats' && usingCloud()) { renderTabbar('me'); await viewStats(); }
+    else if (page === 'notifications' && usingCloud()) { renderTabbar('me'); await viewNotifications(); }
+    else if (page === 'tasks' && usingCloud()) { renderTabbar('together'); await viewPartnerTasks(); }
     else if (page === 'end' && usingCloud()) { renderTabbar(null); await viewEnd(arg ? decodeURIComponent(arg) : ''); }
     else if (page === 'archive' && usingCloud()) { renderTabbar(null); await viewArchive(); }
     else if (page === 'task' && usingCloud()) { renderTabbar(null); await viewPartnerTaskForm(arg); }
-    else if (page === 'quiz' && usingCloud() && !CloudDB.isAnonymous()) { renderTabbar(null); await viewQuiz(); }
+    else if (page === 'quiz' && usingCloud() && !CloudDB.isAnonymous()) { renderTabbar('together'); await viewQuiz(); }
     else go('#/');
     afterRender();
     if (!page || page === 'view') checkNewStamps().catch(() => {});

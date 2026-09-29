@@ -10,11 +10,13 @@ const U = (process.env.U || 'http://localhost:8770/');
   const p = await ctx.newPage(); p.on('pageerror', (e) => errs.push(e.message)); p.on('dialog', (d) => d.accept());
   await p.goto(U + '#/'); await p.waitForTimeout(800);
   log('home first', await p.isVisible('.quick-rec'), 'no login', !(await p.isVisible('#login-btn')));
-  await p.click('#tile-share'); await p.waitForTimeout(500);
-  log('share tile sheet', await p.textContent('.signup-dlg h2'), 'still home', p.url().endsWith('#/'));
+  await p.goto(U + '#/me'); await p.waitForSelector('#row-share');
+  await p.click('#row-share'); await p.waitForTimeout(500);
+  log('share tile sheet', await p.textContent('.signup-dlg h2'), 'still me', p.url().endsWith('#/me'));
   await p.screenshot({ path: (process.env.SHOT_DIR || '.') + '/share-signup-sheet.png' });
   await p.click('#nudge-later'); await p.waitForTimeout(300);
   log('sheet closed', !(await p.isVisible('.signup-dlg')));
+  await p.goto(U + '#/'); await p.waitForSelector('.quick-rec');
   // iPhone 的 Safari 寫第 1 則就提醒（#27），其他寫到第 3 則
   const n = (await p.evaluate(() => IOS_SAFARI_TAB)) ? 1 : 3;
   for (let i = 1; i <= n; i++) {

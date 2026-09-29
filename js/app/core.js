@@ -57,6 +57,10 @@ const ICON = {
   camera: '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 8h3l2-3h6l2 3h3v11H4z"/><circle cx="12" cy="13" r="3.5"/></svg>',
   lock: '<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>',
   lockSmall: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>',
+  book: '<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5.5A2.5 2.5 0 0 1 6.5 3H20v15H6.5A2.5 2.5 0 0 0 4 20.5z"/><path d="M4 20.5A2.5 2.5 0 0 0 6.5 23H20v-5"/><path d="M9 8h7"/></svg>',
+  people: '<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="8" r="3.2"/><path d="M3 20a6 6 0 0 1 12 0"/><circle cx="17" cy="9" r="2.6"/><path d="M16 14.2a5 5 0 0 1 5.5 5"/></svg>',
+  user: '<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></svg>',
+  chevron: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 6 6 6-6 6"/></svg>',
   x: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M6 6l12 12M18 6 6 18"/></svg>',
   gear: '<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1Z"/></svg>',
 };
@@ -421,20 +425,29 @@ function tagSuggestions(type, all) {
 }
 
 // ---------- 底部選單 ----------
+// 底部選單（2026-09-29 介面整理 B 方案）：今天・紀錄・＋・一起・我的
+// route：'home' | 'records' | 'together' | 'me' | 'tasks'（還沒建立帳號的另一半，中間是任務）；
+// 舊的 'happy' / 'cloud' / 'fight' 都算「紀錄」。null 就不顯示（新增、編輯、詳情頁，免得擋住按鈕）
+const REC_TYPES = ['happy', 'cloud', 'fight'];
+function currentRecType() {
+  try { const t = localStorage.getItem('recordsType'); return REC_TYPES.includes(t) ? t : 'happy'; } catch (e) { return 'happy'; }
+}
+function setRecType(t) { if (REC_TYPES.includes(t)) { try { localStorage.setItem('recordsType', t); } catch (e) { /* 略過 */ } } }
 function renderTabbar(route) {
-  // 新增、編輯、詳情、設定頁不顯示底部選單，免得擋住按鈕
   tabbar.hidden = route === null;
   document.body.classList.toggle('no-tabbar', route === null);
   if (route === null) return;
-  const tab = (href, icon, label, on) => `<a class="tab${on ? ' on' : ''}" href="${href}">${icon}<span>${label}</span></a>`;
+  if (REC_TYPES.includes(route)) { setRecType(route); route = 'records'; }
+  const tab = (href, icon, label, on, key) => `<a class="tab${on ? ' on' : ''}" href="${href}" data-tab="${key}"${on ? ' aria-current="page"' : ''}>${icon}<span>${label}</span></a>`;
+  const unboundPartner = isPartner() && !CloudDB.isBoundPartner();
   tabbar.innerHTML = [
-    tab('#/', ICON.home, '首頁', route === 'home'),
-    tab('#/list/happy', ICON.heart, '美好', route === 'happy'),
-    isPartner() && !CloudDB.isBoundPartner()
-      ? tab('#/tasks', ICON.lock, '任務', route === 'tasks')
-      : `<a class="tab-add" href="#/new/${route === 'cloud' || route === 'fight' ? route : 'happy'}" aria-label="新增紀錄">${ICON.plus}</a>`,
-    tab('#/list/cloud', ICON.cloud, '烏雲', route === 'cloud'),
-    tab('#/fights', ICON.bolt, '吵架', route === 'fight'),
+    tab('#/', ICON.home, '今天', route === 'home', 'home'),
+    tab('#/records', ICON.book, '紀錄', route === 'records', 'records'),
+    unboundPartner
+      ? tab('#/tasks', ICON.lock, '任務', route === 'tasks', 'tasks')
+      : `<a class="tab-add" href="#/new/${currentRecType()}" aria-label="新增紀錄">${ICON.plus}</a>`,
+    tab('#/together', ICON.people, '一起', route === 'together' || (route === 'tasks' && !unboundPartner), 'together'),
+    tab('#/me', ICON.user, '我的', route === 'me', 'me'),
   ].join('');
 }
 

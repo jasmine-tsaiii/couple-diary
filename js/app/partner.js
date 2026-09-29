@@ -16,49 +16,43 @@ async function viewPartnerHome() {
   if (CloudDB.isBoundPartner()) { try { pending = (await CloudDB.submissions({ status: 'pending' })).filter((t) => all.some((r) => r.id === t.record_id && isMine(r))); } catch (e) { pending = []; } }
 
   const bound = CloudDB.isBoundPartner();
-  const typeTile = (type, icon, color, sub) => homeTile({ href: `#/list/${type}`, icon, color, title: TYPES[type].label, sub,
-    extra: `${lockedOf(type) ? `<span class="small row" style="color:var(--lock);gap:4px">${ICON.lockSmall}另有 ${lockedOf(type)} 則上鎖</span>` : ''}${bound ? splitLine(count(type) + lockedOf(type), all.filter((r) => r.type === type && isMine(r)).length) : ''}` });
-  const tilesHtml = [
-    typeTile('happy', ICON.heart, 'var(--happy)', `${count('happy') + lockedOf('happy')} / ${TYPES.happy.goal}`),
-    typeTile('cloud', ICON.cloud, 'var(--cloud)', `${count('cloud')} 則`),
-    homeTile({ href: '#/fights', icon: ICON.bolt, color: 'var(--fight)', title: '吵架議題', sub: fightSub(fights) }),
-    wishTile(await loadWishesSafe()),
-    homeTile({ href: '#/cards', icon: TILE_ICON.card, color: 'var(--happy)', title: '回憶小卡', sub: '做成圖分享出去' }),
-    homeTile({ href: '#/tasks', icon: ICON.lock, color: 'var(--lock)', title: '解鎖任務', sub: pending.length ? `${pending.length} 個等你確認` : todo ? `${todo} 個可以解鎖` : tasks.length ? `等${esc(ownerName())}確認中` : '目前沒有任務' }),
-  ].join('');
-
-  app.innerHTML = `
-    <div class="row between">
-      <div>
-        <div class="hello">嗨，${esc(info.name)}</div>
-        <h1 class="title-xl">${bound ? `${esc(ownerName())}和${esc(info.name)}的紀錄` : `${esc(ownerName())}的紀錄`}</h1>
-      </div>
-      <div class="row" style="gap:8px;align-items:flex-start">${bellBtnHtml()}
-      <a class="icon-btn gear-btn" href="#/settings" aria-label="設定">${ICON.gear}<span>設定</span></a></div>
-    </div>
-    ${bound ? quickRecord('今天想記下什麼？') : `<div class="mascot-hello">${mascotHtml('happy', 110)}<div class="small muted">看看${esc(ownerName())}分享了什麼</div></div>`}
-    ${info.paused ? `<div class="card" id="paused-note" style="background:var(--lock-bg);border-color:transparent;gap:4px">
+  const quizQ = await quizStatus();
+  // 提示卡一次最多一張，照順序取第一個符合的
+  const tips = [
+    info.paused ? `<div class="card" id="paused-note" style="background:var(--lock-bg);border-color:transparent;gap:4px">
       <div class="bold" style="color:var(--lock)">${esc(ownerName())}暫時停止分享</div>
       <div class="small" style="color:var(--lock)">這段時間看不到${esc(ownerName())}寫的紀錄，你自己寫的照舊。${esc(ownerName())}恢復之後就會回來，什麼都不會不見。</div>
-    </div>` : ''}
-    ${tasks.length ? `<a class="card" href="#/tasks" style="background:var(--lock-bg);border-color:transparent;gap:4px">
-      <div class="bold" style="color:var(--lock)">${todo ? `有 ${todo} 個任務可以解鎖` : '任務都送出了'}</div>
-      <div class="small" style="color:var(--lock)">${todo ? `完成任務、${esc(ownerName())}確認之後，就能看到上鎖的紀錄。` : `等${esc(ownerName())}確認中。`}</div>
-    </a>` : ''}
-    ${newFromOtherCard(all)}
-    ${pending.length ? `<a class="card" href="#/view/${esc(pending[0].record_id)}" style="background:var(--lock-bg);border-color:transparent;gap:4px">
+    </div>` : '',
+    quizTipHtml(quizQ, 'urgent'),
+    pending.length ? `<a class="card" href="#/view/${esc(pending[0].record_id)}" style="background:var(--lock-bg);border-color:transparent;gap:4px">
       <div class="bold" style="color:var(--lock)">有 ${pending.length} 個任務等你確認</div>
       <div class="small" style="color:var(--lock)">${esc(ownerName())}完成了你出的任務，點這裡去看看，確認後那則紀錄就會解鎖給${esc(ownerName())}看。</div>
-    </a>` : ''}
-    ${CloudDB.isAnonymous() ? `<a class="card" href="#/bind" style="background:var(--fight-bg);border-color:transparent;gap:4px">
+    </a>` : '',
+    todo ? `<a class="card" href="#/tasks" style="background:var(--lock-bg);border-color:transparent;gap:4px">
+      <div class="bold" style="color:var(--lock)">有 ${todo} 個任務可以解鎖</div>
+      <div class="small" style="color:var(--lock)">完成任務、${esc(ownerName())}確認之後，就能看到上鎖的紀錄。</div>
+    </a>` : '',
+    newFromOtherCard(all),
+    CloudDB.isAnonymous() ? `<a class="card" href="#/bind" style="background:var(--fight-bg);border-color:transparent;gap:4px">
       <div class="bold" style="color:var(--fight-dark)">建立我的帳號，你也可以寫紀錄</div>
       <div class="small muted">你現在是用分享碼加入的，還沒有自己的帳號：只能看、做任務。用 Email 或 Google 建立帳號後，就能寫自己的美好和烏雲，也能一起寫吵架議題，換手機也不會不見 ›</div>
-    </a>` : ''}
-    <div class="section-title">所有功能</div>
-    <div class="home-tiles">${tilesHtml}</div>
-    <div class="section-title">${bound ? '最近的紀錄' : '最近分享的紀錄'}</div>
+    </a>` : '',
+    quizTipHtml(quizQ, 'start'),
+  ];
+  const tipHtml = tips.find((t) => t && t.trim()) || '';
+
+  app.innerHTML = `
+    <div class="home-head">
+      <div class="hello">嗨，${esc(info.name)}</div>
+      <h1 class="title-xl">${bound ? `${esc(ownerName())}和${esc(info.name)}的紀錄` : `${esc(ownerName())}的紀錄`}</h1>
+      <div class="row home-actions" style="gap:8px">${bellBtnHtml()}</div>
+    </div>
+    ${bound ? quickRecord('今天想記下什麼？') : `<div class="mascot-hello">${mascotHtml('happy', 110)}<div class="small muted">看看${esc(ownerName())}分享了什麼</div></div>`}
+    ${tipHtml}
+    <div class="row between section-head"><div class="section-title">${bound ? '最近的紀錄' : '最近分享的紀錄'}</div>${recent.length ? '<a class="small see-all" href="#/records">看全部 ›</a>' : ''}</div>
     <div class="list" id="recent">${recent.length ? '' : bound ? `<div class="empty">還沒有紀錄<a class="btn small" href="#/new/happy">寫下第一個美好時刻</a></div>` : `<div class="empty">${esc(ownerName())}還沒有分享紀錄給你</div>`}</div>
   `;
+  bindQuizTip();
   const box = document.getElementById('recent');
   for (const r of recent) box.appendChild(await listItem(r));
   if (!tourDone('partner')) showTour('partner');

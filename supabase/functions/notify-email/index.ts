@@ -41,21 +41,48 @@ function line(r: Row) {
   }
 }
 
+// 同一個人做了好幾次同樣的事，合成一句：「小明新增了 3 則美好時刻（其中 1 則完成任務就能看）」
+const GROUP_OF: Record<string, string> = { new_happy: 'happy', new_task_record: 'happy', task_submitted: 'task_submitted', task_approved: 'task_approved', cloud_reflect: 'cloud_reflect' };
+function groupLine(g: Row[]) {
+  const r = g[0];
+  const who = r.actor_name || '對方';
+  const n = g.length;
+  if (n === 1) return line(r);
+  switch (GROUP_OF[r.kind]) {
+    case 'happy': {
+      const t = g.filter((x) => x.kind === 'new_task_record').length;
+      return t === n ? `${who}新增了 ${n} 則美好時刻，完成任務就能看` : `${who}新增了 ${n} 則美好時刻${t ? `（其中 ${t} 則完成任務就能看）` : ''}`;
+    }
+    case 'task_submitted': return `${who}完成了 ${n} 個任務，等你確認`;
+    case 'task_approved': return `${who}確認了你的 ${n} 個任務，紀錄解鎖了`;
+    case 'cloud_reflect': return `3 天前記下的 ${n} 片烏雲，現在回頭看，有沒有新的想法？`;
+    default: return line(r);
+  }
+}
+function lines(rows: Row[]) {
+  const groups = new Map<string, Row[]>();
+  for (const r of rows) {
+    const key = GROUP_OF[r.kind] ? `${GROUP_OF[r.kind]}|${r.actor_name}` : `${r.kind}|${r.actor_name}|${line(r)}`;
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key)!.push(r);
+  }
+  return [...groups.values()].map(groupLine);
+}
+
 function subject(rows: Row[]) {
   const ann = rows.find((r) => r.kind === 'anniversary');
   if (ann) return `【啾啾日記】${line(ann)}`;
-  if (rows.length === 1) return `【啾啾日記】${line(rows[0])}`;
-  const happy = rows.filter((r) => r.kind === 'new_happy' || r.kind === 'new_task_record');
-  const who = rows[0].actor_name || '對方';
-  if (happy.length === rows.length && rows.every((r) => r.actor_name === rows[0].actor_name)) return `【啾啾日記】${who}新增了 ${happy.length} 則美好時刻`;
-  return `【啾啾日記】今天有 ${rows.length} 則新消息`;
+  const ls = lines(rows);
+  if (ls.length === 1) return `【啾啾日記】${ls[0]}`;
+  return `【啾啾日記】${ls[0]}，還有 ${ls.length - 1} 件新消息`;
 }
 
 function esc(s: string) { return s.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]!)); }
 
 function html(rows: Row[], unsubUrl: string) {
-  const items = rows.map((r) => `<li style="margin:0 0 6px">${esc(line(r))}</li>`).join('');
-  const pre = esc(line(rows[0]));
+  const ls = lines(rows);
+  const items = ls.map((l) => `<li style="margin:0 0 6px">${esc(l)}</li>`).join('');
+  const pre = esc(ls[0]);
   const title = rows.some((r) => r.kind === 'anniversary') ? '今天是特別的日子'
     : rows.every((r) => FROM_PARTNER.includes(r.kind)) ? '你不在的時候' : '今天的啾啾日記';
   return `<div style="display:none;max-height:0;overflow:hidden;opacity:0">${pre}&#8199;&#847;&#8199;&#847;&#8199;&#847;&#8199;&#847;</div>

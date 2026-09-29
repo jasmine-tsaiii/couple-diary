@@ -611,3 +611,24 @@ h1, h2, h3, .tile-body .bold, .opt { text-wrap: balance; }
 .quiz-diff { flex: none; font-size: 12px; color: var(--muted); white-space: nowrap; }
 .quiz-diff.changed { color: var(--happy-dark); font-weight: 700; }
 .quiz-line .btn.small { flex: none; }
+
+/* 介面整理 B 方案（2026-09-29）：紀錄分頁的種類切換、「一起」「我的」的列表 */
+.rec-seg { grid-template-columns: repeat(3, 1fr); }
+.seg-btn { position: relative; display: flex; align-items: center; justify-content: center; gap: 6px; height: 40px; border-radius: 10px; color: var(--soft); font-size: 14px; text-decoration: none; white-space: nowrap; }
+.seg-btn .seg-n { font-size: 12px; opacity: .8; }
+.seg-btn.on { background: var(--accent); color: #fff; font-weight: 700; }
+.seg-btn.has-new::after { content: ''; position: absolute; top: 6px; right: 10px; width: 7px; height: 7px; border-radius: 99px; background: var(--accent, #A63D52); box-shadow: 0 0 0 2px var(--seg); }
+.seg-btn.on.has-new::after { background: #fff; box-shadow: none; }
+.section-head { align-items: baseline; margin-top: 6px; }
+.section-head .section-title { margin-top: 0; }
+.see-all { color: var(--accent-text); text-decoration: none; font-weight: 700; }
+.nav-list { padding: 0; gap: 0; overflow: hidden; }
+.nav-row { display: flex; align-items: center; gap: 12px; padding: 14px 16px; text-decoration: none; color: inherit; min-height: 56px; }
+.nav-row + .nav-row { border-top: 1px solid var(--line); }
+.nav-row:active { background: var(--press); }
+.nav-icon { flex: none; width: 36px; height: 36px; border-radius: 10px; background: var(--seg); color: var(--soft); display: flex; align-items: center; justify-content: center; }
+.nav-icon svg { width: 20px; height: 20px; }
+.nav-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.nav-text .small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.nav-badge { flex: none; font-size: 12px; font-weight: 700; padding: 2px 10px; border-radius: 99px; background: var(--happy-bg); color: var(--happy-dark); white-space: nowrap; }
+.nav-chev { flex: none; color: var(--muted); display: flex; }

@@ -252,7 +252,7 @@ applyTheme();
 if (window.matchMedia) { try { matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => applyTheme()); } catch (e) { /* 舊瀏覽器 */ } }
 function themeCard() {
   const cur = currentTheme();
-  return `<div class="card" style="gap:8px">
+  return `<div class="card" id="theme-card" style="gap:8px">
     <div class="bold">外觀</div>
     <div class="theme-pick">${THEMES.map(([k, l]) => `<button class="chip ${k === cur ? 'on' : ''}" data-theme-pick="${k}" aria-pressed="${k === cur}">${l}</button>`).join('')}</div>
     <div class="small muted">晚上寫日記可以選深色，比較不刺眼。只會改這支手機。</div>
@@ -727,7 +727,8 @@ async function refreshBell() {
     dot.textContent = unread > 9 ? '9+' : String(unread || '');
     btn.setAttribute('aria-label', unread ? `通知，${unread} 則沒看過` : '通知');
   }
-  const taskTab = tabbar.querySelector('a.tab[href="#/tasks"]');
+  // 還沒建立帳號的另一半，中間就是「任務」分頁；其他人的任務在「一起」裡
+  const taskTab = tabbar.querySelector('a.tab[data-tab="tasks"]') || tabbar.querySelector('a.tab[data-tab="together"]');
   if (taskTab) setTabDot(taskTab, unreadList.some((n) => n.kind === 'new_task_record' || n.kind === 'task_approved'));
 }
 function setTabDot(tab, on) {
@@ -742,11 +743,10 @@ async function refreshTabDots() {
   if (!all) return;
   initSeen(all);
   const fresh = new Set(all.filter((r) => !r.deletedAt && isNewFromOther(r)).map((r) => r.type));
-  const tabs = { happy: '#/list/happy', cloud: '#/list/cloud', fight: '#/fights' };
-  for (const [type, href] of Object.entries(tabs)) {
-    const tab = tabbar.querySelector(`a.tab[href="${href}"]`);
-    if (tab) setTabDot(tab, fresh.has(type));
-  }
+  const tab = tabbar.querySelector('a.tab[data-tab="records"]');
+  if (tab) setTabDot(tab, fresh.size > 0);
+  // 紀錄頁上面的「美好／烏雲／吵架」切換也標出哪一種有新的
+  app.querySelectorAll('[data-rec-seg]').forEach((a) => a.classList.toggle('has-new', fresh.has(a.dataset.recSeg)));
 }
 function notifyText(n) {
   const who = n.actor_name || '對方';
@@ -765,6 +765,39 @@ function notifyText(n) {
     case 'quiz_revealed': return '「重新認識你」兩個人都交卷了，來看答案吧';
     default: return `${who}有新動態`;
   }
+}
+// 同一個人做了好幾次同樣的事，列表合成一則：「小明新增了 3 則美好時刻（其中 1 則完成任務就能看）」
+const NOTIFY_GROUP = { new_happy: 'happy', new_task_record: 'happy', task_submitted: 'task_submitted', task_approved: 'task_approved', cloud_reflect: 'cloud_reflect' };
+function groupNotifications(list) {
+  const groups = new Map();
+  for (const n of list) {
+    const key = NOTIFY_GROUP[n.kind] ? `${NOTIFY_GROUP[n.kind]}|${n.actor_name}` : `id|${n.id}`;
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(n);
+  }
+  return [...groups.values()];
+}
+function notifyGroupText(g) {
+  const n = g.length;
+  if (n === 1) return notifyText(g[0]);
+  const who = g[0].actor_name || '對方';
+  switch (NOTIFY_GROUP[g[0].kind]) {
+    case 'happy': {
+      const t = g.filter((x) => x.kind === 'new_task_record').length;
+      return t === n ? `${who}新增了 ${n} 則美好時刻，完成任務就能看` : `${who}新增了 ${n} 則美好時刻${t ? `（其中 ${t} 則完成任務就能看）` : ''}`;
+    }
+    case 'task_submitted': return `${who}完成了 ${n} 個任務，等你確認`;
+    case 'task_approved': return `${who}確認了你的 ${n} 個任務，紀錄解鎖了`;
+    case 'cloud_reflect': return `3 天前記下的 ${n} 片烏雲，現在回頭看，有沒有新的想法？`;
+    default: return notifyText(g[0]);
+  }
+}
+function notifyGroupHref(g) {
+  if (g.length === 1) return notifyHref(g[0]);
+  const k = NOTIFY_GROUP[g[0].kind];
+  if (k === 'task_submitted') return '#/tasks';
+  if (k === 'cloud_reflect') return '#/records/cloud';
+  return '#/records/happy';
 }
 function notifyHref(n) {
   if (n.kind === 'partner_request') return '#/settings';
@@ -791,11 +824,14 @@ async function viewNotifications() {
   const list = await CloudDB.notifications().catch(() => null);
   const dayOf = (ts) => { const d = new Date(ts); return `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`; };
   const todayKey = dayOf(Date.now());
-  const item = (n) => `<a class="notify-item${n.read_at ? '' : ' unread'}" href="${notifyHref(n)}" data-nid="${Number(n.id)}">
-      <span class="notify-text">${esc(notifyText(n))}</span>
-      <span class="small muted">${notifyWhen(n.created_at)}</span>
+  const item = (g) => {
+    const unreadIds = g.filter((n) => !n.read_at).map((n) => Number(n.id));
+    return `<a class="notify-item${unreadIds.length ? ' unread' : ''}" href="${notifyGroupHref(g)}" data-nid="${Number(g[0].id)}" data-nids="${unreadIds.join(',')}">
+      <span class="notify-text">${esc(notifyGroupText(g))}</span>
+      <span class="small muted">${notifyWhen(g[0].created_at)}</span>
     </a>`;
-  const group = (title, rows) => (rows.length ? `<h2 class="section-title">${title}</h2><div class="card notify-list">${rows.map(item).join('')}</div>` : '');
+  };
+  const group = (title, rows) => (rows.length ? `<h2 class="section-title">${title}</h2><div class="card notify-list">${groupNotifications(rows).map(item).join('')}</div>` : '');
   const unread = list ? list.filter((n) => !n.read_at).length : 0;
   app.innerHTML = `
     <div class="topbar">
@@ -813,7 +849,7 @@ async function viewNotifications() {
   // 打開通知頁，小鈴鐺的數字就消失
   if (list) markNotifySeen(list);
   app.querySelectorAll('[data-nid]').forEach((a) => a.addEventListener('click', () => {
-    if (a.classList.contains('unread')) { notifyLocalRead.add(Number(a.dataset.nid)); CloudDB.markNotificationRead(Number(a.dataset.nid)).catch(() => {}); }
+    if (a.classList.contains('unread')) (a.dataset.nids || '').split(',').filter(Boolean).map(Number).forEach((id) => { notifyLocalRead.add(id); CloudDB.markNotificationRead(id).catch(() => {}); });
   }));
   const all = document.getElementById('notify-all-read');
   if (all) all.addEventListener('click', async () => {

@@ -134,6 +134,8 @@ ${all.length ? '' : '<p>還沒有任何紀錄。</p>'}
 
 // 設定頁分成幾區，上方有捷徑可以直接跳過去
 const SETTING_SECTIONS = [['share', '分享'], ['us', '我們'], ['records', '整理紀錄'], ['backup', '備份'], ['account', '帳號與安全'], ['other', '其他']];
+let settingsJumped = false;
+window.addEventListener('hashchange', () => { settingsJumped = false; });
 async function viewSettings() {
   const cats = await getCategories();
   const everything = await DB.allRecords();
@@ -155,7 +157,7 @@ async function viewSettings() {
   app.className = '';
   app.innerHTML = `
     <div class="topbar">
-      <a class="icon-btn" href="#/" aria-label="返回">${ICON.back}</a>
+      <a class="icon-btn" href="#/me" aria-label="返回">${ICON.back}</a>
       <h1>設定</h1>
     </div>
     <nav class="set-nav" aria-label="設定分類">${SETTING_SECTIONS.map(([id, label]) => `<button class="chip" data-jump="set-${id}">${label}</button>`).join('')}</nav>
@@ -281,10 +283,12 @@ async function viewSettings() {
     const el = document.getElementById(b.dataset.jump);
     if (el) window.scrollTo({ top: el.getBoundingClientRect().top + window.scrollY - 64, behavior: 'smooth' });
   }));
-  if (location.hash.includes('#share') || sessionStorage.getItem('jumpShare')) {
-    try { sessionStorage.removeItem('jumpShare'); } catch (e) { /* 略過 */ }
-    const el = document.getElementById('set-share'); if (el) el.scrollIntoView();
-  }
+  // 從「我的」點進來：#/settings/<區塊> 直接捲到那一段
+  const sec = (location.hash.split('/')[2] || '').split('?')[0];
+  let jump = { notify: 'notify-card', theme: 'theme-card' }[sec] || (sec ? `set-${sec}` : '');
+  if (location.hash.includes('#share') || sessionStorage.getItem('jumpShare')) { jump = 'set-share'; try { sessionStorage.removeItem('jumpShare'); } catch (e) { /* 略過 */ } }
+  // 只在剛進來時捲一次；在這頁按了按鈕重畫時留在原位
+  if (jump && !settingsJumped) { settingsJumped = true; const el = document.getElementById(jump); if (el) window.scrollTo({ top: el.getBoundingClientRect().top + window.scrollY - 64 }); }
   if (usingCloud()) bindShareCard();
   bindPinCard(viewSettings);
   app.querySelectorAll('[data-mside]').forEach((b) => b.addEventListener('click', async () => {

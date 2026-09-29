@@ -34,7 +34,7 @@ const U = process.env.U || 'http://localhost:8770/';
   }, rid);
   await p.reload(); await p.waitForTimeout(3000);
   console.log('bell 5', (await p.textContent('#bell .bell-dot')) === '5');
-  console.log('happy tab dot', await p.locator('a.tab.has-new[href="#/list/happy"]').count() === 1 && await p.locator('a.tab.has-new[href="#/list/cloud"]').count() === 0);
+  console.log('happy tab dot', await p.locator('a.tab.has-new[data-tab="records"]').count() === 1);
   await p.screenshot({ path: (process.env.SHOT_DIR || '.') + '/home-dots.png' });
   await p.click('#bell'); await p.waitForSelector('.notify-item');
   const heads = await p.locator('.section-title').allTextContents();

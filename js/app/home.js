@@ -17,29 +17,13 @@ const TILE_ICON = {
   card: '<svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="3" width="16" height="18" rx="2.5"/><path d="M12 15.5s-3.5-2.1-3.5-4.4A1.9 1.9 0 0 1 12 10a1.9 1.9 0 0 1 3.5 1.1c0 2.3-3.5 4.4-3.5 4.4z"/></svg>',
   wish: '<svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 11l3 3 8-8"/><path d="M20 12v7a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h9"/></svg>',
   stamp: '<svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="9" r="6"/><path d="M8.5 14 7 22l5-3 5 3-1.5-8"/></svg>',
+  quiz: '<svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12a8.5 8.5 0 0 1-12.6 7.4L3 21l1.6-5.4A8.5 8.5 0 1 1 21 12z"/><path d="M9.8 9.5a2.3 2.3 0 0 1 4.4.8c0 1.5-2.2 2-2.2 3.2"/><path d="M12 16.5h.01"/></svg>',
+  backup: '<svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12"/><path d="m7 10 5 5 5-5"/><path d="M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/></svg>',
+  theme: '<svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 14.5A8 8 0 1 1 9.5 4a6.5 6.5 0 0 0 10.5 10.5z"/></svg>',
+  chart: '<svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></svg>',
+  info: '<svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 11v6M12 7.5h.01"/></svg>',
   share: '<svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="9" cy="8" r="3.5"/><path d="M2.5 20a6.5 6.5 0 0 1 13 0"/><path d="M19 8v6M16 11h6"/></svg>',
 };
-// 「所有功能」的一格：圖示、名稱、一行狀態
-function homeTile({ href, icon, color, title, sub, extra = '', id = '', cls = '' }) {
-  return `<a class="ftile ${cls}" href="${href}"${id ? ` id="${id}"` : ''}>
-    <span class="ftile-icon" style="color:${color}">${icon}</span>
-    <span class="ftile-text"><span class="bold">${title}</span><span class="small muted">${sub}</span>${extra}</span>
-  </a>`;
-}
-function fightSub(fights) {
-  const open = fights.filter((f) => (f.status || 'open') !== 'resolved').length;
-  return !fights.length ? '還沒有吵架紀錄' : open ? `${open} 個還沒解決` : '都解決了';
-}
-function wishTile(list) {
-  if (!list) return '';
-  const done = list.filter((w) => w.done).length;
-  return homeTile({ href: '#/wishes', icon: TILE_ICON.wish, color: 'var(--happy)', title: '一起完成的事', sub: list.length ? `情侶待辦・${done} / ${list.length}` : '情侶待辦清單' });
-}
-// 兩個人都有寫的時候，小字顯示各自寫了幾則（一起累積，不是比賽）
-function splitLine(total, mine) {
-  if (!usingCloud() || mine >= total || mine === 0 && total === 0) return '';
-  return `<div class="small muted">你 ${mine}・${esc(otherName())} ${total - mine}</div>`;
-}
 async function viewHome() {
   const all = await liveRecords();
   // 另一半上鎖的紀錄你看不到內容，但數量要算進去（100 個目標是兩個人一起的）
@@ -97,23 +81,76 @@ async function viewHome() {
     const r = ratio >= 10 ? Math.round(ratio) : Math.round(ratio * 10) / 10;
     return `${c} 則・每片烏雲有 ${r} 個美好${ratio >= 5 ? '，達標了！' : '（目標 5 個）'}`;
   };
-  const wishes = await loadWishesSafe();
-  const nHappy = count('happy');
-  const stamps = allStamps(all);
-  const gotStamps = stamps.filter((x) => x.got).length;
-  const taskSub = pending.length ? `${pending.length} 個等你確認` : myTodo ? `${esc(partnerName())}出了 ${myTodo} 個給你` : '上鎖紀錄的解鎖任務';
-  const shareSub = !usingCloud() ? '註冊後就能邀請對方一起寫' : hasPartner ? `${esc(partnerName())}已加入・邀請、暫停分享` : joinReqs.length ? '有人想加入，等你同意' : '還沒邀請・傳邀請連結給對方';
-  const tilesHtml = [
-    homeTile({ href: '#/list/happy', icon: ICON.heart, color: 'var(--happy)', title: '美好時刻', sub: `${nHappy} / ${TYPES.happy.goal}`,
-      extra: `${splitLine(nHappy, all.filter((r) => r.type === 'happy' && isMine(r)).length)}${nHappy >= TYPES.happy.goal ? '<span class="small bold" style="color:var(--happy-dark)">集滿 100 個了！</span>' : ''}` }),
-    homeTile({ href: '#/list/cloud', icon: ICON.cloud, color: 'var(--cloud)', title: '烏雲時刻', sub: ratioText() }),
-    homeTile({ href: '#/fights', icon: ICON.bolt, color: 'var(--fight)', title: '吵架議題', sub: fightSub(fights) }),
-    wishTile(wishes),
-    homeTile({ href: '#/stamps', icon: TILE_ICON.stamp, color: 'var(--cloud)', title: '印章冊', sub: `已集 ${gotStamps} / ${stamps.length}` }),
-    homeTile({ href: '#/cards', icon: TILE_ICON.card, color: 'var(--happy)', title: '回憶小卡', sub: '做成圖分享出去' }),
-    usingCloud() ? homeTile({ href: '#/tasks', icon: ICON.lock, color: 'var(--lock)', title: '解鎖任務', sub: taskSub }) : '',
-    homeTile({ href: isGuest() ? '#/signup' : '#/settings', icon: TILE_ICON.share, color: 'var(--happy-dark)', title: '分享給另一半', sub: shareSub, id: 'tile-share', cls: 'ftile-wide' }),
-  ].join('');
+  // 重新認識你：對方交卷了換我、或可以開始新的一回
+  const quizQ = hasPartner && usingCloud() && !CloudDB.isAnonymous() ? await quizStatus() : null;
+
+  const guestCard = `<div class="card" id="guest-account" style="background:var(--happy-bg);border-color:transparent;gap:4px">
+      <div class="bold" style="color:var(--happy-dark)">${all.length ? '註冊，把紀錄存到雲端' : '免費註冊，保存你們的紀錄'}</div>
+      <div class="small" style="color:var(--happy-dark)">${all.length ? `目前 ${all.length} 則紀錄只存在這支手機。` : '現在是試用，紀錄只存在這支手機。'}在這支手機註冊或登入後會自動搬上雲端，換手機不會不見，也能分享給另一半。</div>
+      ${all.length && IOS_SAFARI_TAB ? `<div class="small bold" style="color:var(--happy-dark)">${IOS_CLEAR_NOTE}</div>` : ''}
+      ${all.length ? '<div class="small bold" style="color:var(--happy-dark)">建議先註冊再多寫，東西才不會遺失。註冊確認信如果在別的 App 打開，記得回到這裡再登入一次，試用寫的紀錄才會搬上去。</div>' : ''}
+      ${isIOS && standalone && !all.length ? '<div class="small" style="color:var(--happy-dark)">之前在 Safari 寫過的話：從主畫面打開的和 Safari 是分開存的。請回 Safari 打開網址、註冊或登入，紀錄就會搬上雲端，再回來這裡登入同一個帳號就看得到。</div>' : ''}
+    <div class="btn-row"><a class="btn small" href="#/signup" id="guest-signup">免費註冊</a><a class="btn small secondary" href="#/login" id="guest-login">已經有帳號？登入</a></div>
+    </div>`;
+  // 提示卡一次最多一張，照順序取第一個符合的（前面那張處理或關掉，下一張才出現）
+  const tips = [
+    partnerLeft ? `<div class="card" id="partner-left" style="background:var(--lock-bg);border-color:transparent;gap:6px">
+      <div class="bold" style="color:var(--lock)">${esc(partnerLeft.name)}結束了這段關係</div>
+      <div class="small" style="color:var(--lock)">${esc(partnerLeft.name)}已經看不到你的紀錄了。之前的紀錄要封存（收起來，只有你看得到）還是刪除？之後分享給新的人，對方就看不到這些。</div>
+      <div class="btn-row"><a class="btn small" href="#/end">封存或刪除</a><button class="btn small secondary" id="partner-left-ok">先保留</button></div>
+    </div>` : '',
+    endedWith ? `<div class="card" id="ended-with" style="gap:6px">
+      <div class="bold">和${esc(endedWith)}的分享已經結束了</div>
+      <div class="small muted">這裡是你自己的空間，可以開始記自己的紀錄，也可以匯入之前匯出的備份。</div>
+      <button class="btn small secondary" id="ended-with-ok" style="align-self:flex-start">知道了</button>
+    </div>` : '',
+    joinReqs.slice(0, 1).map((j) => `<div class="card join-req" style="background:var(--lock-bg);border-color:transparent;gap:8px">
+      <div class="bold" style="color:var(--lock)">${esc(j.name)} 想加入你們的日記</div>
+      <div class="small" style="color:var(--lock)">是你的另一半就按「同意」，同意後對方就能看到分享的紀錄、一起寫。不認識的人請按「拒絕」。</div>
+      <div class="btn-row"><button class="btn small" data-home-approve="${esc(j.uid)}" data-name="${esc(j.name)}">同意</button><button class="btn small secondary" data-home-reject="${esc(j.uid)}" data-name="${esc(j.name)}">拒絕</button></div>
+    </div>`).join(''),
+    quizTipHtml(quizQ, 'urgent'),
+    pending.length ? `<a class="card" href="#/view/${esc(pending[0].record_id)}" style="background:var(--lock-bg);border-color:transparent;gap:4px">
+      <div class="bold" style="color:var(--lock)">有 ${pending.length} 個任務等你確認</div>
+      <div class="small" style="color:var(--lock)">${esc(liveOther(pending[0].partner_name))} 完成了任務，點這裡去看看，確認後那則紀錄就會解鎖給對方看。</div>
+    </a>` : '',
+    myTodo ? `<a class="card" href="#/tasks" id="my-tasks-card" style="background:var(--lock-bg);border-color:transparent;gap:4px">
+      <div class="bold" style="color:var(--lock)">${esc(partnerName())}出了 ${myTodo} 個任務給你</div>
+      <div class="small" style="color:var(--lock)">完成任務、${esc(partnerName())}確認之後，就能看到那則上鎖的紀錄 ›</div>
+    </a>` : '',
+    newFromOtherCard(all),
+    // 試用中：在 LINE/IG 裡打開的警告、iPhone Safari 分頁有紀錄時的註冊提醒，比填名字更要緊
+    isGuest() ? inAppNotice() : '',
+    showGuestCard && IOS_SAFARI_TAB && all.length ? guestCard : '',
+    askNames ? `<div class="card" id="names-card" style="gap:10px">
+      <div class="bold">先認識一下你們</div>
+      <div class="small muted">填上名字，紀錄裡就會用你們的名字，例如「${'小美'}的想法」。之後也可以在「我的」改。</div>
+      <div class="grid2">
+        <div class="field"><label for="n-me">你的名字</label><input id="n-me" class="input" maxlength="${LIMITS.name}"></div>
+        <div class="field"><label for="n-partner">伴侶的名字</label><input id="n-partner" class="input" maxlength="${LIMITS.name}"></div>
+      </div>
+      <div class="btn-row"><button class="btn small" id="n-save">儲存</button><button class="btn small secondary" id="n-skip">之後再說</button></div>
+    </div>` : '',
+    showInvite ? `<div class="card" id="invite-card" style="background:var(--happy-bg);border-color:transparent;gap:8px">
+      <div class="bold" style="color:var(--happy-dark)">邀請另一半一起寫</div>
+      <div class="small" style="color:var(--happy-dark)">傳邀請連結給另一半，對方加入後就能看你分享的紀錄，也能寫自己的美好時刻。</div>
+      <div class="btn-row"><a class="btn small" href="#/settings/share" id="invite-go">去邀請</a><button class="btn small secondary" id="invite-hide">之後再說</button></div>
+    </div>` : '',
+    quizTipHtml(quizQ, 'start'),
+    cardBanner(cardPending),
+    memory ? `<a class="card theme-happy" href="#/view/${esc(memory.id)}" style="background:var(--happy-bg);border-color:transparent;gap:4px">
+      <div class="small bold" style="color:var(--happy-dark)">${Number(today().slice(0, 4)) - Number(memory.date.slice(0, 4))} 年前的今天</div>
+      <div class="bold">${esc(memory.title)}</div>
+    </a>` : '',
+    needBackup ? `<a class="card has-x" id="backup-card" href="#/settings/backup" style="background:var(--progress-bg);border-color:transparent;gap:4px">
+      <button class="card-x" id="backup-snooze" aria-label="先不要，過幾天再提醒" style="color:var(--progress-ink)">${ICON.x}</button>
+      <div class="bold" style="color:var(--progress-ink)">${usingCloud() ? '要不要多存一份備份？' : '該備份囉'}</div>
+      <div class="small" style="color:var(--progress-ink)">${usingCloud() ? `紀錄已經存在雲端${lastBackup ? `，上次另外備份是 ${daysAgo(lastBackup)} 天前` : ''}。想多一份保險，可以到「我的 → 備份與匯出」匯出一份，存在自己的手機或雲端硬碟。` : `${lastBackup ? `上次備份是 ${daysAgo(lastBackup)} 天前` : '還沒有備份過'}。紀錄只存在這支手機，點這裡匯出備份，再存到 iCloud 雲碟或 Google 雲端硬碟。`}</div>
+    </a>` : '',
+    showA2hsCard ? a2hsCardHtml() : '',
+    showGuestCard ? guestCard : '',
+  ];
+  const tipHtml = tips.find((t) => t && t.trim()) || '';
 
   app.innerHTML = `
     <div class="home-head">
@@ -123,74 +160,14 @@ async function viewHome() {
       <div class="row home-actions" style="gap:8px">
         ${isGuest() ? '<a class="btn small secondary" href="#/login" id="home-login">登入</a>' : ''}
         ${bellBtnHtml()}
-        <a class="icon-btn gear-btn" href="#/settings" aria-label="設定">${ICON.gear}<span>設定</span></a>
       </div>
     </div>
     ${quickRecord('今天想記下什麼？')}
-    ${joinReqs.map((j) => `<div class="card join-req" style="background:var(--lock-bg);border-color:transparent;gap:8px">
-      <div class="bold" style="color:var(--lock)">${esc(j.name)} 想加入你們的日記</div>
-      <div class="small" style="color:var(--lock)">是你的另一半就按「同意」，同意後對方就能看到分享的紀錄、一起寫。不認識的人請按「拒絕」。</div>
-      <div class="btn-row"><button class="btn small" data-home-approve="${esc(j.uid)}" data-name="${esc(j.name)}">同意</button><button class="btn small secondary" data-home-reject="${esc(j.uid)}" data-name="${esc(j.name)}">拒絕</button></div>
-    </div>`).join('')}
-    ${showInvite ? `<div class="card" id="invite-card" style="background:var(--happy-bg);border-color:transparent;gap:8px">
-      <div class="bold" style="color:var(--happy-dark)">邀請另一半一起寫</div>
-      <div class="small" style="color:var(--happy-dark)">傳邀請連結給另一半，對方加入後就能看你分享的紀錄，也能寫自己的美好時刻。</div>
-      <div class="btn-row"><a class="btn small" href="#/settings" id="invite-go">去邀請</a><button class="btn small secondary" id="invite-hide">之後再說</button></div>
-    </div>` : ''}
-    ${askNames ? `<div class="card" id="names-card" style="gap:10px">
-      <div class="bold">先認識一下你們</div>
-      <div class="small muted">填上名字，紀錄裡就會用你們的名字，例如「${'小美'}的想法」。之後也可以在設定頁改。</div>
-      <div class="grid2">
-        <div class="field"><label for="n-me">你的名字</label><input id="n-me" class="input" maxlength="${LIMITS.name}"></div>
-        <div class="field"><label for="n-partner">伴侶的名字</label><input id="n-partner" class="input" maxlength="${LIMITS.name}"></div>
-      </div>
-      <div class="btn-row"><button class="btn small" id="n-save">儲存</button><button class="btn small secondary" id="n-skip">之後再說</button></div>
-    </div>` : ''}
-    ${needBackup ? `<a class="card has-x" id="backup-card" href="#/settings" style="background:var(--progress-bg);border-color:transparent;gap:4px">
-      <button class="card-x" id="backup-snooze" aria-label="先不要，過幾天再提醒" style="color:var(--progress-ink)">${ICON.x}</button>
-      <div class="bold" style="color:var(--progress-ink)">${usingCloud() ? '要不要多存一份備份？' : '該備份囉'}</div>
-      <div class="small" style="color:var(--progress-ink)">${usingCloud() ? `紀錄已經存在雲端${lastBackup ? `，上次另外備份是 ${daysAgo(lastBackup)} 天前` : ''}。想多一份保險，可以到設定頁匯出一份，存在自己的手機或雲端硬碟。` : `${lastBackup ? `上次備份是 ${daysAgo(lastBackup)} 天前` : '還沒有備份過'}。紀錄只存在這支手機，點這裡到設定頁匯出備份，再存到 iCloud 雲碟或 Google 雲端硬碟。`}</div>
-    </a>` : ''}
-    ${showA2hsCard ? a2hsCardHtml() : ''}
-    ${isGuest() ? inAppNotice() : ''}
-    ${showGuestCard ? `<div class="card" id="guest-account" style="background:var(--happy-bg);border-color:transparent;gap:4px">
-      <div class="bold" style="color:var(--happy-dark)">${all.length ? '註冊，把紀錄存到雲端' : '免費註冊，保存你們的紀錄'}</div>
-      <div class="small" style="color:var(--happy-dark)">${all.length ? `目前 ${all.length} 則紀錄只存在這支手機。` : '現在是試用，紀錄只存在這支手機。'}在這支手機註冊或登入後會自動搬上雲端，換手機不會不見，也能分享給另一半。</div>
-      ${all.length && IOS_SAFARI_TAB ? `<div class="small bold" style="color:var(--happy-dark)">${IOS_CLEAR_NOTE}</div>` : ''}
-      ${all.length ? '<div class="small bold" style="color:var(--happy-dark)">建議先註冊再多寫，東西才不會遺失。註冊確認信如果在別的 App 打開，記得回到這裡再登入一次，試用寫的紀錄才會搬上去。</div>' : ''}
-      ${isIOS && standalone && !all.length ? '<div class="small" style="color:var(--happy-dark)">之前在 Safari 寫過的話：從主畫面打開的和 Safari 是分開存的。請回 Safari 打開網址、註冊或登入，紀錄就會搬上雲端，再回來這裡登入同一個帳號就看得到。</div>' : ''}
-    <div class="btn-row"><a class="btn small" href="#/signup" id="guest-signup">免費註冊</a><a class="btn small secondary" href="#/login" id="guest-login">已經有帳號？登入</a></div>
-    </div>` : ''}
-    ${partnerLeft ? `<div class="card" id="partner-left" style="background:var(--lock-bg);border-color:transparent;gap:6px">
-      <div class="bold" style="color:var(--lock)">${esc(partnerLeft.name)}結束了這段關係</div>
-      <div class="small" style="color:var(--lock)">${esc(partnerLeft.name)}已經看不到你的紀錄了。之前的紀錄要封存（收起來，只有你看得到）還是刪除？之後分享給新的人，對方就看不到這些。</div>
-      <div class="btn-row"><a class="btn small" href="#/end">封存或刪除</a><button class="btn small secondary" id="partner-left-ok">先保留</button></div>
-    </div>` : ''}
-    ${endedWith ? `<div class="card" id="ended-with" style="gap:6px">
-      <div class="bold">和${esc(endedWith)}的分享已經結束了</div>
-      <div class="small muted">這裡是你自己的空間，可以開始記自己的紀錄，也可以匯入之前匯出的備份。</div>
-      <button class="btn small secondary" id="ended-with-ok" style="align-self:flex-start">知道了</button>
-    </div>` : ''}
-    ${newFromOtherCard(all)}
-    ${pending.length ? `<a class="card" href="#/view/${esc(pending[0].record_id)}" style="background:var(--lock-bg);border-color:transparent;gap:4px">
-      <div class="bold" style="color:var(--lock)">有 ${pending.length} 個任務等你確認</div>
-      <div class="small" style="color:var(--lock)">${esc(liveOther(pending[0].partner_name))} 完成了任務，點這裡去看看，確認後那則紀錄就會解鎖給對方看。</div>
-    </a>` : ''}
-    ${myTodo ? `<a class="card" href="#/tasks" id="my-tasks-card" style="background:var(--lock-bg);border-color:transparent;gap:4px">
-      <div class="bold" style="color:var(--lock)">${esc(partnerName())}出了 ${myTodo} 個任務給你</div>
-      <div class="small" style="color:var(--lock)">完成任務、${esc(partnerName())}確認之後，就能看到那則上鎖的紀錄 ›</div>
-    </a>` : ''}
-    ${cardBanner(cardPending)}
-    ${memory ? `<a class="card theme-happy" href="#/view/${esc(memory.id)}" style="background:var(--happy-bg);border-color:transparent;gap:4px">
-      <div class="small bold" style="color:var(--happy-dark)">${Number(today().slice(0, 4)) - Number(memory.date.slice(0, 4))} 年前的今天</div>
-      <div class="bold">${esc(memory.title)}</div>
-    </a>` : ''}
-    <div class="section-title">所有功能</div>
-    <div class="home-tiles">${tilesHtml}</div>
-    <div class="section-title">最近的紀錄</div>
+    ${tipHtml}
+    <div class="row between section-head"><div class="section-title">最近的紀錄</div>${recent.length ? '<a class="small see-all" href="#/records">看全部 ›</a>' : ''}</div>
     <div class="list" id="recent">${recent.length ? '' : examples ? examplesBlock(['happy', 'cloud', 'fight']) : `<div class="empty">還沒有任何紀錄<a class="btn small" href="#/new/happy">寫下第一個美好時刻</a></div>`}</div>
   `;
-  if (askNames) {
+  if (document.getElementById('names-card')) {
     document.getElementById('n-save').addEventListener('click', async () => {
       const me = document.getElementById('n-me').value.trim();
       const partner = document.getElementById('n-partner').value.trim();
@@ -204,13 +181,8 @@ async function viewHome() {
       viewHome();
     });
   }
-  const ts = document.getElementById('tile-share');
-  if (ts && isGuest()) ts.addEventListener('click', (ev) => { ev.preventDefault(); track('signup_prompt', { where: 'share' }); showSignupSheet('註冊後就能分享給另一半', '傳一個邀請連結給對方，兩個人就能一起看、一起寫。現在試用寫的紀錄，註冊後會自動搬上雲端。'); });
-  ['invite-go', 'tile-share'].forEach((id) => {
-    const el = document.getElementById(id);
-    if (el && el.getAttribute('href') === '#/settings') el.addEventListener('click', () => { try { sessionStorage.setItem('jumpShare', '1'); } catch (e) { /* 略過 */ } });
-  });
   bindA2hsCard();
+  bindQuizTip();
   const bs = document.getElementById('backup-snooze');
   if (bs) bs.addEventListener('click', async (e) => {
     e.preventDefault(); e.stopPropagation();
@@ -317,6 +289,26 @@ async function listItem(r) {
   return a;
 }
 
+// ---------- 紀錄分頁（#/records）：上面切換美好／烏雲／吵架，下面是那一種的列表 ----------
+function recordCounts(all, lockedAll) {
+  const n = (t) => all.filter((r) => r.type === t).length + (lockedAll || []).filter((x) => x.type === t).length;
+  return { happy: n('happy'), cloud: n('cloud'), fight: n('fight') };
+}
+function recordsHead(type, counts, right = '') {
+  return `<div class="topbar"><h1>紀錄</h1>${right}</div>
+    <div class="seg rec-seg" role="tablist" aria-label="紀錄種類">${REC_TYPES.map((t) => `<a class="seg-btn${t === type ? ' on' : ''}" href="#/records/${t}" data-rec-seg="${t}" role="tab" aria-selected="${t === type}">${TYPES[t].short}<span class="seg-n">${counts[t]}</span></a>`).join('')}</div>`;
+}
+async function viewRecords(type) {
+  const t = REC_TYPES.includes(type) ? type : currentRecType();
+  setRecType(t);
+  renderTabbar('records'); // 中間的＋跟著目前這種
+  if (t === 'fight') await viewFights(); else await viewList(t);
+}
+// 切換種類不多一層返回
+function bindRecSeg() {
+  app.querySelectorAll('[data-rec-seg]').forEach((a) => a.addEventListener('click', (ev) => { ev.preventDefault(); replaceHash(`#/records/${a.dataset.recSeg}`); }));
+}
+
 // ---------- 美好／烏雲列表 ----------
 // 列表要看誰寫的：全部／我的／對方的（兩個人都有寫紀錄時才顯示）
 let listWho = 'all';
@@ -326,7 +318,8 @@ async function viewList(type, tagFilter) {
   const partner = isPartner();
   const ofType = all.filter((r) => r.type === type).sort(byDateDesc);
   // 對方上鎖的紀錄：只知道有幾則、編號，看不到內容
-  const lockedOthers = usingCloud() ? (await CloudDB.othersLocked()).filter((x) => x.type === type) : [];
+  const lockedAll = usingCloud() ? await CloudDB.othersLocked() : [];
+  const lockedOthers = lockedAll.filter((x) => x.type === type);
   const total = ofType.length + lockedOthers.length;
   const twoAuthors = usingCloud() && (lockedOthers.length > 0 || ofType.some((r) => !isMine(r))) && ofType.some((r) => isMine(r));
   const who = twoAuthors ? listWho : 'all';
@@ -338,14 +331,10 @@ async function viewList(type, tagFilter) {
 
   app.className = conf.theme;
   app.innerHTML = `
-    <div class="topbar">
-      <a class="icon-btn" href="#/" aria-label="返回">${ICON.back}</a>
-      <h1>${conf.label}</h1>
-      <div class="count"><b style="font-size:16px;color:var(--accent-text)">${total}</b>${type === 'cloud' ? ' 則' : ` / ${conf.goal}`}</div>
-    </div>
+    ${recordsHead(type, recordCounts(all, lockedAll), `<div class="count"><b style="font-size:16px;color:var(--accent-text)">${total}</b>${type === 'cloud' ? ' 則' : ` / ${conf.goal}`}</div>`)}
     ${type === 'cloud' ? `<div class="card mascot-hello" style="background:var(--cloud-bg);border-color:transparent">${mascotHtml('cloud', 120)}<div class="small" style="color:var(--cloud-dark)">不開心的時刻也值得記下來，心情過去了就按「已放晴」。</div></div>` : `<div class="progress" style="height:8px"><div style="width:${pct}%"></div></div>`}
     ${twoAuthors ? `<div class="chips">
-      ${[['all', '全部'], ['mine', '我的'], ['other', `${esc(otherName())}的`]].map(([k, l]) => `<button class="chip ${k === who ? 'on' : ''}" data-who="${k}">${l}</button>`).join('')}
+      ${[['all', '全部', total], ['mine', '我的', ofType.filter(isMine).length], ['other', `${esc(otherName())}的`, total - ofType.filter(isMine).length]].map(([k, l, n]) => `<button class="chip ${k === who ? 'on' : ''}" data-who="${k}">${l} ${n}</button>`).join('')}
     </div>` : ''}
     ${tags.length ? `<div class="chips scroll">
       <button class="chip dark ${!tagFilter ? 'on' : ''}" data-tag="">全部</button>
@@ -356,6 +345,7 @@ async function viewList(type, tagFilter) {
   `;
   app.querySelectorAll('[data-tag]').forEach((b) => b.addEventListener('click', () => keepPlace(() => viewList(type, b.dataset.tag || null))));
   app.querySelectorAll('[data-who]').forEach((b) => b.addEventListener('click', () => { listWho = b.dataset.who; viewList(type, tagFilter); }));
+  bindRecSeg();
 
   const grid = document.getElementById('grid');
   const hearted = usingCloud() && type === 'happy' ? await CloudDB.heartedIds() : new Set();
@@ -418,12 +408,10 @@ async function viewFights(catFilter, statusFilter) {
   const myId = usingCloud() ? CloudDB.myId() : null;
   const byOther = (f) => usingCloud() && f.author && f.author !== myId;
   const openCount = fights.filter((f) => (f.status || 'open') !== 'resolved').length;
+  const lockedAll = usingCloud() ? await CloudDB.othersLocked().catch(() => []) : [];
   app.className = 'theme-fight';
   app.innerHTML = `
-    <div class="topbar">
-      <a class="icon-btn" href="#/" aria-label="返回">${ICON.back}</a>
-      <h1>吵架議題</h1>
-    </div>
+    ${recordsHead('fight', recordCounts(all, lockedAll))}
     ${openCount ? `<div class="card mascot-hello" style="background:var(--fight-bg);border-color:transparent">${mascotHtml('fight', 120)}<div class="small" style="color:var(--fight-dark)">還有 ${openCount} 個沒解決。先深呼吸，再慢慢聊。</div></div>` : ''}
     ${partner ? `<a class="btn" href="${CloudDB.isBoundPartner() ? '#/new/fight' : '#/bind'}">＋ 新增議題</a>
       ${CloudDB.isBoundPartner() ? '' : `<div class="small muted">建立你自己的帳號後，就能寫自己的美好和烏雲，也能和${esc(ownerName())}一起寫吵架議題。</div>`}` : ''}
@@ -456,4 +444,5 @@ async function viewFights(catFilter, statusFilter) {
   `;
   app.querySelectorAll('[data-cat]').forEach((b) => b.addEventListener('click', () => keepPlace(() => viewFights(b.dataset.cat || null, statusFilter))));
   app.querySelectorAll('[data-st]').forEach((b) => b.addEventListener('click', () => keepPlace(() => viewFights(catFilter, b.dataset.st || null))));
+  bindRecSeg();
 }

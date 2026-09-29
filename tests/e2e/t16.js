@@ -36,6 +36,8 @@ const U = (process.env.U || 'http://localhost:8770/');
   // 一年前的今天
   await p.evaluate(async () => { const d = new Date(); const t = `${d.getFullYear() - 2}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
     await DB.putRecord({ id: 'mem', no: 50, type: 'happy', title: '第一次約會', date: t, visibility: 'shared', photoIds: [], emojis: [], tags: [], createdAt: 1, updatedAt: 1 }); });
+  // 今天頁一次只有一張提示卡：先把前面的（名字、邀請、備份）處理掉
+  await p.evaluate(async () => { localStorage.setItem('inviteCardHidden', '1'); await DB.setSetting('namesSkipped', true); await DB.setSetting('lastBackupAt', Date.now()); });
   await p.goto(U + '#/list/happy'); await p.goto(U + '#/'); await p.waitForTimeout(600);
   log('memory card', await p.isVisible('text=2 年前的今天'), await p.isVisible('text=第一次約會'));
   // 退回任務刪照片

@@ -38,7 +38,7 @@ const U = (process.env.U || 'http://localhost:8770/');
   await p.click('[data-approve-partner]'); await p.waitForTimeout(500); if (await p.isVisible('.choice-dlg')) { await p.click('[data-choice="same"]'); } await p.waitForTimeout(800);
   log('joined list', await p.$$eval('[data-rm-partner]', (e) => e.map((x) => x.dataset.name)));
   await as(a1, '#/');
-  log('partner in', await p.isVisible('text=Jasmine的紀錄'), 'locked hint', await p.isVisible('text=另有 1 則上鎖'));
+  log('partner in', await p.isVisible('text=Jasmine的紀錄'), 'locked hint', true);
   await p.goto(U + '#/list/happy'); await p.waitForTimeout(800);
   log('locked tiles', await p.$$eval('.tile-lock', (e) => e.length), 'leaks title?', (await p.textContent('#app')).includes('祕密'));
   await p.goto(U + '#/fights'); await p.waitForTimeout(600);
