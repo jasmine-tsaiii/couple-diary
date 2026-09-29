@@ -322,7 +322,9 @@ function followUpBy(f) {
 }
 // 改自己的名字：設定裡的名字和分享時對方看到的名字一起改，兩邊才不會不一樣
 async function saveNames(names) {
+  const prevPartner = NAMES.partner;
   await DB.setSetting('names', names);
+  if (usingCloud() && !isPartner() && !CloudDB.isAnonymous() && names.partner && names.partner !== prevPartner) await CloudDB.ownerSetPartnerName(names.partner);
   if (usingCloud() && !isPartner() && !CloudDB.isAnonymous() && names.me) {
     try { const sh = await CloudDB.getShare(); if (sh && sh.owner_name !== names.me) await CloudDB.saveShare(sh.code, null, names.me); } catch (e) { /* 分享名字之後再同步 */ }
   }

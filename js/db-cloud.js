@@ -250,6 +250,15 @@ const CloudDB = CLOUD_ENABLED ? (() => {
     async saveShare(code, password, ownerName) {
       check(await client.rpc('set_share', { p_code: code, p_password: password, p_owner_name: ownerName }));
     },
+    // 另一半改自己的名字（主人那邊的「伴侶的名字」也會一起改）
+    async partnerSetName(name) {
+      check(await client.rpc('partner_set_name', { p_name: name }));
+      if (partner) { partner = { ...partner, name }; remember('partner', partner); }
+    },
+    // 主人改「伴侶的名字」時，另一半自己看到的名字也一起改；舊版資料庫沒有這個函式就略過
+    async ownerSetPartnerName(name) {
+      try { await client.rpc('owner_set_partner_name', { p_name: name }); } catch (e) { /* 之後再同步 */ }
+    },
     async deleteShare() {
       check(await client.from('shares').delete().eq('owner', userId()));
     },

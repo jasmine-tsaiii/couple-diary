@@ -1876,3 +1876,38 @@ language sql security definer set search_path = public as $$
 $$;
 revoke all on function public.notifications_seen() from public, anon;
 grant execute on function public.notifications_seen() to authenticated;
+
+-- ============================================================
+-- 改名字（2026-09-29）：另一半可以在自己的設定頁改名字；主人在設定改「伴侶的名字」也會同步給另一半看到
+-- 兩個地方（加入時的名字、主人設定裡的伴侶名字）一起改，誰最後改就用誰的
+-- ============================================================
+create or replace function public.partner_set_name(p_name text) returns void
+language plpgsql security definer set search_path = public as $$
+declare
+  v_name text := btrim(coalesce(p_name, ''));
+  v_owner uuid;
+begin
+  if v_name = '' or char_length(v_name) > 20 then raise exception '名字要 1 到 20 個字'; end if;
+  update public.partners set name = v_name where uid = auth.uid() returning owner into v_owner;
+  if v_owner is null then raise exception '你還沒加入對方的日記'; end if;
+  if not exists (select 1 from public.partners where uid = auth.uid() and approved) then return; end if;
+  update public.settings set value = jsonb_set(value, '{partner}', to_jsonb(v_name))
+    where owner = v_owner and key = 'names' and jsonb_typeof(value) = 'object';
+  if not found then
+    insert into public.settings (owner, key, value) values (v_owner, 'names', jsonb_build_object('partner', v_name))
+    on conflict (owner, key) do update set value = jsonb_build_object('partner', v_name);
+  end if;
+end $$;
+revoke all on function public.partner_set_name(text) from public, anon;
+grant execute on function public.partner_set_name(text) to authenticated;
+
+create or replace function public.owner_set_partner_name(p_name text) returns void
+language plpgsql security definer set search_path = public as $$
+declare
+  v_name text := btrim(coalesce(p_name, ''));
+begin
+  if not public.is_real_user() or v_name = '' or char_length(v_name) > 20 then return; end if;
+  update public.partners set name = v_name where owner = auth.uid() and approved and name is distinct from v_name;
+end $$;
+revoke all on function public.owner_set_partner_name(text) from public, anon;
+grant execute on function public.owner_set_partner_name(text) to authenticated;

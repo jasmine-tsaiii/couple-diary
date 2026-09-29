@@ -110,6 +110,14 @@
       const m = S.t.settings.find((x) => x.owner === p.owner && x.key === 'mascot');
       return { owner: p.owner, name: p.name, owner_name: s.owner_name, approved: p.approved !== false, mascot: m ? m.value : null, paused: pausedSp(S, p.owner) };
     },
+    partner_set_name(S, u, a) {
+      const n = (a.p_name || '').trim(); if (!n || n.length > 20) throw new Error('名字要 1 到 20 個字');
+      const p = S.t.partners.find((x) => x.uid === u.id); if (!p) throw new Error('你還沒加入對方的日記');
+      p.name = n; if (p.approved === false) return;
+      const st = S.t.settings.find((x) => x.owner === p.owner && x.key === 'names');
+      if (st) st.value = { ...(st.value || {}), partner: n }; else S.t.settings.push({ owner: p.owner, key: 'names', value: { partner: n } });
+    },
+    owner_set_partner_name(S, u, a) { const n = (a.p_name || '').trim(); if (!real(u) || !n) return; S.t.partners.filter((x) => x.owner === u.id && x.approved !== false).forEach((x) => { x.name = n; }); },
     set_share(S, u, a) {
       if (!real(u)) throw new Error('請先登入');
       if (!/^[A-Z0-9]{6,12}$/.test(a.p_code)) throw new Error('分享碼格式不對');

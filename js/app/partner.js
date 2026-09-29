@@ -278,7 +278,10 @@ function viewPartnerSettings() {
     </div>
     <div class="card">
       <div class="bold">你的身分</div>
-      <div class="muted">你用「${esc(info.name)}」這個名字加入，可以看${esc(ownerName())}分享給你的紀錄、做任務${CloudDB.isBoundPartner() ? '，也能一起新增、更新吵架議題' : ''}。</div>
+      <div class="muted">你可以看${esc(ownerName())}分享給你的紀錄、做任務${CloudDB.isBoundPartner() ? '，也能一起新增、更新吵架議題' : ''}。</div>
+      <div class="field"><label for="p-name">你的名字</label><input id="p-name" class="input" maxlength="20" value="${esc(info.name)}"></div>
+      <div class="small muted">改了之後，${esc(ownerName())}那邊看到的也會一起改。</div>
+      <button class="btn small" id="p-save-name">儲存</button>
     </div>
     <a class="card" href="#/bind" style="gap:4px">
       <div class="row between"><div class="bold">帳號</div><div class="muted">›</div></div>
@@ -309,6 +312,15 @@ function viewPartnerSettings() {
     </div>
   `;
   const logout = document.getElementById('logout');
+  const saveName = document.getElementById('p-save-name');
+  saveName.addEventListener('click', () => withBusy(saveName, '儲存中…', async () => {
+    const name = document.getElementById('p-name').value.trim();
+    if (!name) { toast('請填你的名字'); return; }
+    if (name === CloudDB.partnerInfo().name) { toast('已儲存'); return; }
+    try { await CloudDB.partnerSetName(name); } catch (e) { toast('名字存不進去，請稍後再試一次'); return; }
+    track('partner_rename');
+    toast('已儲存');
+  }));
   bindPinCard(viewPartnerSettings);
   if (logout) logout.addEventListener('click', async () => { await CloudDB.signOut(); photoUrlCache.clear(); go('#/login'); });
 
