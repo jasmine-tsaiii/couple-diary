@@ -53,7 +53,10 @@ async function viewHome() {
   // 手機版 14 天提醒一次；雲端版免費方案沒有自動備份，30 天提醒一次
   const remindDays = usingCloud() ? CLOUD_BACKUP_REMIND_DAYS : BACKUP_REMIND_DAYS;
   // 試用中（還沒註冊）不提備份，只留「註冊」一條路，免得兩種說法打架
-  const wantBackup = !isGuest() && all.length > 0 && (!lastBackup || Date.now() - lastBackup > remindDays * 86400000);
+  // 按叉叉關掉的話，7 天後再提醒
+  const backupSnooze = await DB.getSetting('backupSnoozeAt', null);
+  const wantBackup = !isGuest() && all.length > 0 && (!lastBackup || Date.now() - lastBackup > remindDays * 86400000)
+    && !(backupSnooze && Date.now() - backupSnooze < BACKUP_SNOOZE_DAYS * 86400000);
   const wantNames = !NAMES.me && !NAMES.partner && !(await DB.getSetting('namesSkipped', false));
   // 首頁一次只放一張提醒卡：先填名字，再來是註冊（試用中）或備份
   const askNames = wantNames;
@@ -111,13 +114,11 @@ async function viewHome() {
   ].join('');
 
   app.innerHTML = `
-    <div class="row between">
-      <div>
-        <div class="hello">${NAMES.me ? `嗨，${esc(NAMES.me)}・` : ''}今天是 ${longDate(today())}</div>
-        <h1 class="title-xl">${esc(diaryTitle())}</h1>
-        ${togetherDays() ? `<div class="small muted">在一起第 ${togetherDays()} 天</div>` : ''}
-      </div>
-      <div class="row" style="gap:8px;align-items:flex-start">
+    <div class="home-head">
+      <div class="hello">${NAMES.me ? `嗨，${esc(NAMES.me)}・` : ''}今天是 <span class="nowrap">${longDate(today())}</span></div>
+      <h1 class="title-xl">${esc(diaryTitle())}</h1>
+      ${togetherDays() ? `<div class="small muted home-days">在一起第 ${togetherDays()} 天</div>` : ''}
+      <div class="row home-actions" style="gap:8px">
         ${isGuest() ? '<a class="btn small secondary" href="#/login" id="home-login">登入</a>' : ''}
         ${bellBtnHtml()}
         <a class="icon-btn gear-btn" href="#/settings" aria-label="設定">${ICON.gear}<span>設定</span></a>
@@ -143,7 +144,8 @@ async function viewHome() {
       </div>
       <div class="btn-row"><button class="btn small" id="n-save">儲存</button><button class="btn small secondary" id="n-skip">之後再說</button></div>
     </div>` : ''}
-    ${needBackup ? `<a class="card" href="#/settings" style="background:var(--progress-bg);border-color:transparent;gap:4px">
+    ${needBackup ? `<a class="card has-x" id="backup-card" href="#/settings" style="background:var(--progress-bg);border-color:transparent;gap:4px">
+      <button class="card-x" id="backup-snooze" aria-label="先不要，過幾天再提醒" style="color:var(--progress-ink)">${ICON.x}</button>
       <div class="bold" style="color:var(--progress-ink)">${usingCloud() ? '要不要多存一份備份？' : '該備份囉'}</div>
       <div class="small" style="color:var(--progress-ink)">${usingCloud() ? `紀錄已經存在雲端${lastBackup ? `，上次另外備份是 ${daysAgo(lastBackup)} 天前` : ''}。想多一份保險，可以到設定頁匯出一份，存在自己的手機或雲端硬碟。` : `${lastBackup ? `上次備份是 ${daysAgo(lastBackup)} 天前` : '還沒有備份過'}。紀錄只存在這支手機，點這裡到設定頁匯出備份，再存到 iCloud 雲碟或 Google 雲端硬碟。`}</div>
     </a>` : ''}
@@ -204,6 +206,13 @@ async function viewHome() {
   ['invite-go', 'tile-share'].forEach((id) => {
     const el = document.getElementById(id);
     if (el && el.getAttribute('href') === '#/settings') el.addEventListener('click', () => { try { sessionStorage.setItem('jumpShare', '1'); } catch (e) { /* 略過 */ } });
+  });
+  const bs = document.getElementById('backup-snooze');
+  if (bs) bs.addEventListener('click', async (e) => {
+    e.preventDefault(); e.stopPropagation();
+    document.getElementById('backup-card').remove();
+    toast(`好，${BACKUP_SNOOZE_DAYS} 天後再提醒你`);
+    try { await DB.setSetting('backupSnoozeAt', Date.now()); } catch (err) { /* 略過 */ }
   });
   const ih = document.getElementById('invite-hide');
   if (ih) ih.addEventListener('click', () => { try { localStorage.setItem('inviteCardHidden', '1'); } catch (e) { /* 略過 */ } document.getElementById('invite-card').remove(); });

@@ -551,3 +551,15 @@ body:has(.done-bar) .toast { bottom: calc(150px + env(safe-area-inset-bottom)); 
 .stat-table th, .stat-table td { padding: 8px 10px; text-align: right; border-bottom: 1px solid var(--line); font-variant-numeric: tabular-nums; }
 .stat-table th:first-child, .stat-table td:first-child { text-align: left; }
 .stat-table th { color: var(--muted); font-weight: 600; }
+
+/* 首頁標題列：問候一整行，標題和通知、設定按鈕同一行置中對齊 */
+.home-head { display: grid; grid-template-columns: minmax(0, 1fr) auto; column-gap: 8px; align-items: center; }
+.home-head .hello { grid-column: 1 / -1; }
+.home-head .title-xl { grid-column: 1; grid-row: 2; min-width: 0; overflow-wrap: anywhere; }
+.home-head .home-actions { grid-column: 2; grid-row: 2; }
+.home-head .home-days { grid-column: 1 / -1; }
+.nowrap { white-space: nowrap; }
+/* 提醒卡右上角的叉叉 */
+.card.has-x { position: relative; padding-right: 44px; }
+.card-x { position: absolute; top: 8px; right: 8px; width: 36px; height: 36px; border: 0; background: transparent; display: grid; place-items: center; border-radius: 50%; cursor: pointer; }
+.card-x:active { background: rgba(0, 0, 0, .06); }
