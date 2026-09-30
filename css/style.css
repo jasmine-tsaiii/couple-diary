@@ -528,7 +528,9 @@ body.is-offline { padding-top: calc(30px + env(safe-area-inset-top)); }
   position: sticky; bottom: 0; margin: 4px -20px 0; padding: 12px 20px calc(12px + env(safe-area-inset-bottom));
   background: linear-gradient(to bottom, transparent, var(--bg) 30%); z-index: 5;
 }
-.done-bar .btn { width: 100%; }
+.done-bar { display: flex; justify-content: center; }
+.done-bar .btn { width: 100%; max-width: 240px; }
+.btn.del-record { align-self: center; min-width: 160px; margin-top: 20px; }
 body:has(.done-bar) .toast { bottom: calc(150px + env(safe-area-inset-bottom)); }
 
 /* 數據看板 */

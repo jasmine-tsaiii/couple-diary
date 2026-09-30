@@ -219,7 +219,7 @@ async function viewDetail(id) {
     ${r.type === 'happy' && !r.archivedAt && cardSafe(r) ? `<a class="btn secondary small" href="#/card/record/${esc(r.id)}" style="align-self:flex-start">做成回憶小卡</a>` : ''}
     ${relatedPart}
     ${doneHref ? `<div class="done-bar"><a class="btn" id="done" href="${doneHref}"${doneHref === backHref ? ' data-back' : ''}>完成</a></div>` : ''}
-    ${canDelete ? '<button class="btn danger" id="delete" style="margin-top:12px">刪除這則紀錄</button>' : ''}
+    ${canDelete ? '<button class="btn danger small del-record" id="delete">刪除這則紀錄</button>' : ''}
     ${!partner && !canDelete ? `<div class="small muted" style="text-align:center">這則是${authorLabel(r)}寫的，只有${authorLabel(r)}能${r.type === 'fight' ? '刪除' : '修改和刪除'}。</div>` : ''}
   `;
   const saveLinks = async (ids) => {
