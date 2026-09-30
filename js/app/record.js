@@ -60,7 +60,7 @@ async function viewDetail(id) {
   const visText = !mine ? '' : visLabel(r.visibility || 'shared') + (r.visibility === 'task' && r.unlocked ? '・已解鎖' : '');
   let task = '';
   if (r.visibility === 'task' && r.task && r.task.text) {
-    const modeText = r.task.mode === 'photo' ? '要上傳照片' : '按完成就好';
+    const modeText = taskModeText(r.task.mode);
     if (!mine) {
       task = `<div class="card" style="background:var(--lock-bg);border-color:transparent"><div class="small bold" style="color:var(--lock)">你完成任務解鎖了這則</div><div>${esc(r.task.text)}</div></div>`;
     } else {
@@ -76,7 +76,7 @@ async function viewDetail(id) {
         const stText = { pending: '等你確認', approved: '已通過', rejected: '已退回' }[sub.status] + (sub.status === 'rejected' && sub.review_note ? `：${esc(sub.review_note)}` : '');
         subCards.push(`<div class="card" style="gap:6px">
           <div class="row between"><span class="bold">${esc(liveOther(sub.partner_name))} 送出的任務</span><span class="small muted">${shortDate(sub.created_at.slice(0, 10))}・${stText}</span></div>
-          ${sub.note ? `<div class="prose">${esc(sub.note)}</div>` : ''}
+          ${sub.note ? `${r.task.mode === 'answer' ? `<div class="small bold" style="color:var(--lock)">${esc(liveOther(sub.partner_name))}的回答</div>` : ''}<div class="prose">${esc(sub.note)}</div>` : ''}
           ${img}
           ${sub.status === 'pending' ? `<div class="btn-row"><button class="btn small" data-approve="${esc(sub.id)}">通過並解鎖</button><button class="btn small secondary" data-reject="${esc(sub.id)}" data-photo="${esc(sub.photo_path || '')}">退回</button></div>` : ''}
         </div>`);
@@ -536,13 +536,14 @@ async function viewForm(mode, arg) {
           ? `<button class="opt" disabled aria-disabled="true">${esc(visLabel(k))}<span class="small muted" style="display:block">${isGuest() ? '註冊後可用' : '雙人版才有'}</span></button>`
           : `<button class="opt ${k === rec.visibility ? 'on' : ''}" data-vis="${k}">${esc(visLabel(k))}</button>`)).join('')}</div>
         ${rec.visibility === 'task' ? `
-          <label for="f-task" class="muted">對方要完成的任務</label>
-          <input id="f-task" class="input" maxlength="${LIMITS.task}" value="${esc(rec.task.text)}" placeholder="例如：帶我去吃早午餐，拍一張合照給我">
           <div class="muted">完成方式</div>
-          <div class="opts cols-2">
-            <button class="opt ${rec.task.mode !== 'photo' ? 'on' : ''}" data-taskmode="confirm">按「完成」就好</button>
+          <div class="opts cols-3">
+            <button class="opt ${!['photo', 'answer'].includes(rec.task.mode) ? 'on' : ''}" data-taskmode="confirm">按「完成」就好</button>
             <button class="opt ${rec.task.mode === 'photo' ? 'on' : ''}" data-taskmode="photo">要上傳照片</button>
+            <button class="opt ${rec.task.mode === 'answer' ? 'on' : ''}" data-taskmode="answer">要回答問題</button>
           </div>
+          <label for="f-task" class="muted">${rec.task.mode === 'answer' ? `想問${esc(otherName())}的問題` : '對方要完成的任務'}</label>
+          <input id="f-task" class="input" maxlength="${LIMITS.task}" value="${esc(rec.task.text)}" placeholder="${rec.task.mode === 'answer' ? '例如：你覺得那天我為什麼不開心？' : '例如：帶我去吃早午餐，拍一張合照給我'}">
           ${mode === 'edit' && originalUnlocked && originalVisibility === 'task' ? `<div class="small muted">這則已經解鎖了，改任務內容不會重新上鎖，${esc(otherName())}還是看得到。想收回的話，改成「上鎖」。</div>` : ''}` : ''}
         <div class="muted small vis-help">${partner ? `<div>給${esc(ownerName())}看：${esc(ownerName())}看得到。</div><div>上鎖：只有你看得到，${esc(ownerName())}只會看到「有一則上鎖」。</div><div>任務解鎖：${esc(ownerName())}完成你出的任務、你按通過後才看得到。</div>`
           : usingCloud() ? `<div>給${esc(otherName())}看：${esc(otherName())}看得到。</div><div>上鎖：只有你看得到。</div><div>任務解鎖：${esc(otherName())}完成你出的任務、你按通過後才看得到。</div>`

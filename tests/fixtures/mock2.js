@@ -110,6 +110,48 @@
       const m = S.t.settings.find((x) => x.owner === p.owner && x.key === 'mascot');
       return { owner: p.owner, name: p.name, owner_name: s.owner_name, approved: p.approved !== false, mascot: m ? m.value : null, paused: pausedSp(S, p.owner) };
     },
+    // 每天一題：簡化版的伺服器邏輯（S.dailyToday 可以指定「今天」，方便測換日）
+    _daily(S, u) {
+      const space = myOwner(S, u) || (real(u) ? u.id : null); if (!space) return null;
+      const members = [space, ...S.t.partners.filter((x) => x.owner === space && x.approved !== false).map((x) => x.uid)].sort();
+      const today = S.dailyToday || new Date(Date.now() + 8 * 3600e3).toISOString().slice(0, 10);
+      if (members.length !== 2 || !members.includes(u.id)) return { space, members, today, pair: null };
+      S.daily = S.daily || { pairs: {}, answers: [] };
+      const key = space + ':' + members.join(',');
+      if (!S.daily.pairs[key]) S.daily.pairs[key] = { started_on: today };
+      return { space, members, today, pair: key, started_on: S.daily.pairs[key].started_on, other: members.find((m) => m !== u.id) };
+    },
+    daily_state(S, u) {
+      const d = this._daily(S, u); if (!d) return { ok: false };
+      const nameOf = (m) => { const sh = S.t.shares.find((x) => x.owner === d.space); if (m === d.space) return (sh && sh.owner_name) || '對方'; const p = S.t.partners.find((x) => x.uid === m); return (p && p.name) || '對方'; };
+      const names = Object.fromEntries(d.members.map((m) => [m, nameOf(m)]));
+      if (!d.pair) return { ok: true, me: u.id, members: d.members, names };
+      const A = S.daily.answers.filter((a) => a.pair === d.pair);
+      const mine = A.find((a) => a.day === d.today && a.user_id === u.id); const th = A.find((a) => a.day === d.today && a.user_id === d.other);
+      const days = (x) => Math.round((Date.parse(x) - Date.parse(d.started_on)) / 864e5);
+      const both = [...new Set(A.map((a) => a.day))].filter((day) => A.filter((a) => a.day === day).length === 2);
+      return { ok: true, me: u.id, members: d.members, names, pair: d.pair, today: d.today, n: days(d.today), q_id: (mine || th || {}).q_id || null,
+        mine: mine ? mine.body : null, other_done: !!th, revealed: !!(mine && th), other: mine && th ? th.body : null,
+        pending: A.filter((a) => a.user_id === d.other && a.day < d.today && !A.some((b) => b.day === a.day && b.user_id === u.id)).sort((x, y) => (x.day < y.day ? 1 : -1)).map((a) => ({ day: a.day, q_id: a.q_id })),
+        month_days: both.filter((x) => x.slice(0, 7) === d.today.slice(0, 7)).length };
+    },
+    daily_save(S, u, a) {
+      const d = this._daily(S, u); if (!d || !d.pair) throw new Error('另一半加入之後就能一起寫');
+      const body = String(a.p_body || '').trim(); if (!body || body.length > 300) throw new Error('答案要 1 到 300 個字');
+      if (!a.p_day || a.p_day > d.today || a.p_day < d.started_on) throw new Error('這一天不能寫');
+      const A = S.daily.answers; const mine = A.find((x) => x.pair === d.pair && x.day === a.p_day && x.user_id === u.id); const th = A.find((x) => x.pair === d.pair && x.day === a.p_day && x.user_id === d.other);
+      if (a.p_day < d.today && !th && !mine) throw new Error('這一天不能寫');
+      if (mine && th) throw new Error('已經揭曉了，不能改');
+      const q = th ? th.q_id : mine ? mine.q_id : a.p_q_id;
+      if (mine) mine.body = body; else A.push({ pair: d.pair, day: a.p_day, q_id: q, user_id: u.id, body });
+      return { revealed: !!th, q_id: q };
+    },
+    daily_history(S, u, a) {
+      const d = this._daily(S, u); if (!d || !d.pair) return [];
+      const before = a.p_before && a.p_before < d.today ? a.p_before : d.today; const A = S.daily.answers.filter((x) => x.pair === d.pair && x.day < before);
+      const days = [...new Set(A.map((x) => x.day))].filter((day) => A.filter((x) => x.day === day).length === 2).sort().reverse().slice(0, a.p_limit || 20);
+      return days.map((day) => ({ day, q_id: A.find((x) => x.day === day).q_id, answers: Object.fromEntries(A.filter((x) => x.day === day).map((x) => [x.user_id, x.body])) }));
+    },
     // 重新認識你：簡化版的伺服器邏輯（回味期 7 天、90 天一回、兩人都交卷才揭曉）
     quiz_state(S, u) {
       const Q = S.quiz || { rounds: [], answers: [] };
@@ -211,7 +253,7 @@
       if (!inp.title || inp.title.length > 60) throw new Error('標題要 1 到 60 個字');
       const vis = type === 'fight' ? 'shared' : (rec.visibility || (r ? r.visibility : type === 'cloud' ? 'locked' : 'shared'));
       if (!['shared', 'locked', 'task'].includes(vis)) throw new Error('誰可以看的設定不對');
-      if (vis === 'task') { const tt = ((rec.task && rec.task.text) || '').trim(); if (!tt || tt.length > 100) throw new Error('解鎖任務要 1 到 100 個字'); inp.task = { text: tt, mode: rec.task.mode === 'photo' ? 'photo' : 'confirm' }; }
+      if (vis === 'task') { const tt = ((rec.task && rec.task.text) || '').trim(); if (!tt || tt.length > 100) throw new Error('解鎖任務要 1 到 100 個字'); inp.task = { text: tt, mode: ['photo', 'answer'].includes(rec.task.mode) ? rec.task.mode : 'confirm' }; }
       const relock = r && r.unlocked && rec.unlocked === false;
       if (type === 'cloud' && 'clearedAt' in rec) inp.clearedAt = typeof rec.clearedAt === 'number' ? ((r && r.data.clearedAt) || now) : null;
       const nextNo = () => {
@@ -382,6 +424,7 @@
       const r = S.t.records.find((x) => x.id === a.p_record_id && x.owner === space && (x.author || x.owner) !== u.id && x.visibility === 'task' && !x.unlocked);
       if (!r) throw new Error('找不到這個任務，可能已經解鎖了');
       if (r.data.task.mode === 'photo' && !a.p_photo_path) throw new Error('這個任務要上傳照片');
+      if (r.data.task.mode === 'answer' && !String(a.p_note || '').trim()) throw new Error('這個任務要寫回答');
       if (S.t.task_submissions.some((t) => t.record_id === r.id && t.partner === u.id && t.status === 'pending')) throw new Error('已經送出了，等對方確認');
       if (S.t.task_submissions.filter((t) => t.record_id === r.id && t.partner === u.id && Date.now() - Date.parse(t.created_at) < 86400000).length >= 5) throw new Error('這個任務今天已經送出 5 次了，明天再試');
       S.t.task_submissions.push({ id: 'sub' + (++S.n), owner: p.owner, record_id: r.id, partner: u.id, partner_name: p.name, note: a.p_note, photo_path: a.p_photo_path, status: 'pending', created_at: new Date().toISOString() });

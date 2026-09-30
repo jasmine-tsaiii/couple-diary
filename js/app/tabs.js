@@ -77,7 +77,7 @@ async function viewTogether() {
   const all = await liveRecords();
   const wishes = await loadWishesSafe();
   const wishDone = wishes ? wishes.filter((w) => w.done).length : 0;
-  const quiz = cloud ? await quizStatus() : null;
+  const daily = cloud ? await dailyStatus() : null;
   let taskSub = '上鎖紀錄的解鎖任務';
   let taskBadge = '';
   if (cloud) {
@@ -93,14 +93,13 @@ async function viewTogether() {
     } catch (e) { /* 讀不到就顯示說明 */ }
   }
   const stamps = partner ? null : allStamps(all);
-  const quizRow = quiz ? navRow({ href: '#/quiz', id: 'row-quiz', icon: TILE_ICON.quiz, title: '重新認識你', sub: esc(quiz.sub || ''), badge: quiz.label }) : '';
   const doRows = guest
     ? [
       navRow({ href: '#/wishes', icon: TILE_ICON.wish, title: '一起完成的事', sub: wishes && wishes.length ? `情侶待辦・${wishDone} / ${wishes.length}` : '情侶待辦清單' }),
-      navRow({ href: '#/signup', id: 'row-signup', icon: TILE_ICON.share, title: '註冊後可以和另一半一起玩', sub: '重新認識你、解鎖任務' }),
+      navRow({ href: '#/signup', id: 'row-signup', icon: TILE_ICON.share, title: '註冊後可以和另一半一起玩', sub: '每天一題、重新認識你、解鎖任務' }),
     ]
     : [
-      quizRow,
+      cloud && (!CloudDB.isAnonymous() || partner) ? dailyRowHtml(daily) : '',
       navRow({ href: '#/wishes', icon: TILE_ICON.wish, title: '一起完成的事', sub: wishes && wishes.length ? `情侶待辦・${wishDone} / ${wishes.length}` : '情侶待辦清單' }),
       cloud ? navRow({ href: '#/tasks', icon: ICON.lock, title: '解鎖任務', sub: taskSub, badge: taskBadge }) : '',
     ];
@@ -113,7 +112,7 @@ async function viewTogether() {
     ])}
   `;
   const su = document.getElementById('row-signup');
-  if (su) su.addEventListener('click', (ev) => { ev.preventDefault(); track('signup_prompt', { where: 'together' }); showSignupSheet('註冊後就能和另一半一起玩', '重新認識你、解鎖任務都要兩個人一起用。現在試用寫的紀錄，註冊後會自動搬上雲端。'); });
+  if (su) su.addEventListener('click', (ev) => { ev.preventDefault(); track('signup_prompt', { where: 'together' }); showSignupSheet('註冊後就能和另一半一起玩', '每天一題、重新認識你、解鎖任務都要兩個人一起用。現在試用寫的紀錄，註冊後會自動搬上雲端。'); });
 }
 
 // ---------- 我的（#/me）：設定的一層目錄，點進去是設定頁的那一段 ----------

@@ -763,11 +763,13 @@ function notifyText(n) {
     case 'write_nudge': return '好幾天沒寫了，最近有什麼想記下來的嗎？';
     case 'quiz_partner_done': return `${who}寫好「重新認識你」了，換你囉`;
     case 'quiz_revealed': return '「重新認識你」兩個人都交卷了，來看答案吧';
+    case 'daily_partner_done': return `${who}寫好今天這一題了，換你囉`;
+    case 'daily_revealed': return `${who}也寫好了，每天一題揭曉了`;
     default: return `${who}有新動態`;
   }
 }
 // 同一個人做了好幾次同樣的事，列表合成一則：「小明新增了 3 則美好時刻（其中 1 則完成任務就能看）」
-const NOTIFY_GROUP = { new_happy: 'happy', new_task_record: 'happy', task_submitted: 'task_submitted', task_approved: 'task_approved', cloud_reflect: 'cloud_reflect' };
+const NOTIFY_GROUP = { new_happy: 'happy', new_task_record: 'happy', task_submitted: 'task_submitted', task_approved: 'task_approved', cloud_reflect: 'cloud_reflect', daily_partner_done: 'daily', daily_revealed: 'daily' };
 function groupNotifications(list) {
   const groups = new Map();
   for (const n of list) {
@@ -789,6 +791,7 @@ function notifyGroupText(g) {
     case 'task_submitted': return `${who}完成了 ${n} 個任務，等你確認`;
     case 'task_approved': return `${who}確認了你的 ${n} 個任務，紀錄解鎖了`;
     case 'cloud_reflect': return `3 天前記下的 ${n} 片烏雲，現在回頭看，有沒有新的想法？`;
+    case 'daily': return `${who}寫了 ${n} 題每天一題，來看看吧`;
     default: return notifyText(g[0]);
   }
 }
@@ -797,6 +800,7 @@ function notifyGroupHref(g) {
   const k = NOTIFY_GROUP[g[0].kind];
   if (k === 'task_submitted') return '#/tasks';
   if (k === 'cloud_reflect') return '#/records/cloud';
+  if (k === 'daily') return '#/daily';
   return '#/records/happy';
 }
 function notifyHref(n) {
@@ -805,6 +809,7 @@ function notifyHref(n) {
   if (n.kind === 'anniversary') return '#/cards';
   if (n.kind === 'write_nudge') return '#/new/happy';
   if (n.kind === 'quiz_partner_done' || n.kind === 'quiz_revealed') return '#/quiz';
+  if (n.kind === 'daily_partner_done' || n.kind === 'daily_revealed') return '#/daily';
   if (!n.record_id) return '#/';
   if (n.kind === 'task_submitted') return '#/tasks';
   if (n.kind === 'new_task_record') return `#/task/${encodeURIComponent(n.record_id)}`;

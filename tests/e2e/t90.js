@@ -4,8 +4,8 @@ const { chromium } = require('playwright');
 const fs = require('fs');
 const scan = require('./_layoutscan');
 const U = process.env.U || 'http://localhost:8770/';
-// 這些地方本來就是窄格子，長字自然換行是正常的（兩欄的紀錄方塊、首頁功能方塊、誰可以看的選項、首頁大標題、很長的名字）
-const NATURAL = '.tile *, .ftile *, .opt, .home-head .title-xl, .card .grow > .bold, .share-sec .row > .grow';
+// 這些地方本來就是窄格子，長字自然換行是正常的（兩欄的紀錄方塊、首頁功能方塊、誰可以看的選項、首頁大標題、很長的名字）（題目大字也是）
+const NATURAL = '.tile *, .ftile *, .opt, .home-head .title-xl, .card .grow > .bold, .share-sec .row > .grow, .quiz-qtext';
 (async () => {
   const b = await chromium.launch(require('./_launch'));
   const ctx = await b.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, hasTouch: true, isMobile: true });
@@ -66,8 +66,8 @@ const NATURAL = '.tile *, .ftile *, .opt, .home-head .title-xl, .card .grow > .b
   await shot('#/list/happy', '.tile', 'tile-320');
   await shot('#/settings', '.share-sec:has(.row)', 'partner-row-320');
   await p.setViewportSize({ width: 390, height: 844 });
-  await check('owner', ['#/', '#/list/happy', '#/list/cloud', '#/fights', '#/view/c1', '#/view/h1', '#/view/f1', '#/new/cloud', '#/settings', '#/wishes', '#/notifications']);
+  await check('owner', ['#/', '#/list/happy', '#/list/cloud', '#/fights', '#/view/c1', '#/view/h1', '#/view/f1', '#/new/cloud', '#/settings', '#/wishes', '#/notifications', '#/together', '#/me', '#/daily', '#/quiz']);
   await as(pid, '#/');
-  await check('partner', ['#/', '#/view/c1', '#/view/f1', '#/settings']);
+  await check('partner', ['#/', '#/view/c1', '#/view/f1', '#/settings', '#/daily', '#/together']);
   console.log('errors', errs); await b.close();
 })();

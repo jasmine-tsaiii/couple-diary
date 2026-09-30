@@ -18,6 +18,7 @@ const TILE_ICON = {
   wish: '<svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 11l3 3 8-8"/><path d="M20 12v7a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h9"/></svg>',
   stamp: '<svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="9" r="6"/><path d="M8.5 14 7 22l5-3 5 3-1.5-8"/></svg>',
   quiz: '<svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12a8.5 8.5 0 0 1-12.6 7.4L3 21l1.6-5.4A8.5 8.5 0 1 1 21 12z"/><path d="M9.8 9.5a2.3 2.3 0 0 1 4.4.8c0 1.5-2.2 2-2.2 3.2"/><path d="M12 16.5h.01"/></svg>',
+  daily: '<svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="5" width="16" height="16" rx="2.5"/><path d="M8 3v4M16 3v4M4 10h16"/><path d="M9 15h6"/></svg>',
   backup: '<svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12"/><path d="m7 10 5 5 5-5"/><path d="M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/></svg>',
   theme: '<svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 14.5A8 8 0 1 1 9.5 4a6.5 6.5 0 0 0 10.5 10.5z"/></svg>',
   chart: '<svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></svg>',
@@ -83,6 +84,7 @@ async function viewHome() {
   };
   // 重新認識你：對方交卷了換我、或可以開始新的一回
   const quizQ = hasPartner && usingCloud() && !CloudDB.isAnonymous() ? await quizStatus() : null;
+  const dailyQ = hasPartner && usingCloud() && !CloudDB.isAnonymous() ? await dailyStatus() : null;
 
   const guestCard = `<div class="card" id="guest-account" style="background:var(--happy-bg);border-color:transparent;gap:4px">
       <div class="bold" style="color:var(--happy-dark)">${all.length ? '註冊，把紀錄存到雲端' : '免費註冊，保存你們的紀錄'}</div>
@@ -149,6 +151,8 @@ async function viewHome() {
     </a>` : '',
     showA2hsCard ? a2hsCardHtml() : '',
     showGuestCard ? guestCard : '',
+
+    dailyTipHtml(dailyQ),
   ];
   const tipHtml = tips.find((t) => t && t.trim()) || '';
 
@@ -183,6 +187,7 @@ async function viewHome() {
   }
   bindA2hsCard();
   bindQuizTip();
+  bindDailyTip(dailyQ);
   const bs = document.getElementById('backup-snooze');
   if (bs) bs.addEventListener('click', async (e) => {
     e.preventDefault(); e.stopPropagation();

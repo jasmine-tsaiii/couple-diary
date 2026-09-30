@@ -27,6 +27,8 @@ const CASES = [
   ['7 天沒寫的提醒', [r('write_nudge', null, '')]],
   ['重新認識你：對方交卷了', [r('quiz_partner_done')]],
   ['重新認識你：兩人都交卷，揭曉', [r('quiz_revealed')]],
+  ['每天一題：對方寫好今天這一題', [r('daily_partner_done')]],
+  ['每天一題：對方也寫好了，揭曉', [r('daily_revealed')]],
 ];
 const unsub = 'https://diary.jas-soul.com/#/unsubscribe?u=…&t=…';
 const out = `<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>通知信預覽</title>

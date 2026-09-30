@@ -17,6 +17,7 @@ async function viewPartnerHome() {
 
   const bound = CloudDB.isBoundPartner();
   const quizQ = await quizStatus();
+  const dailyQ = await dailyStatus();
   // 提示卡一次最多一張，照順序取第一個符合的
   const tips = [
     info.paused ? `<div class="card" id="paused-note" style="background:var(--lock-bg);border-color:transparent;gap:4px">
@@ -38,6 +39,8 @@ async function viewPartnerHome() {
       <div class="small muted">你現在是用分享碼加入的，還沒有自己的帳號：只能看、做任務。用 Email 或 Google 建立帳號後，就能寫自己的美好和烏雲，也能一起寫吵架議題，換手機也不會不見 ›</div>
     </a>` : '',
     quizTipHtml(quizQ, 'start'),
+
+    dailyTipHtml(dailyQ),
   ];
   const tipHtml = tips.find((t) => t && t.trim()) || '';
 
@@ -53,6 +56,7 @@ async function viewPartnerHome() {
     <div class="list" id="recent">${recent.length ? '' : bound ? `<div class="empty">還沒有紀錄<a class="btn small" href="#/new/happy">寫下第一個美好時刻</a></div>` : `<div class="empty">${esc(ownerName())}還沒有分享紀錄給你</div>`}</div>
   `;
   bindQuizTip();
+  bindDailyTip(dailyQ);
   const box = document.getElementById('recent');
   for (const r of recent) box.appendChild(await listItem(r));
   if (!tourDone('partner')) showTour('partner');
@@ -75,7 +79,7 @@ async function viewPartnerTasks() {
           : s === 'rejected' ? `<span class="badge st-open">被退回了，可以再試一次</span>${t.submission.review_note ? `<div class="small" style="color:var(--open-ink, var(--accent))">${esc(otherName())}說：「${esc(t.submission.review_note)}」</div>` : ''}` : '';
         return `<div class="card ${TYPES[t.type].theme}" style="gap:8px">
           <div class="row between"><span class="small bold" style="color:var(--accent-text)">${ICON.lockSmall} 一則${TYPES[t.type].label}</span>
-          <span class="small muted">${t.task.mode === 'photo' ? '要上傳照片' : '按完成就好'}</span></div>
+          <span class="small muted">${taskModeText(t.task.mode)}</span></div>
           <div class="bold" style="font-size:16px">${esc(t.task.text)}</div>
           ${state}
           ${s === 'pending' ? '' : `<a class="btn small" href="#/task/${esc(t.id)}">去完成</a>`}
@@ -91,6 +95,7 @@ async function viewPartnerTaskForm(id) {
   if (!t) { go('#/tasks'); return; }
   CloudDB.markRecordNotificationsRead(id).catch(() => {});
   const needPhoto = t.task.mode === 'photo';
+  const needAnswer = t.task.mode === 'answer';
   let photo = null;
   app.className = TYPES[t.type].theme;
   app.innerHTML = `
@@ -99,16 +104,16 @@ async function viewPartnerTaskForm(id) {
       <h1>完成任務</h1>
     </div>
     <div class="card" style="background:var(--lock-bg);border-color:transparent">
-      <div class="small bold" style="color:var(--lock)">任務</div>
+      <div class="small bold" style="color:var(--lock)">${needAnswer ? `${esc(otherName())}想問你` : '任務'}</div>
       <div class="bold" style="font-size:17px">${esc(t.task.text)}</div>
     </div>
     ${needPhoto ? `<div class="field"><div class="label">任務照片（必填）</div>
       <div class="photos" id="task-photo-box">
         <label class="photo-add">${ICON.camera}上傳<input type="file" accept="image/*" class="visually-hidden" id="task-photo"></label>
       </div></div>` : ''}
-    <div class="field"><label for="task-note">想說的話（可不填）</label>
-      <textarea id="task-note" class="textarea" maxlength="500" placeholder="例如：早午餐超好吃！"></textarea></div>
-    <button class="btn" id="task-send">${needPhoto ? '送出給' : '完成了，通知'}${esc(otherName())}</button>
+    <div class="field"><label for="task-note">${needAnswer ? '你的回答（必填）' : '想說的話（可不填）'}</label>
+      <textarea id="task-note" class="textarea" maxlength="500" placeholder="${needAnswer ? '照你心裡想的寫就好' : '例如：早午餐超好吃！'}"></textarea></div>
+    <button class="btn" id="task-send">${needAnswer ? `送出回答給${esc(otherName())}` : `${needPhoto ? '送出給' : '完成了，通知'}${esc(otherName())}`}</button>
   `;
   if (needPhoto) {
     document.getElementById('task-photo').addEventListener('change', async (ev) => {
@@ -125,6 +130,7 @@ async function viewPartnerTaskForm(id) {
   }
   document.getElementById('task-send').addEventListener('click', async (ev) => {
     if (needPhoto && !photo) { toast('這個任務要上傳照片'); return; }
+    if (needAnswer && !document.getElementById('task-note').value.trim()) { toast('這個任務要寫回答'); document.getElementById('task-note').focus(); return; }
     ev.target.disabled = true;
     try {
       await CloudDB.submitTask(t.id, document.getElementById('task-note').value.trim(), photo);

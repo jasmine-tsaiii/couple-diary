@@ -21,7 +21,7 @@ type Row = {
 };
 
 // 另一半做的事（信的大標題用「你不在的時候」）；其他是給自己的提醒
-const FROM_PARTNER = ['new_happy', 'new_task_record', 'task_submitted', 'task_approved', 'partner_request', 'partner_joined', 'quiz_partner_done'];
+const FROM_PARTNER = ['new_happy', 'new_task_record', 'task_submitted', 'task_approved', 'partner_request', 'partner_joined', 'quiz_partner_done', 'daily_partner_done', 'daily_revealed'];
 
 function line(r: Row) {
   const who = r.actor_name || '對方';
@@ -37,12 +37,14 @@ function line(r: Row) {
     case 'write_nudge': return '好幾天沒寫了，最近有什麼想記下來的嗎？';
     case 'quiz_partner_done': return `${who}寫好「重新認識你」了，換你囉`;
     case 'quiz_revealed': return '「重新認識你」兩個人都交卷了，來看答案吧';
+    case 'daily_partner_done': return `${who}寫好今天這一題了，換你囉`;
+    case 'daily_revealed': return `${who}也寫好了，每天一題揭曉了`;
     default: return `${who}有新的動態`;
   }
 }
 
 // 同一個人做了好幾次同樣的事，合成一句：「小明新增了 3 則美好時刻（其中 1 則完成任務就能看）」
-const GROUP_OF: Record<string, string> = { new_happy: 'happy', new_task_record: 'happy', task_submitted: 'task_submitted', task_approved: 'task_approved', cloud_reflect: 'cloud_reflect' };
+const GROUP_OF: Record<string, string> = { new_happy: 'happy', new_task_record: 'happy', task_submitted: 'task_submitted', task_approved: 'task_approved', cloud_reflect: 'cloud_reflect', daily_partner_done: 'daily', daily_revealed: 'daily' };
 function groupLine(g: Row[]) {
   const r = g[0];
   const who = r.actor_name || '對方';
@@ -56,6 +58,7 @@ function groupLine(g: Row[]) {
     case 'task_submitted': return `${who}完成了 ${n} 個任務，等你確認`;
     case 'task_approved': return `${who}確認了你的 ${n} 個任務，紀錄解鎖了`;
     case 'cloud_reflect': return `3 天前記下的 ${n} 片烏雲，現在回頭看，有沒有新的想法？`;
+    case 'daily': return `${who}寫了 ${n} 題每天一題，來看看吧`;
     default: return line(r);
   }
 }

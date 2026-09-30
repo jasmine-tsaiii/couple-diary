@@ -433,6 +433,8 @@ function currentRecType() {
   try { const t = localStorage.getItem('recordsType'); return REC_TYPES.includes(t) ? t : 'happy'; } catch (e) { return 'happy'; }
 }
 function setRecType(t) { if (REC_TYPES.includes(t)) { try { localStorage.setItem('recordsType', t); } catch (e) { /* 略過 */ } } }
+// 解鎖任務的完成方式
+const taskModeText = (mode) => (mode === 'photo' ? '要上傳照片' : mode === 'answer' ? '要回答問題' : '按完成就好');
 function renderTabbar(route) {
   document.body.classList.remove('quiz-focus');
   tabbar.hidden = route === null;

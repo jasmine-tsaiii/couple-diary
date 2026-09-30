@@ -265,6 +265,13 @@ const CloudDB = CLOUD_ENABLED ? (() => {
       if (r.error && !netDown(r.error) && /quiz_state|function|schema cache/i.test(r.error.message || '')) return { ok: false, missing: true };
       return check(r);
     },
+    async dailyState() {
+      const r = await client.rpc('daily_state');
+      if (r.error && !netDown(r.error) && /daily_state|function|schema cache/i.test(r.error.message || '')) return { ok: false, missing: true };
+      return check(r);
+    },
+    async dailySave(day, qId, body) { return check(await client.rpc('daily_save', { p_day: day, p_q_id: qId, p_body: body })); },
+    async dailyHistory(before, limit) { return check(await client.rpc('daily_history', { p_before: before, p_limit: limit })) || []; },
     async quizStart(questions) { return check(await client.rpc('quiz_start', { p_questions: questions })); },
     async quizSave(round, answers, guesses, submit) { return check(await client.rpc('quiz_save', { p_round: round, p_answers: answers, p_guesses: guesses, p_submit: !!submit })); },
     async quizTrim(round, keep) { check(await client.rpc('quiz_trim', { p_round: round, p_keep: keep })); },

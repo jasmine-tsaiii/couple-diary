@@ -294,6 +294,7 @@ begin
     raise exception '照片位置不對';
   end if;
   if r.data -> 'task' ->> 'mode' = 'photo' and p_photo_path is null then raise exception '這個任務要上傳照片'; end if;
+  if r.data -> 'task' ->> 'mode' = 'answer' and btrim(coalesce(p_note, '')) = '' then raise exception '這個任務要寫回答'; end if;
   if exists (select 1 from public.task_submissions where record_id = r.id and partner = auth.uid() and status = 'pending') then
     raise exception '已經送出了，等對方確認';
   end if;
@@ -720,7 +721,7 @@ begin
     if v_vis = 'task' then
       if char_length(trim(coalesce(p_rec -> 'task' ->> 'text', ''))) not between 1 and 100 then raise exception '解鎖任務要 1 到 100 個字'; end if;
       v_in := v_in || jsonb_build_object('task', jsonb_build_object('text', trim(p_rec -> 'task' ->> 'text'),
-        'mode', case when p_rec -> 'task' ->> 'mode' = 'photo' then 'photo' else 'confirm' end));
+        'mode', case when p_rec -> 'task' ->> 'mode' in ('photo', 'answer') then p_rec -> 'task' ->> 'mode' else 'confirm' end));
     end if;
     -- 重新上鎖：只能從解鎖改回上鎖，不能自己解鎖
     v_relock := r.id is not null and r.unlocked and (p_rec -> 'unlocked') = 'false'::jsonb;
@@ -1169,6 +1170,7 @@ begin
     raise exception '照片位置不對';
   end if;
   if r.data -> 'task' ->> 'mode' = 'photo' and p_photo_path is null then raise exception '這個任務要上傳照片'; end if;
+  if r.data -> 'task' ->> 'mode' = 'answer' and btrim(coalesce(p_note, '')) = '' then raise exception '這個任務要寫回答'; end if;
   if exists (select 1 from public.task_submissions where record_id = r.id and partner = auth.uid() and status = 'pending') then
     raise exception '已經送出了，等對方確認';
   end if;
@@ -1947,7 +1949,7 @@ alter table public.notifications drop constraint if exists notifications_kind_ch
 alter table public.notifications add constraint notifications_kind_check check (kind in (
   'new_happy', 'new_task_record', 'task_submitted', 'task_approved',
   'partner_request', 'partner_joined', 'anniversary', 'cloud_reflect', 'write_nudge',
-  'quiz_partner_done', 'quiz_revealed'));
+  'quiz_partner_done', 'quiz_revealed', 'daily_partner_done', 'daily_revealed'));
 
 -- 目前這一對：主人 + 已同意的另一半（排序好，方便比對）
 create or replace function public.quiz_members(p_space uuid) returns uuid[]
@@ -2139,3 +2141,150 @@ begin
 end $$;
 revoke all on function public.quiz_mark_hit(uuid, text, boolean) from public, anon;
 grant execute on function public.quiz_mark_hit(uuid, text, boolean) to authenticated;
+
+-- ============================================================
+-- 每天一題（2026-09-30）：每天一題開放式問題，兩人各自寫，兩人都寫完才揭曉；不猜、不計分
+-- 題庫在前端（js/app/daily.js），這裡只存哪一天、哪一題（q_id）、誰寫了什麼。綁「目前這兩個人」，換了另一半就是新的紀錄。
+-- 表不開放直接讀寫，全部走下面的函式。
+-- ============================================================
+create table if not exists public.daily_pairs (
+  pair_key   text primary key,
+  space      uuid not null,
+  members    uuid[] not null,
+  started_on date not null
+);
+create table if not exists public.daily_answers (
+  id         bigserial primary key,
+  pair_key   text not null references public.daily_pairs (pair_key) on delete cascade,
+  day        date not null,
+  q_id       text not null check (q_id ~ '^d[0-9]{3}$'),
+  user_id    uuid not null,
+  body       text not null check (char_length(body) between 1 and 300),
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  unique (pair_key, day, user_id)
+);
+create index if not exists daily_answers_pair_day on public.daily_answers (pair_key, day);
+alter table public.daily_pairs enable row level security;
+alter table public.daily_answers enable row level security;
+revoke all on public.daily_pairs from anon, authenticated;
+revoke all on public.daily_answers from anon, authenticated;
+
+-- 台灣時間的今天
+create or replace function public.daily_today() returns date
+language sql stable as $$ select (now() at time zone 'Asia/Taipei')::date $$;
+
+-- 目前這一對的 key（兩個人才有）；第一次用的時候記下開始日
+create or replace function public.daily_pair() returns public.daily_pairs
+language plpgsql security definer set search_path = public as $$
+declare
+  v_space uuid := public.quiz_space();
+  v_members uuid[];
+  v_key text;
+  p public.daily_pairs;
+begin
+  if v_space is null or auth.uid() is null then return null; end if;
+  v_members := public.quiz_members(v_space);
+  if array_length(v_members, 1) is distinct from 2 or not (auth.uid() = any (v_members)) then return null; end if;
+  v_key := v_space::text || ':' || array_to_string(v_members, ',');
+  insert into public.daily_pairs (pair_key, space, members, started_on) values (v_key, v_space, v_members, public.daily_today())
+    on conflict (pair_key) do nothing;
+  select * into p from public.daily_pairs where pair_key = v_key;
+  return p;
+end $$;
+revoke all on function public.daily_pair() from public, anon, authenticated;
+
+-- 讀狀態：今天第幾天、今天的題目（有人寫過就以存下來的為準）、我和對方寫了沒、揭曉了就給兩人的答案、等你寫、這個月一起寫了幾天
+create or replace function public.daily_state() returns jsonb
+language plpgsql security definer set search_path = public as $$
+declare
+  p public.daily_pairs := public.daily_pair();
+  v_space uuid := public.quiz_space();
+  v_members uuid[];
+  v_other uuid;
+  v_today date := public.daily_today();
+  v_mine public.daily_answers;
+  v_theirs public.daily_answers;
+begin
+  if v_space is null or auth.uid() is null then return jsonb_build_object('ok', false); end if;
+  v_members := public.quiz_members(v_space);
+  if p.pair_key is null then
+    return jsonb_build_object('ok', true, 'me', auth.uid(), 'members', to_jsonb(v_members),
+      'names', (select jsonb_object_agg(m, public.space_member_name(v_space, m)) from unnest(v_members) m));
+  end if;
+  v_other := (select m from unnest(p.members) m where m <> auth.uid() limit 1);
+  select * into v_mine from public.daily_answers where pair_key = p.pair_key and day = v_today and user_id = auth.uid();
+  select * into v_theirs from public.daily_answers where pair_key = p.pair_key and day = v_today and user_id = v_other;
+  return jsonb_build_object('ok', true, 'me', auth.uid(), 'members', to_jsonb(p.members), 'pair', p.pair_key,
+    'names', (select jsonb_object_agg(m, public.space_member_name(p.space, m)) from unnest(p.members) m),
+    'today', v_today, 'n', v_today - p.started_on,
+    'q_id', coalesce(v_mine.q_id, v_theirs.q_id),
+    'mine', v_mine.body,
+    'other_done', v_theirs.id is not null,
+    'revealed', v_mine.id is not null and v_theirs.id is not null,
+    'other', case when v_mine.id is not null and v_theirs.id is not null then v_theirs.body end,
+    'pending', (select coalesce(jsonb_agg(jsonb_build_object('day', t.day, 'q_id', t.q_id) order by t.day desc), '[]'::jsonb)
+      from (select a.day, a.q_id from public.daily_answers a
+        where a.pair_key = p.pair_key and a.user_id = v_other and a.day < v_today
+          and not exists (select 1 from public.daily_answers b where b.pair_key = p.pair_key and b.day = a.day and b.user_id = auth.uid())
+        order by a.day desc limit 50) t),
+    'month_days', (select count(*) from (select day from public.daily_answers
+        where pair_key = p.pair_key and date_trunc('month', day) = date_trunc('month', v_today)
+        group by day having count(*) = 2) d));
+end $$;
+revoke all on function public.daily_state() from public, anon;
+grant execute on function public.daily_state() to authenticated;
+
+-- 寫／改自己的答案：今天，或對方寫了我還沒寫的舊題目。兩人都寫了就不能改。
+create or replace function public.daily_save(p_day date, p_q_id text, p_body text) returns jsonb
+language plpgsql security definer set search_path = public as $$
+declare
+  p public.daily_pairs := public.daily_pair();
+  v_other uuid;
+  v_today date := public.daily_today();
+  v_body text := btrim(coalesce(p_body, ''));
+  v_mine public.daily_answers;
+  v_theirs public.daily_answers;
+  v_q text := p_q_id;
+begin
+  if p.pair_key is null then raise exception '另一半加入之後就能一起寫'; end if;
+  if char_length(v_body) not between 1 and 300 then raise exception '答案要 1 到 300 個字'; end if;
+  if v_q is null or v_q !~ '^d[0-9]{3}$' then raise exception '找不到這一題'; end if;
+  v_other := (select m from unnest(p.members) m where m <> auth.uid() limit 1);
+  if p_day is null or p_day > v_today or p_day < p.started_on then raise exception '這一天不能寫'; end if;
+  perform pg_advisory_xact_lock(hashtext('daily:' || p.pair_key || ':' || p_day::text));
+  select * into v_mine from public.daily_answers where pair_key = p.pair_key and day = p_day and user_id = auth.uid();
+  select * into v_theirs from public.daily_answers where pair_key = p.pair_key and day = p_day and user_id = v_other;
+  if p_day < v_today and v_theirs.id is null and v_mine.id is null then raise exception '這一天不能寫'; end if;
+  if v_mine.id is not null and v_theirs.id is not null then raise exception '已經揭曉了，不能改'; end if;
+  -- 同一天同一題：對方先寫了就用對方那題
+  if v_theirs.id is not null then v_q := v_theirs.q_id; elsif v_mine.id is not null then v_q := v_mine.q_id; end if;
+  insert into public.daily_answers (pair_key, day, q_id, user_id, body) values (p.pair_key, p_day, v_q, auth.uid(), v_body)
+    on conflict (pair_key, day, user_id) do update set body = excluded.body, updated_at = now();
+  -- 通知只在第一次寫的時候發，改答案不吵
+  if v_mine.id is null then
+    insert into public.notifications (recipient, space_owner, actor, actor_name, kind)
+      values (v_other, p.space, auth.uid(), public.space_member_name(p.space, auth.uid()),
+        case when v_theirs.id is not null then 'daily_revealed' else 'daily_partner_done' end);
+  end if;
+  return jsonb_build_object('revealed', v_theirs.id is not null, 'q_id', v_q);
+end $$;
+revoke all on function public.daily_save(date, text, text) from public, anon;
+grant execute on function public.daily_save(date, text, text) to authenticated;
+
+-- 以前的題目：只給兩人都寫完的日子（不含今天），由新到舊
+create or replace function public.daily_history(p_before date, p_limit int) returns jsonb
+language plpgsql security definer set search_path = public as $$
+declare
+  p public.daily_pairs := public.daily_pair();
+  v_before date := least(coalesce(p_before, public.daily_today()), public.daily_today());
+begin
+  if p.pair_key is null then return '[]'::jsonb; end if;
+  return (select coalesce(jsonb_agg(jsonb_build_object('day', t.day, 'q_id', t.q_id, 'answers', t.answers) order by t.day desc), '[]'::jsonb)
+    from (select a.day, min(a.q_id) as q_id, jsonb_object_agg(a.user_id, a.body) as answers
+      from public.daily_answers a where a.pair_key = p.pair_key and a.day < v_before
+      group by a.day having count(*) = 2
+      order by a.day desc limit least(greatest(coalesce(p_limit, 20), 1), 50)) t);
+end $$;
+revoke all on function public.daily_history(date, int) from public, anon;
+grant execute on function public.daily_history(date, int) to authenticated;

@@ -60,7 +60,7 @@ const SHOT = (n) => (process.env.SHOT_DIR || '.') + '/' + n;
   // 一起
   await p.click('#tabbar [data-tab="together"]'); await p.waitForSelector('.nav-row');
   const rows = await p.$$eval('.nav-row .nav-text .bold', (e) => e.map((x) => x.textContent).join(','));
-  log('together rows', rows === '重新認識你,一起完成的事,解鎖任務,印章冊,回憶小卡', rows);
+  log('together rows', rows === '每天一題,一起完成的事,解鎖任務,印章冊,回憶小卡', rows);
   await p.screenshot({ path: SHOT('b-together.png') });
 
   // 我的
@@ -74,7 +74,7 @@ const SHOT = (n) => (process.env.SHOT_DIR || '.') + '/' + n;
   log('settings lights me', (await onTab()) === 'me');
 
   // 舊網址
-  for (const [hsh, want] of [['#/list/happy', 'records'], ['#/fights', 'records'], ['#/wishes', 'together'], ['#/stamps', 'together'], ['#/cards', 'together'], ['#/tasks', 'together'], ['#/quiz', 'together'], ['#/notifications', 'me'], ['#/settings', 'me']]) {
+  for (const [hsh, want] of [['#/list/happy', 'records'], ['#/fights', 'records'], ['#/wishes', 'together'], ['#/stamps', 'together'], ['#/cards', 'together'], ['#/tasks', 'together'], ['#/quiz', 'together'], ['#/daily', 'together'], ['#/notifications', 'me'], ['#/settings', 'me']]) {
     await go(hsh);
     const t = await onTab();
     if (t !== want) log('old url tab', hsh, t);
