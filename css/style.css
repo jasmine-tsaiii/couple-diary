@@ -611,6 +611,22 @@ h1, h2, h3, .tile-body .bold, .opt { text-wrap: balance; }
 .quiz-diff { flex: none; font-size: 12px; color: var(--muted); white-space: nowrap; }
 .quiz-diff.changed { color: var(--happy-dark); font-weight: 700; }
 .quiz-line .btn.small { flex: none; }
+/* 重新認識你：作答一題一頁（2026-09-30） */
+.quiz-progress { display: flex; align-items: center; gap: 10px; margin: -4px 0 2px; }
+.quiz-progress .small { color: var(--accent-text); white-space: nowrap; min-width: 40px; text-align: right; }
+.quiz-hint { color: var(--happy-dark); background: var(--happy-bg); border-radius: 12px; padding: 10px 14px; line-height: 1.5; }
+.quiz-qtext { font-size: 20px; font-weight: 700; line-height: 1.45; }
+.quiz-q .textarea { font-size: 16px; min-height: 120px; }
+.quiz-q .textarea.quiz-guess { min-height: 72px; }
+.quiz-guess-open { align-self: flex-start; color: var(--accent-text); font-size: 14px; padding: 4px 0; }
+.quiz-nav { position: fixed; left: 0; right: 0; bottom: 0; z-index: 10; display: flex; gap: 10px; padding: 12px 16px calc(12px + env(safe-area-inset-bottom)); background: var(--card); border-top: 1px solid var(--line); }
+.quiz-nav .btn { flex: 1; }
+.quiz-nav .btn[disabled] { opacity: .45; }
+body.quiz-focus #app { padding-bottom: calc(96px + env(safe-area-inset-bottom)); }
+.quiz-sum-row { display: flex; flex-direction: column; align-items: flex-start; gap: 3px; width: 100%; padding: 12px 16px; background: none; border: 0; border-bottom: 1px solid var(--line); text-align: left; font: inherit; color: inherit; cursor: pointer; overflow-wrap: anywhere; }
+.quiz-sum-row:last-child { border-bottom: 0; }
+.quiz-empty { color: var(--accent-text); font-weight: 700; }
+@media (min-width: 560px) { .quiz-nav { left: 50%; transform: translateX(-50%); width: 520px; border-radius: 16px 16px 0 0; border-left: 1px solid var(--line); border-right: 1px solid var(--line); } }
 
 /* 介面整理 B 方案（2026-09-29）：紀錄分頁的種類切換、「一起」「我的」的列表 */
 .rec-seg { grid-template-columns: repeat(3, 1fr); }

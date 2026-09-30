@@ -31,30 +31,62 @@ const SHOT = (n) => (process.env.SHOT_DIR || '.') + '/' + n;
   // 主人開始第一回
   await openQuiz();
   await p.screenshot({ path: SHOT('quiz-start.png') });
+  // 一題一頁：從第 1 題寫到最後，停在總覽
+  const CORE = ['c1', 'c3', 'c5', 'c8', 'c10'];
+  const toFirst = async () => { if (await p.locator('[data-qgo="0"]').count()) { await p.click('[data-qgo="0"]'); await p.waitForTimeout(200); } while (await p.locator('#q-prev:not([disabled])').count() && await p.locator('[data-qa]').count()) { await p.click('#q-prev'); await p.waitForTimeout(150); } };
+  const answerAll = async (val, extra) => {
+    await toFirst();
+    while (await p.locator('[data-qa]').count()) {
+      const id = await p.getAttribute('[data-qa]', 'data-qa');
+      const v = val(id); if (v !== null) await p.fill('[data-qa]', v);
+      if (extra) await extra(id);
+      await p.click('#q-next'); await p.waitForTimeout(150);
+    }
+  };
+  const stepText = () => p.textContent('.quiz-progress .small');
   await p.click('#q-start'); await p.waitForSelector('[data-qa]');
-  const n = await p.locator('[data-qa]').count();
-  log('14 questions', n === 14);
+  log('one question per page, 1 / 8', await p.locator('[data-qa]').count() === 1 && (await stepText()) === '1 / 8');
+  log('first question is c1', (await p.getAttribute('[data-qa]', 'data-qa')) === 'c1');
+  log('tab bar and + hidden', !(await p.isVisible('.tabbar')) && !(await p.isVisible('.tab-add')));
+  log('guess collapsed', !(await p.locator('[data-qg]').count()) && await p.isVisible('#q-guess-open'));
+  const ov = await p.evaluate(() => { const a = document.querySelector('.quiz-q').getBoundingClientRect(); const b = document.querySelector('.quiz-nav').getBoundingClientRect(); return a.bottom <= b.top; });
+  log('nav bar does not cover the question', ov);
+  log('answer box 16px', await p.evaluate(() => getComputedStyle(document.querySelector('[data-qa]')).fontSize) === '16px');
   await p.screenshot({ path: SHOT('quiz-form.png') });
   // 寫一題就離開：草稿有存
-  await p.fill('[data-qa="c1"]', '一起吃早餐'); await p.fill('[data-qg="c1"]', '打電動'); await p.waitForTimeout(1800);
-  await p.goto(U + '#/'); await p.waitForTimeout(500); await openQuiz();
+  await p.fill('[data-qa="c1"]', '一起吃早餐'); await p.click('#q-guess-open'); await p.fill('[data-qg="c1"]', '打電動'); await p.waitForTimeout(1800);
+  await p.screenshot({ path: SHOT('quiz-form-guess.png') });
+  await p.emulateMedia({ colorScheme: 'dark' }); await p.waitForTimeout(200);
+  await p.screenshot({ path: SHOT('quiz-form-dark.png') });
+  await p.emulateMedia({ colorScheme: 'light' });
+  await p.goto(U + '#/'); await p.waitForTimeout(500);
+  log('tab bar back after leaving', await p.isVisible('.tabbar'));
+  await openQuiz();
   log('draft kept', (await p.inputValue('[data-qa="c1"]')) === '一起吃早餐' && (await p.inputValue('[data-qg="c1"]')) === '打電動');
-  // 沒寫完不能交卷
-  await p.click('#q-submit'); await p.waitForTimeout(400);
-  log('still on form when incomplete', await p.locator('[data-qa]').count() === 14);
-  for (const el of await p.locator('[data-qa]').all()) { if (!(await el.inputValue())) await el.fill('主人的答案' + (await el.getAttribute('data-qa'))); }
+  // 換到第 2 題，離開再回來：停在第 2 題
+  await p.click('#q-next'); await p.waitForTimeout(300);
+  await p.goto(U + '#/'); await p.waitForTimeout(400); await openQuiz();
+  log('resumes on question 2', (await stepText()) === '2 / 8');
+  // 跳到總覽：沒寫完不能交卷，會跳回第一個沒寫的題目
+  while (await p.locator('#q-next').count()) { await p.click('#q-next'); await p.waitForTimeout(120); }
+  log('summary lists 8', await p.locator('[data-qgo]').count() === 8 && (await stepText()) === '總覽');
+  await p.screenshot({ path: SHOT('quiz-summary-empty.png') });
+  await p.click('#q-submit'); await p.waitForTimeout(500);
+  log('incomplete jumps back to question 2', (await stepText()) === '2 / 8');
+  await answerAll((id) => (id === 'c1' ? null : '主人的答案' + id));
+  await p.screenshot({ path: SHOT('quiz-summary.png'), fullPage: true });
   await p.click('#q-submit'); await p.waitForTimeout(900);
   log('owner waiting', (await p.textContent('#app')).includes('等小明交卷後'));
+  log('tab bar back after submit', await p.isVisible('.tabbar'));
   await p.screenshot({ path: SHOT('quiz-waiting.png') });
 
   // 另一半：看得到「寫好了」，看不到內容
   await as(pid); await openQuiz();
   const ptxt = await p.textContent('#app');
   log('partner sees owner done, not content', ptxt.includes('已經寫好了') && !ptxt.includes('主人的答案'));
-  for (const el of await p.locator('[data-qa]').all()) await el.fill('小明的答案' + (await el.getAttribute('data-qa')));
-  await p.fill('[data-qg="c1"]', '一起吃早餐吧');
+  await answerAll((id) => '小明的答案' + id, async (id) => { if (id === 'c1') { await p.click('#q-guess-open'); await p.fill('[data-qg="c1"]', '一起吃早餐吧'); } });
   await p.click('#q-submit'); await p.waitForTimeout(900);
-  log('revealed', (await p.textContent('#app')).includes('揭曉') && (await p.textContent('#app')).includes('主人的答案c2'));
+  log('revealed', (await p.textContent('#app')).includes('揭曉') && (await p.textContent('#app')).includes('主人的答案c3'));
   // 主人猜的「打電動」出現在小明那一題，小明判定：沒猜中；小明猜的「一起吃早餐吧」出現在主人那一題
   await as(owner); await openQuiz();
   await p.click('[data-qhit="c1"]'); await p.waitForTimeout(700);
@@ -75,13 +107,13 @@ const SHOT = (n) => (process.env.SHOT_DIR || '.') + '/' + n;
   await mutate("S.quiz.rounds.forEach(r => { r.started_at = new Date(Date.now() - 100*864e5).toISOString(); r.revealed_at = new Date(Date.now() - 95*864e5).toISOString(); });");
   await openQuiz(); await p.click('#q-start'); await p.waitForSelector('[data-qa]');
   log('round 2 form has no old answers', !(await p.textContent('#app')).includes('主人的答案'));
-  const newQs = await p.evaluate(() => [...document.querySelectorAll('[data-qa]')].map((e) => e.dataset.qa).filter((x) => x.startsWith('p')));
-  const oldQs = await p.evaluate(() => JSON.parse(localStorage.getItem('mockServer')).quiz.rounds[0].questions.map((q) => q.id).filter((x) => x.startsWith('p')));
-  log('new questions not repeated', newQs.length === 4 && newQs.every((q) => !oldQs.includes(q)));
-  for (const el of await p.locator('[data-qa]').all()) { const id = await el.getAttribute('data-qa'); await el.fill(id === 'c2' ? '主人的答案c2' : '主人新答案' + id); }
+  const rounds = await p.evaluate(() => JSON.parse(localStorage.getItem('mockServer')).quiz.rounds.map((r) => r.questions.map((q) => q.id)));
+  const oldQs = rounds[0].filter((x) => !CORE.includes(x)); const newQs = rounds[1].filter((x) => !CORE.includes(x));
+  log('8 = 5 fixed + 3 new, not repeated', rounds[0].length === 8 && rounds[1].length === 8 && rounds[1].slice(0, 5).join() === CORE.join() && newQs.length === 3 && newQs.every((q) => !oldQs.includes(q)));
+  await answerAll((id) => (id === 'c3' ? '主人的答案c3' : '主人新答案' + id));
   await p.click('#q-submit'); await p.waitForTimeout(800);
   await as(pid); await openQuiz();
-  for (const el of await p.locator('[data-qa]').all()) await el.fill('小明新答案' + (await el.getAttribute('data-qa')));
+  await answerAll((id) => '小明新答案' + id);
   await p.click('#q-submit'); await p.waitForTimeout(900);
   const r2 = await p.textContent('#app');
   log('round 2 shows last time', r2.includes('第 2 回揭曉') && r2.includes('上次') && r2.includes('主人的答案c1') && r2.includes('沒變') && r2.includes('變了'));

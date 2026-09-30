@@ -434,6 +434,7 @@ function currentRecType() {
 }
 function setRecType(t) { if (REC_TYPES.includes(t)) { try { localStorage.setItem('recordsType', t); } catch (e) { /* 略過 */ } } }
 function renderTabbar(route) {
+  document.body.classList.remove('quiz-focus');
   tabbar.hidden = route === null;
   document.body.classList.toggle('no-tabbar', route === null);
   if (route === null) return;

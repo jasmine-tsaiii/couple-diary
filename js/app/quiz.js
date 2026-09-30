@@ -3,21 +3,22 @@
 // 下一回兩人都交卷後，上一回的答案會一起打開，並排「上次｜這次｜對方猜」。
 // 入口位置還沒定（等介面整理），目前從 #/quiz 或通知進來。
 
-// 固定核心題：每一回都一樣，才看得出變化（id 不能改，改了就對不起來）
+// 固定題：每一回都一樣，才看得出變化（id 不能改，改了就對不起來）
+// 2026-09-30 Jasmine：一回 14 題太多，改成 8 題 = 5 固定 + 3 變動；c2/c4/c6/c7/c9 移到變動題庫（id 不變，舊答案不受影響）
 const QUIZ_CORE = [
   ['c1', '最近讓你最開心的一件小事是什麼？'],
-  ['c2', '現在最想跟我一起完成的一件事？'],
   ['c3', '最近壓力最大的來源是什麼？'],
-  ['c4', '你覺得我們最近相處得最好的地方是？'],
   ['c5', '你希望我多做一點的一件事？'],
-  ['c6', '如果有一整天完全自由，你會怎麼過？'],
-  ['c7', '你現在最珍惜的是什麼？'],
   ['c8', '你覺得一年後的我們會是什麼樣子？'],
-  ['c9', '最近最常掛在心上的一個心願？'],
   ['c10', '用三個詞形容現在的你自己。'],
 ];
-// 每一回再從這裡挑幾題沒問過的新題
+// 每一回再從這裡挑幾題沒問過的
 const QUIZ_POOL = [
+  ['c2', '現在最想跟我一起完成的一件事？'],
+  ['c4', '你覺得我們最近相處得最好的地方是？'],
+  ['c6', '如果有一整天完全自由，你會怎麼過？'],
+  ['c7', '你現在最珍惜的是什麼？'],
+  ['c9', '最近最常掛在心上的一個心願？'],
   ['p01', '最近一次被我感動是什麼時候？'],
   ['p02', '小時候最想成為什麼樣的人？'],
   ['p03', '覺得被愛的時候，通常是因為對方做了什麼？'],
@@ -49,7 +50,7 @@ const QUIZ_POOL = [
   ['p29', '現在最想對半年前的自己說什麼？'],
   ['p30', '最近一個讓你覺得「好想分享給我」的瞬間？'],
 ];
-const QUIZ_NEW_PER_ROUND = 4;
+const QUIZ_NEW_PER_ROUND = 3;
 const QUIZ_OPEN_DAYS = 7;
 
 function quizPickQuestions(used) {
@@ -113,7 +114,7 @@ async function viewQuiz() {
     app.innerHTML = `${quizTop()}${quizIntroCard()}
       <div class="card" style="gap:8px">
         <div class="bold">${r ? '新的一回開放了' : '第一次玩'}</div>
-        <div class="small muted">大約 14 題，10 分鐘左右。可以先寫一部分，之後再回來寫完。</div>
+        <div class="small muted">8 題，大約 5 分鐘，一次一題。可以先寫一部分，之後再回來寫完。</div>
         <button class="btn" id="q-start">開始這一回</button>
       </div>
       ${quizHistoryHtml(st)}`;
@@ -140,48 +141,7 @@ async function viewQuiz() {
         ${r.questions.map((q, i) => `<div class="card" style="gap:4px"><div class="small muted">${i + 1}. ${esc(q.text)}</div><div>${esc((mine.answers || {})[q.id] || '')}</div></div>`).join('')}`;
       return;
     }
-    const ans = { ...(mine.answers || {}) };
-    const gue = { ...(mine.guesses || {}) };
-    app.innerHTML = `${quizTop(`第 ${r.no} 回`)}
-      <div class="card" style="gap:4px;background:var(--happy-bg);border-color:transparent">
-        <div class="small" style="color:var(--happy-dark)">這次不看上一次，才看得出你變了多少。照現在的心情寫就好，沒有標準答案。</div>
-        <div class="small" style="color:var(--happy-dark)">${otherDone ? `${esc(otherName)}已經寫好了，換你囉。` : `${esc(otherName)}還沒交卷。`}寫到一半離開也沒關係，會自動存起來。</div>
-      </div>
-      ${r.questions.map((q, i) => `<div class="card quiz-q" style="gap:6px">
-          <label class="bold" for="qa-${esc(q.id)}">${i + 1}. ${esc(q.text)}${q.core ? '' : ' <span class="small muted">新題</span>'}</label>
-          <textarea class="input" id="qa-${esc(q.id)}" data-qa="${esc(q.id)}" rows="2" maxlength="300" placeholder="你的答案">${esc(ans[q.id] || '')}</textarea>
-          <input class="input" data-qg="${esc(q.id)}" maxlength="300" placeholder="猜猜${esc(otherName)}會怎麼答（可以不填）" value="${esc(gue[q.id] || '')}">
-        </div>`).join('')}
-      <div class="small muted" id="q-progress"></div>
-      <button class="btn" id="q-submit">交卷</button>
-      <div class="small muted" id="q-saved" style="text-align:center"></div>`;
-    const progress = () => {
-      const n = r.questions.filter((q) => (ans[q.id] || '').trim()).length;
-      document.getElementById('q-progress').textContent = `寫了 ${n} / ${r.questions.length} 題`;
-    };
-    progress();
-    let timer = null;
-    let saving = Promise.resolve();
-    const saveDraft = () => { saving = saving.then(() => CloudDB.quizSave(r.id, ans, gue, false)).then(() => { const s = document.getElementById('q-saved'); if (s) s.textContent = '已自動儲存'; }).catch(() => {}); return saving; };
-    const schedule = () => { clearTimeout(timer); timer = setTimeout(saveDraft, 1200); };
-    app.querySelectorAll('[data-qa]').forEach((el) => el.addEventListener('input', () => { ans[el.dataset.qa] = el.value; progress(); schedule(); }));
-    app.querySelectorAll('[data-qg]').forEach((el) => el.addEventListener('input', () => { gue[el.dataset.qg] = el.value; schedule(); }));
-    // 離開這頁前把還沒存的存起來（會自動存，所以不用問要不要離開）
-    formGuard = { dirty: () => { if (timer) { clearTimeout(timer); timer = null; saveDraft(); } return false; }, leave: () => {} };
-    const sub = document.getElementById('q-submit');
-    sub.addEventListener('click', () => withBusy(sub, '交卷中…', async () => {
-      const left = r.questions.filter((q) => !(ans[q.id] || '').trim());
-      if (left.length) { toast(`還有 ${left.length} 題沒寫`); document.getElementById(`qa-${left[0].id}`).focus(); return; }
-      if (!confirm('交卷後就不能改了，確定嗎？')) return;
-      clearTimeout(timer); timer = null;
-      await saving;
-      let res;
-      try { res = await CloudDB.quizSave(r.id, ans, gue, true); } catch (e) { toast(e.message || '交不出去，請稍後再試一次'); return; }
-      formGuard = null;
-      track('quiz_submit', { revealed: !!(res && res.revealed) });
-      window.scrollTo(0, 0);
-      await viewQuiz();
-    }));
+    viewQuizAnswer(r, mine, otherName, otherDone);
     return;
   }
   // 揭曉（回味期內）
@@ -197,6 +157,109 @@ async function viewQuiz() {
       <div class="small muted">${st.next_at ? `${quizDay(st.next_at)} 開放下一回。` : ''}下一回兩人都交卷，才會跟這次的答案並排打開。</div>
     </div>
     ${quizHistoryHtml(st)}`;
+}
+
+// 作答：一題一頁，頂部進度條，最後總覽再交卷；作答時藏起底部選單，內容不會被 ＋ 蓋住
+function viewQuizAnswer(r, mine, otherName, otherDone) {
+  renderTabbar(null);
+  document.body.classList.add('quiz-focus');
+  const qs = r.questions;
+  const n = qs.length;
+  const ans = { ...(mine.answers || {}) };
+  const gue = { ...(mine.guesses || {}) };
+  const stepKey = `quizStep:${r.id}`;
+  let step = -1;
+  try { step = Number(localStorage.getItem(stepKey)); } catch (e) { step = -1; }
+  if (!(step >= 0 && step <= n)) { step = qs.findIndex((q) => !(ans[q.id] || '').trim()); if (step < 0) step = n; }
+  const openGuess = new Set(qs.filter((q) => (gue[q.id] || '').trim()).map((q) => q.id));
+
+  let timer = null;
+  let saving = Promise.resolve();
+  const saveDraft = () => { saving = saving.then(() => CloudDB.quizSave(r.id, ans, gue, false)).then(() => { const el = document.getElementById('q-saved'); if (el) el.textContent = '已自動儲存'; }).catch(() => {}); return saving; };
+  const flush = () => { if (timer) { clearTimeout(timer); timer = null; saveDraft(); } };
+  const schedule = () => { clearTimeout(timer); timer = setTimeout(() => { timer = null; saveDraft(); }, 1200); };
+  // 離開這頁前把還沒存的存起來（會自動存，所以不用問要不要離開）
+  formGuard = { dirty: () => { flush(); document.body.classList.remove('quiz-focus'); return false; }, leave: () => {} };
+
+  const goStep = (i) => {
+    flush();
+    step = i;
+    try { localStorage.setItem(stepKey, String(i)); } catch (e) { /* 略過 */ }
+    render();
+    window.scrollTo(0, 0);
+  };
+  const head = () => {
+    const shown = Math.min(step + 1, n);
+    return `${quizTop(`第 ${r.no} 回`)}
+      <div class="quiz-progress" aria-label="進度 ${shown} / ${n}">
+        <div class="progress" style="height:8px;flex:1"><div style="width:${(shown / n) * 100}%"></div></div>
+        <span class="small bold">${step >= n ? '總覽' : `${shown} / ${n}`}</span>
+      </div>`;
+  };
+  const render = () => {
+    if (step >= n) return renderSummary();
+    const q = qs[step];
+    const g = openGuess.has(q.id);
+    app.innerHTML = `${head()}
+      ${step === 0 ? `<div class="small quiz-hint">${otherDone ? `${esc(otherName)}已經寫好了，換你囉。` : ''}照現在的心情寫就好，沒有標準答案；離開會自動存。</div>` : ''}
+      <div class="card quiz-q" style="gap:12px">
+        <label class="quiz-qtext" for="qa-${esc(q.id)}">${esc(q.text)}</label>
+        <textarea class="textarea" id="qa-${esc(q.id)}" data-qa="${esc(q.id)}" rows="4" maxlength="300" placeholder="你的答案">${esc(ans[q.id] || '')}</textarea>
+        ${g ? `<div class="field"><label class="label" for="qg-${esc(q.id)}">猜猜${esc(otherName)}會怎麼答</label>
+          <textarea class="textarea quiz-guess" id="qg-${esc(q.id)}" data-qg="${esc(q.id)}" rows="2" maxlength="300" placeholder="可以不填">${esc(gue[q.id] || '')}</textarea></div>`
+    : `<button class="link-btn quiz-guess-open" id="q-guess-open" type="button">＋ 猜猜${esc(otherName)}會怎麼答（可以不填）</button>`}
+      </div>
+      <div class="small muted" id="q-saved" style="text-align:center"></div>
+      <div class="quiz-nav">
+        <button class="btn secondary" id="q-prev" ${step === 0 ? 'disabled' : ''}>上一題</button>
+        <button class="btn" id="q-next">${step === n - 1 ? '看一下再交卷' : '下一題'}</button>
+      </div>`;
+    const ta = app.querySelector('[data-qa]');
+    ta.addEventListener('input', () => { ans[q.id] = ta.value; schedule(); });
+    const gg = app.querySelector('[data-qg]');
+    if (gg) gg.addEventListener('input', () => { gue[q.id] = gg.value; schedule(); });
+    const go = document.getElementById('q-guess-open');
+    if (go) go.addEventListener('click', () => { openGuess.add(q.id); render(); const el = app.querySelector('[data-qg]'); if (el) el.focus(); });
+    document.getElementById('q-prev').addEventListener('click', () => { if (step > 0) goStep(step - 1); });
+    document.getElementById('q-next').addEventListener('click', () => goStep(step + 1));
+  };
+  const renderSummary = () => {
+    const left = qs.filter((q) => !(ans[q.id] || '').trim()).length;
+    app.innerHTML = `${head()}
+      <div class="small quiz-hint">${left ? `還有 ${left} 題沒寫，點一下就能回去寫。` : '都寫好了。交卷後就不能改，想改的點一下回去改。'}</div>
+      <div class="card nav-list">
+        ${qs.map((q, i) => `<button class="quiz-sum-row" data-qgo="${i}" type="button">
+          <span class="small muted">${i + 1}. ${esc(q.text)}</span>
+          <span class="${(ans[q.id] || '').trim() ? '' : 'quiz-empty'}">${esc((ans[q.id] || '').trim() || '還沒寫')}</span>
+          ${(gue[q.id] || '').trim() ? `<span class="small muted">猜${esc(otherName)}：${esc(gue[q.id])}</span>` : ''}
+        </button>`).join('')}
+      </div>
+      <div class="small muted" id="q-saved" style="text-align:center"></div>
+      <div class="quiz-nav">
+        <button class="btn secondary" id="q-prev">上一題</button>
+        <button class="btn" id="q-submit">交卷</button>
+      </div>`;
+    app.querySelectorAll('[data-qgo]').forEach((b) => b.addEventListener('click', () => goStep(Number(b.dataset.qgo))));
+    document.getElementById('q-prev').addEventListener('click', () => goStep(n - 1));
+    const sub = document.getElementById('q-submit');
+    sub.addEventListener('click', () => withBusy(sub, '交卷中…', async () => {
+      const i = qs.findIndex((q) => !(ans[q.id] || '').trim());
+      if (i >= 0) { toast(`第 ${i + 1} 題還沒寫`); goStep(i); return; }
+      if (!confirm('交卷後就不能改了，確定嗎？')) return;
+      clearTimeout(timer); timer = null;
+      await saving;
+      let res;
+      try { res = await CloudDB.quizSave(r.id, ans, gue, true); } catch (e) { toast(e.message || '交不出去，請稍後再試一次'); return; }
+      formGuard = null;
+      try { localStorage.removeItem(stepKey); } catch (e) { /* 略過 */ }
+      document.body.classList.remove('quiz-focus');
+      track('quiz_submit', { revealed: !!(res && res.revealed) });
+      window.scrollTo(0, 0);
+      renderTabbar('together');
+      await viewQuiz();
+    }));
+  };
+  render();
 }
 
 function viewQuizReveal(st, r, me, other, otherName) {

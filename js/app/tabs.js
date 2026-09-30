@@ -50,7 +50,7 @@ function quizTipHtml(q, which) {
     try { if (Date.now() - Number(localStorage.getItem('quizTipHiddenAt') || 0) < QUIZ_TIP_SNOOZE_DAYS * 86400000) return ''; } catch (e) { /* 略過 */ }
   }
   const title = q.partnerDone ? `${esc(q.otherName)}寫好「重新認識你」了，換你囉` : q.first ? '一起玩「重新認識你」' : '該重新認識對方了';
-  const text = q.partnerDone ? '兩個人都交卷才會一起揭曉。' : '兩個人各自回答同一組問題，猜猜對方會怎麼答，兩人都寫完才一起揭曉。大約 10 分鐘。';
+  const text = q.partnerDone ? '兩個人都交卷才會一起揭曉。' : '兩個人各自回答同一組問題，猜猜對方會怎麼答，兩人都寫完才一起揭曉。8 題，大約 5 分鐘。';
   return `<div class="card${q.partnerDone ? '' : ' has-x'}" id="quiz-tip" style="background:var(--happy-bg);border-color:transparent;gap:6px">
     ${q.partnerDone ? '' : `<button class="card-x" id="quiz-tip-x" aria-label="先不要，過幾天再提醒" style="color:var(--happy-dark)">${ICON.x}</button>`}
     <div class="bold" style="color:var(--happy-dark)">${title}</div>
