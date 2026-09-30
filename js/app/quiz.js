@@ -141,6 +141,18 @@ async function viewQuiz() {
         ${r.questions.map((q, i) => `<div class="card" style="gap:4px"><div class="small muted">${i + 1}. ${esc(q.text)}</div><div>${esc((mine.answers || {})[q.id] || '')}</div></div>`).join('')}`;
       return;
     }
+    // 改版前開的回合是 14 題：還沒人交卷的話，縮成現在的 8 題（5 固定＋3 變動，留原本就有的題目）
+    const perRound = QUIZ_CORE.length + QUIZ_NEW_PER_ROUND;
+    if (r.questions.length > perRound && !Object.values(r.submitted || {}).some(Boolean)) {
+      const ids = r.questions.map((q) => q.id);
+      const fixed = QUIZ_CORE.map(([id]) => id).filter((id) => ids.includes(id));
+      const rest = ids.filter((id) => !fixed.includes(id)).sort((x, y) => (x.startsWith('p') ? 0 : 1) - (y.startsWith('p') ? 0 : 1));
+      const keep = [...fixed, ...rest].slice(0, perRound);
+      try {
+        await CloudDB.quizTrim(r.id, keep);
+        r.questions = keep.map((id) => ({ ...r.questions.find((q) => q.id === id), core: fixed.includes(id) }));
+      } catch (e) { /* 資料庫還沒更新就照原本的題數 */ }
+    }
     viewQuizAnswer(r, mine, otherName, otherDone);
     return;
   }

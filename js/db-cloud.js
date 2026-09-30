@@ -267,6 +267,7 @@ const CloudDB = CLOUD_ENABLED ? (() => {
     },
     async quizStart(questions) { return check(await client.rpc('quiz_start', { p_questions: questions })); },
     async quizSave(round, answers, guesses, submit) { return check(await client.rpc('quiz_save', { p_round: round, p_answers: answers, p_guesses: guesses, p_submit: !!submit })); },
+    async quizTrim(round, keep) { check(await client.rpc('quiz_trim', { p_round: round, p_keep: keep })); },
     async quizMarkHit(round, qid, hit) { check(await client.rpc('quiz_mark_hit', { p_round: round, p_qid: qid, p_hit: !!hit })); },
     async deleteShare() {
       check(await client.from('shares').delete().eq('owner', userId()));

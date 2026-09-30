@@ -166,6 +166,14 @@
       if (all) r.revealed_at = new Date().toISOString();
       return { revealed: all };
     },
+    quiz_trim(S, u, a) {
+      const r = (S.quiz || { rounds: [] }).rounds.find((x) => x.id === a.p_round);
+      if (!r || !r.members.includes(u.id)) throw new Error('找不到這一回');
+      if (r.revealed_at || S.quiz.answers.some((x) => x.round_id === r.id && x.submitted_at)) throw new Error('已經有人交卷，不能改題目');
+      const q = a.p_keep.map((id) => r.questions.find((x) => x.id === id));
+      if (q.some((x) => !x) || q.length < 3) throw new Error('找不到這一題');
+      r.questions = q;
+    },
     quiz_mark_hit(S, u, a) {
       const r = (S.quiz || { rounds: [] }).rounds.find((x) => x.id === a.p_round);
       if (!r || !r.revealed_at) throw new Error('找不到這一回');

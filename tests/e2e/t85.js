@@ -44,7 +44,11 @@ const SHOT = (n) => (process.env.SHOT_DIR || '.') + '/' + n;
     }
   };
   const stepText = () => p.textContent('.quiz-progress .small');
-  await p.click('#q-start'); await p.waitForSelector('[data-qa]');
+  // 改版前開好的 14 題回合（還沒人交卷）：打開時自動縮成 8 題
+  const oldIds = ['c1', 'c2', 'c3', 'c4', 'c5', 'c6', 'c7', 'c8', 'c9', 'c10', 'p01', 'p02', 'p03', 'p04'];
+  await mutate(`S.quiz = { rounds: [{ id: 'qr-old', space: '${owner}', members: ['${owner}', '${pid}'].sort(), questions: ${JSON.stringify(oldIds)}.map((id) => ({ id, text: '舊題 ' + id, core: id.startsWith('c') })), started_at: new Date().toISOString(), revealed_at: null }], answers: [] };`);
+  await openQuiz(); await p.waitForSelector('[data-qa]');
+  log('old 14-question round trimmed to 8', await p.evaluate(() => JSON.parse(localStorage.getItem('mockServer')).quiz.rounds[0].questions.map((q) => q.id).join()) === 'c1,c3,c5,c8,c10,p01,p02,p03');
   log('one question per page, 1 / 8', await p.locator('[data-qa]').count() === 1 && (await stepText()) === '1 / 8');
   log('first question is c1', (await p.getAttribute('[data-qa]', 'data-qa')) === 'c1');
   log('tab bar and + hidden', !(await p.isVisible('.tabbar')) && !(await p.isVisible('.tab-add')));

@@ -2094,6 +2094,33 @@ end $$;
 revoke all on function public.quiz_save(uuid, jsonb, jsonb, boolean) from public, anon;
 grant execute on function public.quiz_save(uuid, jsonb, jsonb, boolean) to authenticated;
 
+-- 2026-09-30：一回改成 8 題。改版前已經開好、還沒人交卷的回合，可以縮成新的題數（只能留原本就有的題目）
+create or replace function public.quiz_trim(p_round uuid, p_keep text[]) returns void
+language plpgsql security definer set search_path = public as $$
+declare
+  v_space uuid := public.quiz_space();
+  r public.quiz_rounds;
+  v_q jsonb;
+begin
+  select * into r from public.quiz_rounds where id = p_round for update;
+  if r.id is null or r.space is distinct from v_space or not (auth.uid() = any (r.members)) or r.members <> public.quiz_members(v_space) then
+    raise exception '找不到這一回';
+  end if;
+  if r.revealed_at is not null or exists (select 1 from public.quiz_answers where round_id = r.id and submitted_at is not null) then
+    raise exception '已經有人交卷，不能改題目';
+  end if;
+  if p_keep is null or cardinality(p_keep) < 3 or cardinality(p_keep) > 20 or cardinality(p_keep) <> (select count(distinct x) from unnest(p_keep) x) then
+    raise exception '題數不對';
+  end if;
+  select jsonb_agg(q order by k.ord) into v_q
+    from unnest(p_keep) with ordinality k(id, ord)
+    join jsonb_array_elements(r.questions) q on q ->> 'id' = k.id;
+  if v_q is null or jsonb_array_length(v_q) <> cardinality(p_keep) then raise exception '找不到這一題'; end if;
+  update public.quiz_rounds set questions = v_q where id = r.id;
+end $$;
+revoke all on function public.quiz_trim(uuid, text[]) from public, anon;
+grant execute on function public.quiz_trim(uuid, text[]) to authenticated;
+
 -- 揭曉後（回味期內）：對方猜「我」的答案，由我按「猜中了」
 create or replace function public.quiz_mark_hit(p_round uuid, p_qid text, p_hit boolean) returns void
 language plpgsql security definer set search_path = public as $$
