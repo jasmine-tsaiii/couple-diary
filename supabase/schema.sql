@@ -1746,10 +1746,12 @@ grant execute on function public.admin_stats() to authenticated;
 -- 紀念日、烏雲回顧、沒寫提醒由 notify_daily() 每天早上跑一次（supabase/notify-cron.sql 設定）
 -- ============================================================
 alter table public.notifications add column if not exists extra jsonb;
+-- 通知種類的完整清單放在這裡（後面每天一題、重新認識你用到的也先列進來），重跑整份檔案才不會被已經有的通知擋住
 alter table public.notifications drop constraint if exists notifications_kind_check;
 alter table public.notifications add constraint notifications_kind_check check (kind in (
   'new_happy', 'new_task_record', 'task_submitted', 'task_approved',
-  'partner_request', 'partner_joined', 'anniversary', 'cloud_reflect', 'write_nudge'));
+  'partner_request', 'partner_joined', 'anniversary', 'cloud_reflect', 'write_nudge',
+  'quiz_partner_done', 'quiz_revealed', 'daily_partner_done', 'daily_revealed'));
 -- Email 信裡「取消收信」連結用的暗號：每個人一組亂數，不用登入就能取消
 alter table public.notify_prefs add column if not exists unsub_token uuid not null default gen_random_uuid();
 
