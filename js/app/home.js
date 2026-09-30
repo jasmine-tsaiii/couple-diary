@@ -28,7 +28,7 @@ const TILE_ICON = {
 async function viewHome() {
   const all = await liveRecords();
   // 另一半上鎖的紀錄你看不到內容，但數量要算進去（100 個目標是兩個人一起的）
-  const lockedOthers = usingCloud() ? await CloudDB.othersLocked() : [];
+  const lockedOthers = usingCloud() ? [...await CloudDB.othersLocked(), ...await othersTaskRecords()] : [];
   const count = (t) => all.filter((r) => r.type === t).length + lockedOthers.filter((x) => x.type === t).length;
   const fights = all.filter((r) => r.type === 'fight');
   const recent = all.slice().sort(byDateDesc).slice(0, 5);
@@ -294,6 +294,26 @@ async function listItem(r) {
   return a;
 }
 
+// 對方出了任務、還沒解鎖的紀錄（你要做任務的那些）；舊版資料庫或沒有另一半時是空的
+async function othersTaskRecords() {
+  if (!usingCloud()) return [];
+  try { return await CloudDB.partnerTasks(); } catch (e) { return []; }
+}
+function taskStateText(t) {
+  const s = t.submission && t.submission.status;
+  return s === 'pending' ? `已送出，等${esc(otherName())}確認` : s === 'rejected' ? '被退回了，可以再試一次' : '完成任務就能看';
+}
+function taskLockTile(t) {
+  const a = document.createElement('a');
+  a.className = 'card tile task-lock';
+  a.href = `#/task/${encodeURIComponent(t.id)}`;
+  a.innerHTML = `<div class="tile-default tile-lock">${ICON.lock}<div class="no">任務</div></div>
+    <div class="tile-body"><div class="bold small" style="color:var(--lock)">${esc(otherName())}出了任務</div>
+    <div class="small task-lock-text">${esc(t.task.text || '')}</div>
+    <div class="small row" style="color:var(--lock);gap:4px">${ICON.lockSmall}${taskStateText(t)}</div></div>`;
+  return a;
+}
+
 // ---------- 紀錄分頁（#/records）：上面切換美好／烏雲／吵架，下面是那一種的列表 ----------
 function recordCounts(all, lockedAll) {
   const n = (t) => all.filter((r) => r.type === t).length + (lockedAll || []).filter((x) => x.type === t).length;
@@ -323,8 +343,11 @@ async function viewList(type, tagFilter) {
   const partner = isPartner();
   const ofType = all.filter((r) => r.type === type).sort(byDateDesc);
   // 對方上鎖的紀錄：只知道有幾則、編號，看不到內容
-  const lockedAll = usingCloud() ? await CloudDB.othersLocked() : [];
+  const lockedPlain = usingCloud() ? await CloudDB.othersLocked() : [];
+  const taskAll = await othersTaskRecords();
+  const lockedAll = [...lockedPlain, ...taskAll];
   const lockedOthers = lockedAll.filter((x) => x.type === type);
+  const taskOthers = taskAll.filter((x) => x.type === type);
   const total = ofType.length + lockedOthers.length;
   const twoAuthors = usingCloud() && (lockedOthers.length > 0 || ofType.some((r) => !isMine(r))) && ofType.some((r) => isMine(r));
   const who = twoAuthors ? listWho : 'all';
@@ -383,7 +406,9 @@ async function viewList(type, tagFilter) {
   }
   // 對方上鎖的紀錄只顯示「這一則上鎖了」，看不到內容
   if (!tagFilter && who !== 'mine') {
-    for (const l of lockedOthers) {
+    // 對方出了任務的：可以點進去做任務，排在最前面比較好找
+    for (const t of [...taskOthers].reverse()) grid.insertBefore(taskLockTile(t), grid.firstChild);
+    for (const l of lockedPlain.filter((x) => x.type === type)) {
       const d = document.createElement('div');
       d.className = 'card tile';
       d.innerHTML = `<div class="tile-default tile-lock">${ICON.lock}<div class="no">${l.no ? `No. ${Number(l.no)}` : ''}</div></div>
@@ -413,7 +438,9 @@ async function viewFights(catFilter, statusFilter) {
   const myId = usingCloud() ? CloudDB.myId() : null;
   const byOther = (f) => usingCloud() && f.author && f.author !== myId;
   const openCount = fights.filter((f) => (f.status || 'open') !== 'resolved').length;
-  const lockedAll = usingCloud() ? await CloudDB.othersLocked().catch(() => []) : [];
+  const taskAll = await othersTaskRecords();
+  const fightTasks = !catFilter && !statusFilter ? taskAll.filter((x) => x.type === 'fight') : [];
+  const lockedAll = usingCloud() ? [...await CloudDB.othersLocked().catch(() => []), ...taskAll] : [];
   app.className = 'theme-fight';
   app.innerHTML = `
     ${recordsHead('fight', recordCounts(all, lockedAll))}
@@ -444,8 +471,12 @@ async function viewFights(catFilter, statusFilter) {
         </a>`;
       }).join('')}
     </div>
+    ${fightTasks.map((t) => `<a class="card task-lock" href="#/task/${encodeURIComponent(t.id)}" style="gap:6px;background:var(--lock-bg);border-color:transparent">
+      <div class="row" style="gap:4px;color:var(--lock)">${ICON.lockSmall}<span class="small bold">${esc(otherName())}出了任務・${taskStateText(t)}</span></div>
+      <div class="bold" style="font-size:15px">${esc(t.task.text || '')}</div>
+    </a>`).join('')}
     ${lockedFights ? `<div class="card" style="background:var(--lock-bg);border-color:transparent;gap:4px;flex-direction:row;align-items:center">${ICON.lockSmall}<span class="small" style="color:var(--lock)">另外還有 ${lockedFights} 則上鎖的吵架議題</span></div>` : ''}
-    ${!fights.length && examples ? examplesBlock(['fight']) : fights.length ? (shown.length ? '' : '<div class="empty">這個條件下沒有議題</div>') : isPartner() ? (lockedFights ? '' : '<div class="empty">還沒有吵架議題</div>') : `<div class="empty">還沒有吵架議題，很棒！<a class="btn small" href="#/new/fight">新增一個議題</a></div>`}
+    ${!fights.length && examples ? examplesBlock(['fight']) : fights.length ? (shown.length ? '' : '<div class="empty">這個條件下沒有議題</div>') : isPartner() ? (lockedFights || fightTasks.length ? '' : '<div class="empty">還沒有吵架議題</div>') : `<div class="empty">還沒有吵架議題，很棒！<a class="btn small" href="#/new/fight">新增一個議題</a></div>`}
   `;
   app.querySelectorAll('[data-cat]').forEach((b) => b.addEventListener('click', () => keepPlace(() => viewFights(b.dataset.cat || null, statusFilter))));
   app.querySelectorAll('[data-st]').forEach((b) => b.addEventListener('click', () => keepPlace(() => viewFights(catFilter, b.dataset.st || null))));
