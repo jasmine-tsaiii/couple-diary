@@ -64,7 +64,7 @@ const SHOT = (n) => (process.env.SHOT_DIR || '.') + '/' + n;
   await p.screenshot({ path: SHOT('b-together.png') });
 
   // 我的
-  await p.click('#tabbar [data-tab="me"]'); await p.waitForSelector('.nav-row');
+  await p.click('#tabbar [data-tab="me"]'); await p.waitForSelector('#row-share');
   const mrows = await p.$$eval('.nav-row .nav-text .bold', (e) => e.map((x) => x.textContent).join(','));
   log('me rows', mrows.startsWith('分享給另一半,我們,通知,整理紀錄,備份與匯出,帳號與安全,外觀') && mrows.endsWith('其他'), mrows);
   await p.screenshot({ path: SHOT('b-me.png') });
