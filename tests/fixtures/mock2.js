@@ -172,7 +172,7 @@
           mine: cur.revealed_at ? null : mine ? { answers: mine.answers, guesses: mine.guesses, submitted_at: mine.submitted_at } : null };
         if (cur.revealed_at && now < openUntil) {
           const prev = rounds[1];
-          reveal = { answers: Object.fromEntries(ansOf(cur.id).map((a) => [a.uid, { answers: a.answers, guesses: a.guesses, hits: a.hits }])),
+          reveal = { answers: Object.fromEntries(ansOf(cur.id).map((a) => [a.uid, { answers: a.answers, guesses: a.guesses, hits: a.hits, misses: a.misses || [] }])),
             prev: prev ? { id: prev.id, started_at: prev.started_at, questions: prev.questions, answers: Object.fromEntries(ansOf(prev.id).map((a) => [a.uid, a.answers])) } : null };
         }
       }
@@ -221,6 +221,16 @@
       if (!r || !r.revealed_at) throw new Error('找不到這一回');
       const row = S.quiz.answers.find((x) => x.round_id === r.id && x.uid === u.id);
       row.hits = a.p_hit ? [...new Set([...row.hits, a.p_qid])] : row.hits.filter((x) => x !== a.p_qid);
+    },
+    quiz_mark(S, u, a) {
+      if (S.noQuizMark) throw new Error('Could not find the function public.quiz_mark');
+      if (!['hit', 'miss', ''].includes(a.p_verdict || '')) throw new Error('判定只能是猜中或沒猜中');
+      const r = (S.quiz || { rounds: [] }).rounds.find((x) => x.id === a.p_round);
+      if (!r || !r.revealed_at) throw new Error('找不到這一回');
+      const row = S.quiz.answers.find((x) => x.round_id === r.id && x.uid === u.id);
+      row.hits = row.hits.filter((x) => x !== a.p_qid); row.misses = (row.misses || []).filter((x) => x !== a.p_qid);
+      if (a.p_verdict === 'hit') row.hits.push(a.p_qid);
+      if (a.p_verdict === 'miss') row.misses.push(a.p_qid);
     },
     partner_set_name(S, u, a) {
       const n = (a.p_name || '').trim(); if (!n || n.length > 20) throw new Error('名字要 1 到 20 個字');

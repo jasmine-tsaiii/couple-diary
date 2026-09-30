@@ -276,6 +276,15 @@ const CloudDB = CLOUD_ENABLED ? (() => {
     async quizSave(round, answers, guesses, submit) { return check(await client.rpc('quiz_save', { p_round: round, p_answers: answers, p_guesses: guesses, p_submit: !!submit })); },
     async quizTrim(round, keep) { check(await client.rpc('quiz_trim', { p_round: round, p_keep: keep })); },
     async quizMarkHit(round, qid, hit) { check(await client.rpc('quiz_mark_hit', { p_round: round, p_qid: qid, p_hit: !!hit })); },
+    // 判定三種狀態：'hit' 猜中、'miss' 沒猜中、'' 取消；資料庫還沒更新（沒有 quiz_mark）時退回舊版，只能記猜中
+    async quizMark(round, qid, verdict) {
+      const r = await client.rpc('quiz_mark', { p_round: round, p_qid: qid, p_verdict: verdict || '' });
+      if (r.error && /quiz_mark\b|function/i.test(r.error.message || '') && !/判定|找不到|封存/.test(r.error.message || '')) {
+        check(await client.rpc('quiz_mark_hit', { p_round: round, p_qid: qid, p_hit: verdict === 'hit' }));
+        return;
+      }
+      check(r);
+    },
     async deleteShare() {
       check(await client.from('shares').delete().eq('owner', userId()));
     },

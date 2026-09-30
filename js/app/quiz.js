@@ -277,46 +277,69 @@ function viewQuizAnswer(r, mine, otherName, otherDone) {
 function viewQuizReveal(st, r, me, other, otherName) {
   const A = st.reveal.answers || {};
   const P = st.reveal.prev;
-  const mineA = A[me] || { answers: {}, guesses: {}, hits: [] };
-  const theirA = A[other] || { answers: {}, guesses: {}, hits: [] };
+  const blank = { answers: {}, guesses: {}, hits: [], misses: [] };
+  const mineA = A[me] || blank;
+  const theirA = A[other] || blank;
   const daysLeft = Math.max(1, Math.ceil((Date.parse(r.open_until) - Date.now()) / 86400000));
   const myName = st.names[me] || '你';
   const canRecord = !isPartner() || CloudDB.isBoundPartner();
-  // 猜中：我判定對方猜「我」的答案（記在我的 hits）；對方判定我猜他的（記在他的 hits）
+  const total = r.questions.length;
+  // 判定：我判定對方猜「我」的答案（記在我的 hits／misses）；對方判定我猜他的（記在他的）
+  const verdict = (row, qid) => ((row.hits || []).includes(qid) ? 'hit' : (row.misses || []).includes(qid) ? 'miss' : '');
   const iGuessedRight = (theirA.hits || []).length;
   const theyGuessedRight = (mineA.hits || []).length;
-  const block = (q, uid, who) => {
-    const own = uid === me ? mineA : theirA;
-    const guesser = uid === me ? theirA : mineA;
-    const now = (own.answers || {})[q.id] || '';
+  const prevLine = (uid, q, now) => {
     const before = P && P.answers && P.answers[uid] ? P.answers[uid][q.id] : undefined;
-    const guess = (guesser.guesses || {})[q.id] || '';
-    const hit = (own.hits || []).includes(q.id);
-    return `<div class="quiz-person">
-        <div class="small bold">${esc(who)}</div>
-        ${before !== undefined ? `<div class="quiz-line"><span class="quiz-tag">上次</span><span class="muted">${esc(before)}</span></div>` : ''}
-        <div class="quiz-line"><span class="quiz-tag now">這次</span><span>${esc(now)}</span>${before !== undefined ? `<span class="quiz-diff ${quizSame(before, now) ? '' : 'changed'}">${quizSame(before, now) ? '沒變' : '變了'}</span>` : ''}</div>
-        ${guess ? `<div class="quiz-line"><span class="quiz-tag">${esc(uid === me ? otherName : myName)}猜</span><span>${esc(guess)}</span>
-          ${uid === me ? `<button class="btn small ${hit ? '' : 'secondary'}" data-qhit="${esc(q.id)}" data-on="${hit ? 1 : 0}">${hit ? '猜中了 📮' : '猜中了嗎？'}</button>` : (hit ? '<span class="quiz-diff changed">猜中 📮</span>' : '')}</div>` : ''}
-      </div>`;
+    if (before === undefined) return '';
+    return `<div class="quiz-prev">上次：${esc(before)}${quizSame(before, now) ? '' : '<span class="quiz-changed">變了</span>'}</div>`;
   };
-  app.innerHTML = `${quizTop(`第 ${r.no} 回揭曉`)}
-    <div class="card" style="gap:4px;background:var(--happy-bg);border-color:transparent">
-      <div class="bold" style="color:var(--happy-dark)">你猜中 ${iGuessedRight} 題、${esc(otherName)}猜中 ${theyGuessedRight} 題</div>
-      <div class="small" style="color:var(--happy-dark)">對方猜你的答案，猜中了就幫他按「猜中了」，他會拿到一枚郵戳。</div>
-      <div class="small" style="color:var(--happy-dark)">還可以看 ${daysLeft} 天，之後會封存成時光膠囊。${P ? '' : '這是第一回，下一回就能看到「上次的你」。'}</div>
+  const mySide = (q) => {
+    const now = (mineA.answers || {})[q.id] || '';
+    const guess = (theirA.guesses || {})[q.id] || '';
+    const v = verdict(mineA, q.id);
+    return `<div class="quiz-label">你的答案</div>
+      ${prevLine(me, q, now)}
+      <div class="quiz-bubble">${esc(now)}</div>
+      ${guess ? `<div class="quiz-quote"><div class="quiz-label">${esc(otherName)} 猜你會說</div><div>${esc(guess)}</div></div>
+        <div class="quiz-ask">${esc(otherName)} 猜得準嗎？由你來判定</div>
+        <div class="quiz-judge">
+          <button class="btn small ${v === 'hit' ? '' : 'secondary'}" data-qmark="${esc(q.id)}" data-v="hit" aria-pressed="${v === 'hit'}">猜中了 📮</button>
+          <button class="btn small ${v === 'miss' ? 'miss-on' : 'secondary'}" data-qmark="${esc(q.id)}" data-v="miss" aria-pressed="${v === 'miss'}">沒猜中</button>
+        </div>` : ''}`;
+  };
+  const theirSide = (q) => {
+    const now = (theirA.answers || {})[q.id] || '';
+    const guess = (mineA.guesses || {})[q.id] || '';
+    const v = verdict(theirA, q.id);
+    const tag = v === 'hit' ? `${esc(otherName)} 說：猜中 📮` : v === 'miss' ? `${esc(otherName)} 說：差一點` : `等 ${esc(otherName)} 判定中…`;
+    return `<div class="quiz-label">${esc(otherName)} 的答案</div>
+      ${prevLine(other, q, now)}
+      <div class="quiz-bubble">${esc(now)}</div>
+      ${guess ? `<div class="quiz-quote"><div class="quiz-label">你猜他會說</div><div>${esc(guess)}</div></div>
+        <span class="quiz-verdict ${v}">${tag}</span>` : ''}`;
+  };
+  app.innerHTML = `<div class="quiz-sticky">${quizTop(`第 ${r.no} 回揭曉`)}</div>
+    <div class="card quiz-score">
+      <div class="quiz-score-row">
+        <div class="quiz-score-box"><div class="quiz-score-n">${iGuessedRight} / ${total}</div><div class="small">你猜中${esc(otherName)}</div></div>
+        <div class="quiz-score-box"><div class="quiz-score-n">${theyGuessedRight} / ${total}</div><div class="small">${esc(otherName)}猜中你</div></div>
+      </div>
+      <div class="small">還可以看 ${daysLeft} 天，之後封存成時光膠囊。${P ? '' : '下一回就能看到「上次的你」。'}</div>
     </div>
-    ${r.questions.map((q, i) => `<div class="card" style="gap:8px">
-        <div class="bold">${i + 1}. ${esc(q.text)}</div>
-        ${block(q, me, '你')}
-        ${block(q, other, otherName)}
-        ${canRecord ? `<button class="btn small secondary" data-qrec="${esc(q.id)}" style="align-self:flex-start">記成美好時刻</button>` : ''}
+    ${r.questions.map((q, i) => `<div class="card quiz-rev" style="gap:8px">
+        <div class="bold quiz-rev-q">${i + 1}. ${esc(q.text)}</div>
+        ${mySide(q)}
+        <div class="quiz-split"></div>
+        ${theirSide(q)}
+        ${canRecord ? `<button class="btn small secondary" data-qrec="${esc(q.id)}" style="align-self:flex-start;margin-top:4px">記成美好時刻</button>` : ''}
       </div>`).join('')}
     ${quizHistoryHtml(st)}`;
-  app.querySelectorAll('[data-qhit]').forEach((b) => b.addEventListener('click', () => withBusy(b, '…', async () => {
-    const on = b.dataset.on !== '1';
-    try { await CloudDB.quizMarkHit(r.id, b.dataset.qhit, on); } catch (e) { toast(e.message || '存不進去，請稍後再試'); return; }
-    await viewQuiz();
+  app.querySelectorAll('[data-qmark]').forEach((b) => b.addEventListener('click', () => withBusy(b, '…', async () => {
+    // 再按一次同一顆＝取消判定
+    const v = b.getAttribute('aria-pressed') === 'true' ? '' : b.dataset.v;
+    try { await CloudDB.quizMark(r.id, b.dataset.qmark, v); } catch (e) { toast(e.message || '存不進去，請稍後再試'); return; }
+    track('quiz_mark', { v: v || 'clear' });
+    await keepPlace(() => viewQuiz());
   })));
   app.querySelectorAll('[data-qrec]').forEach((b) => b.addEventListener('click', () => {
     const q = r.questions.find((x) => x.id === b.dataset.qrec);

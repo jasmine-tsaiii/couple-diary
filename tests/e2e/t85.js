@@ -93,9 +93,34 @@ const SHOT = (n) => (process.env.SHOT_DIR || '.') + '/' + n;
   log('revealed', (await p.textContent('#app')).includes('揭曉') && (await p.textContent('#app')).includes('主人的答案c3'));
   // 主人猜的「打電動」出現在小明那一題，小明判定：沒猜中；小明猜的「一起吃早餐吧」出現在主人那一題
   await as(owner); await openQuiz();
-  await p.click('[data-qhit="c1"]'); await p.waitForTimeout(700);
-  log('hit marked', (await p.textContent('[data-qhit="c1"]')).includes('猜中了 📮') && (await p.textContent('#app')).includes('小明猜中 1 題'));
+  const box2 = async () => (await p.textContent('.quiz-score-box:nth-child(2)')).replace(/\s+/g, '');
+  const pressed = async (v) => p.getAttribute(`[data-qmark="c1"][data-v="${v}"]`, 'aria-pressed');
+  log('reveal layout', (await p.textContent('#app')).includes('小明 猜你會說') && (await p.textContent('#app')).includes('由你來判定') && !(await p.textContent('#app')).includes('這次') && await box2() === '0/8小明猜中你');
+  log('no judge buttons without guess', await p.locator('[data-qmark="c3"]').count() === 0);
+  await p.click('[data-qmark="c1"][data-v="miss"]'); await p.waitForTimeout(700);
+  log('miss marked', await pressed('miss') === 'true' && await pressed('hit') === 'false' && await box2() === '0/8小明猜中你');
+  await p.click('[data-qmark="c1"][data-v="hit"]'); await p.waitForTimeout(700);
+  log('hit marked', await pressed('hit') === 'true' && await pressed('miss') === 'false' && await box2() === '1/8小明猜中你');
   await p.screenshot({ path: SHOT('quiz-reveal.png'), fullPage: true });
+  await p.emulateMedia({ colorScheme: 'dark' }); await p.evaluate(() => window.scrollTo(0, 60)); await p.waitForTimeout(300);
+  log('header stays on top when scrolled', await p.evaluate(() => Math.round(document.querySelector('.quiz-sticky').getBoundingClientRect().top) === 0));
+  await p.screenshot({ path: SHOT('quiz-reveal-dark.png') });
+  await p.emulateMedia({ colorScheme: 'light' }); await p.evaluate(() => window.scrollTo(0, 0));
+  await p.click('[data-qmark="c1"][data-v="hit"]'); await p.waitForTimeout(700);
+  log('tap again clears', await pressed('hit') === 'false' && await pressed('miss') === 'false');
+  await p.click('[data-qmark="c1"][data-v="hit"]'); await p.waitForTimeout(700);
+  // 另一半看到主人的判定
+  await as(pid); await openQuiz();
+  log('partner sees verdict', (await p.textContent('.quiz-verdict.hit')).includes('說：猜中 📮') && (await p.textContent('#app')).includes('你猜他會說'));
+  await p.screenshot({ path: SHOT('quiz-reveal-partner.png'), fullPage: true });
+  // 舊版資料庫（沒有 quiz_mark）：退回只記猜中
+  await as(owner); await openQuiz();
+  await mutate("S.noQuizMark = true;");
+  await openQuiz();
+  await p.click('[data-qmark="c1"][data-v="hit"]'); await p.waitForTimeout(700);
+  log('old db fallback clears hit', await pressed('hit') === 'false');
+  await p.click('[data-qmark="c1"][data-v="hit"]'); await p.waitForTimeout(700);
+  await mutate("delete S.noQuizMark;");
   // 記成美好時刻
   await p.click('[data-qrec="c1"]'); await p.waitForSelector('#f-title');
   log('prefill record', (await p.inputValue('#f-title')).startsWith('重新認識你：'));
@@ -120,7 +145,7 @@ const SHOT = (n) => (process.env.SHOT_DIR || '.') + '/' + n;
   await answerAll((id) => '小明新答案' + id);
   await p.click('#q-submit'); await p.waitForTimeout(900);
   const r2 = await p.textContent('#app');
-  log('round 2 shows last time', r2.includes('第 2 回揭曉') && r2.includes('上次') && r2.includes('主人的答案c1') && r2.includes('沒變') && r2.includes('變了'));
+  log('round 2 shows last time', r2.includes('第 2 回揭曉') && r2.includes('上次：') && r2.includes('主人的答案c1') && r2.includes('變了'));
   await p.screenshot({ path: SHOT('quiz-reveal-2.png'), fullPage: true });
   const overflow = await p.evaluate(() => document.documentElement.scrollWidth > window.innerWidth);
   log('no horizontal overflow', !overflow);

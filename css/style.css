@@ -659,3 +659,23 @@ body.quiz-focus #app { padding-bottom: calc(96px + env(safe-area-inset-bottom));
 .daily-past[open] summary { margin-bottom: 8px; }
 .daily-past-body { display: flex; flex-direction: column; gap: 8px; }
 .daily-today .prose, .daily-past .prose { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; }
+
+/* 重新認識你：揭曉頁（一問一答，由你判定對方猜得準不準） */
+.quiz-sticky { position: sticky; top: 0; z-index: 21; background: var(--bg); margin: calc(-20px - env(safe-area-inset-top)) -20px 0; padding: calc(12px + env(safe-area-inset-top)) 20px 6px; }
+.quiz-score { gap: 10px; background: var(--happy-bg); border-color: transparent; color: var(--happy-dark); }
+.quiz-score-row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.quiz-score-box { background: var(--card); border-radius: 14px; padding: 12px 8px; text-align: center; }
+.quiz-score-n { font-size: 30px; font-weight: 800; line-height: 1.15; color: var(--happy-text); }
+.quiz-rev-q { font-size: 17px; line-height: 1.45; }
+.quiz-label { font-size: 13px; color: var(--muted); }
+.quiz-bubble { background: var(--bg); border-radius: 14px; padding: 10px 14px; font-size: 16px; line-height: 1.5; overflow-wrap: anywhere; }
+.quiz-prev { font-size: 13px; color: var(--muted); opacity: .85; overflow-wrap: anywhere; }
+.quiz-changed { margin-left: 6px; font-size: 12px; font-weight: 700; color: var(--happy-dark); background: var(--happy-bg); border-radius: 999px; padding: 1px 8px; white-space: nowrap; }
+.quiz-quote { border-left: 3px solid var(--happy); padding: 2px 0 2px 12px; line-height: 1.5; overflow-wrap: anywhere; }
+.quiz-ask { font-size: 14px; font-weight: 700; color: var(--happy-text); margin-top: 2px; }
+.quiz-judge { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.quiz-judge .btn { width: 100%; min-height: 44px; }
+.quiz-judge .btn.miss-on { background: var(--soft); color: var(--card); border: 1px solid var(--soft); }
+.quiz-split { border-top: 1px dashed var(--field); margin: 6px 0 2px; }
+.quiz-verdict { align-self: flex-start; font-size: 13px; padding: 4px 12px; border-radius: 999px; background: var(--bg); color: var(--muted); }
+.quiz-verdict.hit { background: var(--happy-bg); color: var(--happy-dark); font-weight: 700; }

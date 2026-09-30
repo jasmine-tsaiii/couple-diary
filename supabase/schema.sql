@@ -1942,6 +1942,8 @@ create table if not exists public.quiz_answers (
   updated_at    timestamptz not null default now(),
   primary key (round_id, uid)
 );
+-- 判定三種狀態：沒按（等判定）／猜中（hits）／沒猜中（misses）
+alter table public.quiz_answers add column if not exists misses jsonb not null default '[]'::jsonb;
 alter table public.quiz_rounds enable row level security;
 alter table public.quiz_answers enable row level security;
 revoke all on public.quiz_rounds from anon, authenticated;
@@ -2000,7 +2002,7 @@ begin
     if v_open then
       select * into prev from public.quiz_rounds where space = v_space and members = v_members and started_at < cur.started_at order by started_at desc limit 1;
       v_reveal := jsonb_build_object(
-        'answers', (select coalesce(jsonb_object_agg(a.uid, jsonb_build_object('answers', a.answers, 'guesses', a.guesses, 'hits', a.hits)), '{}'::jsonb) from public.quiz_answers a where a.round_id = cur.id),
+        'answers', (select coalesce(jsonb_object_agg(a.uid, jsonb_build_object('answers', a.answers, 'guesses', a.guesses, 'hits', a.hits, 'misses', a.misses)), '{}'::jsonb) from public.quiz_answers a where a.round_id = cur.id),
         'prev', case when prev.id is not null then jsonb_build_object('id', prev.id, 'started_at', prev.started_at, 'questions', prev.questions,
           'answers', (select coalesce(jsonb_object_agg(a.uid, a.answers), '{}'::jsonb) from public.quiz_answers a where a.round_id = prev.id)) end);
     end if;
@@ -2138,11 +2140,34 @@ begin
   if not exists (select 1 from jsonb_array_elements(r.questions) q where q ->> 'id' = p_qid) then raise exception '找不到這一題'; end if;
   update public.quiz_answers set hits = case
       when p_hit then (select jsonb_agg(distinct x) from jsonb_array_elements_text(hits || to_jsonb(p_qid)) x)
-      else coalesce((select jsonb_agg(x) from jsonb_array_elements_text(hits) x where x <> p_qid), '[]'::jsonb) end
+      else coalesce((select jsonb_agg(x) from jsonb_array_elements_text(hits) x where x <> p_qid), '[]'::jsonb) end,
+    misses = case when p_hit then coalesce((select jsonb_agg(x) from jsonb_array_elements_text(misses) x where x <> p_qid), '[]'::jsonb) else misses end
     where round_id = r.id and uid = auth.uid();
 end $$;
 revoke all on function public.quiz_mark_hit(uuid, text, boolean) from public, anon;
 grant execute on function public.quiz_mark_hit(uuid, text, boolean) to authenticated;
+
+-- 新版判定：p_verdict = 'hit' 猜中、'miss' 沒猜中、'' 取消判定（回到等判定）
+create or replace function public.quiz_mark(p_round uuid, p_qid text, p_verdict text) returns void
+language plpgsql security definer set search_path = public as $$
+declare
+  v_space uuid := public.quiz_space();
+  r public.quiz_rounds;
+begin
+  if coalesce(p_verdict, '') not in ('hit', 'miss', '') then raise exception '判定只能是猜中或沒猜中'; end if;
+  select * into r from public.quiz_rounds where id = p_round;
+  if r.id is null or r.space is distinct from v_space or not (auth.uid() = any (r.members)) then raise exception '找不到這一回'; end if;
+  if r.revealed_at is null or now() >= public.quiz_open_until(r.revealed_at) then raise exception '這一回已經封存了'; end if;
+  if not exists (select 1 from jsonb_array_elements(r.questions) q where q ->> 'id' = p_qid) then raise exception '找不到這一題'; end if;
+  update public.quiz_answers set
+      hits = coalesce((select jsonb_agg(distinct x) from jsonb_array_elements_text(hits || case when p_verdict = 'hit' then to_jsonb(array[p_qid]) else '[]'::jsonb end) x
+                       where x <> p_qid or p_verdict = 'hit'), '[]'::jsonb),
+      misses = coalesce((select jsonb_agg(distinct x) from jsonb_array_elements_text(misses || case when p_verdict = 'miss' then to_jsonb(array[p_qid]) else '[]'::jsonb end) x
+                       where x <> p_qid or p_verdict = 'miss'), '[]'::jsonb)
+    where round_id = r.id and uid = auth.uid();
+end $$;
+revoke all on function public.quiz_mark(uuid, text, text) from public, anon;
+grant execute on function public.quiz_mark(uuid, text, text) to authenticated;
 
 -- ============================================================
 -- 每天一題（2026-09-30）：每天一題開放式問題，兩人各自寫，兩人都寫完才揭曉；不猜、不計分
