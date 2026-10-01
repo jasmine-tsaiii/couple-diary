@@ -688,3 +688,19 @@ body.quiz-focus #app { padding-bottom: calc(96px + env(safe-area-inset-bottom));
 .pick-list .pick-rec { display: flex; justify-content: space-between; gap: 10px; width: 100%; text-align: left; white-space: normal; overflow-wrap: anywhere; }
 .pick-list .pick-rec .small { flex: none; }
 .pick-list .pick-rec.on .small { color: inherit; opacity: .85; }
+
+/* 開 App 時的載入畫面：兩隻啾啾輪流跳一跳，中間冒愛心（動態減少時不動） */
+.boot-loader { min-height: 60vh; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; position: relative; color: var(--muted); animation: ld-in .3s ease .15s both; }
+.boot-loader .ld-svg { width: 180px; height: auto; overflow: visible; }
+.ld-bird { transform-box: fill-box; transform-origin: 50% 100%; animation: ld-hop 1.2s ease-in-out infinite; }
+.ld-r { animation-delay: .6s; }
+.ld-heart { position: absolute; top: calc(50% - 110px); left: 50%; color: #F29BAE; font-size: 22px; transform: translateX(-50%); animation: ld-heart 2.4s ease-in-out infinite; }
+.ld-text { font-size: 15px; letter-spacing: 2px; }
+.ld-dots i { font-style: normal; display: inline-block; animation: ld-dot 1.2s ease-in-out infinite; }
+.ld-dots i:nth-child(2) { animation-delay: .2s; }
+.ld-dots i:nth-child(3) { animation-delay: .4s; }
+@keyframes ld-in { from { opacity: 0; } to { opacity: 1; } }
+@keyframes ld-hop { 0%, 60%, 100% { transform: translateY(0) scaleY(1); } 15% { transform: translateY(0) scaleY(.9); } 30% { transform: translateY(-14%) scaleY(1.04); } 45% { transform: translateY(0) scaleY(.96); } }
+@keyframes ld-heart { 0% { opacity: 0; transform: translate(-50%, 12px) scale(.6); } 30% { opacity: 1; transform: translate(-50%, 0) scale(1); } 70% { opacity: 1; transform: translate(-50%, -14px) scale(1.05); } 100% { opacity: 0; transform: translate(-50%, -26px) scale(.9); } }
+@keyframes ld-dot { 0%, 60%, 100% { transform: translateY(0); opacity: .4; } 30% { transform: translateY(-4px); opacity: 1; } }
+@media (prefers-reduced-motion: reduce) { .boot-loader, .ld-bird, .ld-heart, .ld-dots i { animation: none; } .ld-heart { opacity: 1; } }
