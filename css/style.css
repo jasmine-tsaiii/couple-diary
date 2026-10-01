@@ -684,3 +684,6 @@ body.quiz-focus #app { padding-bottom: calc(96px + env(safe-area-inset-bottom));
 .quiz-split { border-top: 1px dashed var(--field); margin: 6px 0 2px; }
 .quiz-verdict { align-self: flex-start; font-size: 13px; padding: 4px 12px; border-radius: 999px; background: var(--bg); color: var(--muted); }
 .quiz-verdict.hit { background: var(--happy-bg); color: var(--happy-dark); font-weight: 700; }
+.pick-list { display: flex; flex-direction: column; gap: 6px; }
+.pick-list .pick-rec { display: flex; justify-content: space-between; gap: 10px; width: 100%; text-align: left; white-space: normal; overflow-wrap: anywhere; }
+.pick-list .pick-rec .small { flex: none; }

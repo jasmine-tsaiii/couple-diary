@@ -40,6 +40,16 @@ const OUT = (process.env.SHOT_DIR || '.') + '/';
   console.log('moods most used first', st.moods[0] === '🥰' && st.moods.length === 4);
   console.log('cleared counted', st.cleared === 1);
   await save('card-month.png');
+  // 自己挑：取消拉麵、改放原本沒選到的那則
+  const chips = await p.$$eval('[data-pick]', (bs) => bs.map((b) => [b.textContent, b.classList.contains('on')]));
+  console.log('pick list shows all 4, 3 on', chips.length === 4 && chips.filter((c) => c[1]).length === 3);
+  await p.click('[data-pick]:has-text("吃到超好吃的拉麵")'); await p.waitForTimeout(400);
+  const offTitle = chips.find((c) => !c[1])[0].replace(/\d+\/\d+$/, '').replace('📷 ', '').trim();
+  await p.click('[data-pick]:not(.on):not(:has-text("拉麵"))'); await p.waitForTimeout(2000);
+  const on = await p.$$eval('[data-pick].on', (bs) => bs.map((b) => b.textContent));
+  console.log('pick changes', on.length === 3 && !on.some((t) => t.includes('拉麵')) && on.some((t) => t.includes(offTitle)));
+  await save('card-month-picked.png');
+  await p.screenshot({ path: OUT + 'card-pick-ui.png', fullPage: true });
   await p.click('[data-size="square"]'); await p.waitForTimeout(2500);
   console.log('square size', await p.evaluate(() => document.getElementById('card-img').naturalHeight) === 1080);
   await save('card-month-square.png');

@@ -472,6 +472,8 @@ async function viewCard(kind, id) {
   } else { go('#/cards'); return; }
 
   const opt = { size: 'story', names: true, hard: false, highlight: true, text: false, photo: 0 };
+  // 週／月卡可以自己挑要放哪幾則美好時刻（預設：有照片的優先）
+  const periodPool = data && data.range ? all.filter((r) => r.type === 'happy' && cardSafe(r) && inRange(r.date, data.range)).sort(byDateDesc) : [];
   const nPhotos = kind === 'record' ? (data.photoIds || []).length : 0;
   app.className = 'theme-happy';
   app.innerHTML = `
@@ -486,6 +488,7 @@ async function viewCard(kind, id) {
       ${kind === 'week' || kind === 'month' ? '<button class="chip on" data-opt="highlight">照片上的標題</button><button class="chip" data-opt="hard">烏雲和吵架的數字</button>' : ''}
       ${kind === 'record' && data.description ? '<button class="chip" data-opt="text">內容</button>' : ''}
     </div></div>
+    ${periodPool.length > 1 ? `<div class="field"><div class="label">放哪幾則（最多 3 則，照點的順序排）</div><div class="pick-list">${periodPool.map((r) => `<button class="chip pick-rec ${data.stats.picks.includes(r) ? 'on' : ''}" data-pick="${esc(r.id)}">${(r.photoIds || []).length ? '📷 ' : ''}${esc(r.title)}<span class="muted small">${shortDate(r.date)}</span></button>`).join('')}</div></div>` : ''}
     ${nPhotos > 1 ? `<div class="field"><div class="label">用哪張照片</div><div class="chips">${Array.from({ length: nPhotos }, (_, i) => `<button class="chip ${i === 0 ? 'on' : ''}" data-photo="${i}">第 ${i + 1} 張</button>`).join('')}</div></div>` : ''}
     <button class="btn" id="card-share">分享小卡</button>
     <div class="small muted" style="text-align:center">手機會跳出分享選單，可以傳到 IG、LINE，或選「儲存影像」存到相簿。</div>
@@ -512,6 +515,15 @@ async function viewCard(kind, id) {
   app.querySelectorAll('[data-opt]').forEach((b) => b.addEventListener('click', () => {
     opt[b.dataset.opt] = !opt[b.dataset.opt];
     b.classList.toggle('on', opt[b.dataset.opt]);
+    redraw();
+  }));
+  app.querySelectorAll('[data-pick]').forEach((b) => b.addEventListener('click', () => {
+    const r = periodPool.find((x) => x.id === b.dataset.pick);
+    const picks = data.stats.picks;
+    const at = picks.indexOf(r);
+    if (at >= 0) { if (picks.length === 1) { toast('至少要留一則'); return; } picks.splice(at, 1); } else { if (picks.length >= 3) { toast('最多放 3 則，先取消一則'); return; } picks.push(r); }
+    app.querySelectorAll('[data-pick]').forEach((x) => x.classList.toggle('on', picks.some((p) => p.id === x.dataset.pick)));
+    track('card_pick', { kind });
     redraw();
   }));
   app.querySelectorAll('[data-photo]').forEach((b) => b.addEventListener('click', () => {
