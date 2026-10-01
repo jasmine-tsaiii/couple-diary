@@ -45,6 +45,11 @@ function periodStats(all, range) {
     cleared: all.filter((r) => r.type === 'cloud' && tsIn(r.clearedAt, range)).length,
     resolved: all.filter((r) => r.type === 'fight' && r.status === 'resolved' && tsIn(r.updatedAt, range)).length,
     highlight: happy.filter(cardSafe).sort(byDateDesc)[0] || null,
+    // 拼貼用：有照片的優先，再來是新的；最多 3 則
+    picks: happy.filter(cardSafe).sort((a, b) => ((b.photoIds || []).length ? 1 : 0) - ((a.photoIds || []).length ? 1 : 0) || byDateDesc(a, b)).slice(0, 3),
+    // 這段時間最常出現的心情 emoji（最多 4 個）
+    moods: Object.entries(happy.filter(cardSafe).flatMap((r) => r.emojis || []).reduce((m, e) => { m[e] = (m[e] || 0) + 1; return m; }, {}))
+      .sort((a, b) => b[1] - a[1]).slice(0, 4).map(([e]) => e),
   };
 }
 
@@ -221,54 +226,116 @@ async function drawMascot(g, mood, x, y, w) {
   if (m) g.drawImage(m, x, y, w, w * 112 / 160);
 }
 
+// 拍立得：白框、微微歪，上緣貼一段紙膠帶；沒有照片就用淡色底＋大 emoji
+const POLA_BG = [['#F6C9A8', '#E58F9E'], ['#BFD8E8', '#9DB5D9'], ['#F3E2B0', '#E8C27A'], ['#CFE3C4', '#9CC3A0']];
+function polaroid(g, p, img, i, caption, date, opt) {
+  const { cx, cy, w, h, deg } = p;
+  const inset = Math.round(w * 0.045); const capH = Math.round(h * 0.15);
+  g.save(); g.translate(cx, cy); g.rotate(deg * Math.PI / 180);
+  g.shadowColor = 'rgba(90,64,40,0.28)'; g.shadowBlur = 26; g.shadowOffsetY = 10;
+  g.fillStyle = '#FFFFFF'; g.fillRect(-w / 2, -h / 2, w, h);
+  g.shadowColor = 'transparent';
+  const iw = w - inset * 2; const ih = h - inset - capH;
+  g.save(); g.beginPath(); g.rect(-w / 2 + inset, -h / 2 + inset, iw, ih); g.clip();
+  if (img) {
+    const sc = Math.max(iw / img.width, ih / img.height);
+    g.drawImage(img, -w / 2 + inset + (iw - img.width * sc) / 2, -h / 2 + inset + (ih - img.height * sc) / 2, img.width * sc, img.height * sc);
+  } else {
+    const [c0, c1] = POLA_BG[i % POLA_BG.length];
+    const gr = g.createLinearGradient(-w / 2, -h / 2, w / 2, h / 2); gr.addColorStop(0, c0); gr.addColorStop(1, c1);
+    g.fillStyle = gr; g.fillRect(-w / 2 + inset, -h / 2 + inset, iw, ih);
+    g.textAlign = 'center'; g.textBaseline = 'middle'; g.font = `${Math.round(Math.min(iw, ih) * 0.36)}px "Apple Color Emoji","Noto Color Emoji",sans-serif`;
+    g.fillText(opt.emoji || '💗', 0, -h / 2 + inset + ih / 2);
+    g.textBaseline = 'alphabetic';
+  }
+  g.restore();
+  // 照片下方：標題（手寫字）＋日期
+  const fs = Math.round(capH * 0.4);
+  const by = h / 2 - capH * 0.36;
+  g.textAlign = 'right'; g.fillStyle = CARD_MUTED; g.font = `500 ${Math.round(fs * 0.8)}px ${SERIF}`;
+  const dw = date ? g.measureText(date).width : 0;
+  if (date) g.fillText(date, w / 2 - inset, by);
+  if (caption) {
+    g.textAlign = 'left'; g.fillStyle = CARD_INK; g.font = `400 ${fs}px ${KAI}`;
+    const [line] = wrapText(g, caption, iw - dw - 20, 1);
+    g.fillText(line, -w / 2 + inset + 2, by);
+  }
+  g.restore();
+  // 紙膠帶
+  const r = deg * Math.PI / 180; const tx = cx + Math.sin(r) * (h / 2); const ty = cy - Math.cos(r) * (h / 2);
+  washi(g, tx, ty, Math.min(220, w * 0.42), Math.round(w * 0.11), deg * 2 + (i % 2 ? 6 : -6), CARD_TAPE);
+}
+// 圓形數字貼紙
+function sticker(g, cx, cy, r, n, label, color, deg) {
+  g.save(); g.translate(cx, cy); g.rotate(deg * Math.PI / 180);
+  g.shadowColor = 'rgba(90,64,40,0.25)'; g.shadowBlur = 18; g.shadowOffsetY = 8;
+  g.fillStyle = color; g.beginPath(); g.arc(0, 0, r, 0, Math.PI * 2); g.fill();
+  g.shadowColor = 'transparent';
+  g.strokeStyle = 'rgba(255,255,255,0.55)'; g.lineWidth = 3; g.setLineDash([6, 7]); g.beginPath(); g.arc(0, 0, r - 12, 0, Math.PI * 2); g.stroke(); g.setLineDash([]);
+  g.textAlign = 'center'; g.fillStyle = '#FFFDF8';
+  g.font = `900 ${Math.round(r * 0.78)}px ${SERIF}`; g.fillText(String(n), 0, r * 0.2);
+  g.font = `500 ${Math.round(r * 0.22)}px ${SERIF}`; spaced(g, label, -g.measureText(label).width / 2 - (label.length - 1) * 2, r * 0.56, 4);
+  g.restore(); g.textAlign = 'left';
+}
+// 拍立得的位置：照張數排，後面的先畫，第一張壓在最上面
+const COLLAGE = {
+  story: {
+    3: [{ cx: 370, cy: 760, w: 480, h: 540, deg: -4 }, { cx: 730, cy: 915, w: 420, h: 480, deg: 5 }, { cx: 385, cy: 1250, w: 400, h: 400, deg: 2 }],
+    2: [{ cx: 390, cy: 800, w: 520, h: 590, deg: -4 }, { cx: 700, cy: 1150, w: 460, h: 500, deg: 5 }],
+    1: [{ cx: 540, cy: 930, w: 640, h: 740, deg: -3 }],
+  },
+  square: {
+    2: [{ cx: 770, cy: 600, w: 320, h: 360, deg: 4 }, { cx: 530, cy: 700, w: 270, h: 290, deg: -6 }],
+    1: [{ cx: 720, cy: 620, w: 360, h: 400, deg: 4 }],
+  },
+};
+
 async function drawSummary(g, W, H, data, opt) {
   const sq = H === W;
   const s = data.stats;
-  const b = paper(g, W, H);
-  const x = b.x + b.pad; const cw = b.w - b.pad * 2;
+  const b = paper(g, W, H, false);
+  const x = b.x + b.pad;
   const limit = footer(g, W, H);
-  let y = b.y + (sq ? 120 : 170);
+  // 標題區
+  let y = b.y + (sq ? 110 : 140);
   kicker(g, x, y, data.range.label, data.range.from === lastMonthRange().from ? '每月回憶' : '每週回憶');
-  y += sq ? 104 : 140;
-  g.font = `900 ${sq ? 80 : 100}px ${SERIF}`;
-  y = title(g, [data.range.title], x, y, sq ? 80 : 100, 0, true);
+  y += sq ? 96 : 120;
+  g.font = `900 ${sq ? 72 : 96}px ${SERIF}`;
+  title(g, [data.range.title], x, y, sq ? 72 : 96, 0, true);
   const nl = namesLine(opt);
-  if (nl) { y += sq ? 62 : 80; g.fillStyle = CARD_MUTED; g.font = `400 ${sq ? 36 : 40}px ${KAI}`; g.fillText(nl, x, y); }
-  // 數字：像帳本一樣一欄一個，中間用點線隔開
-  const items = [['美好時刻', s.happy, '個', CARD_ACCENT]];
-  if (s.cleared) items.push(['烏雲放晴', s.cleared, '次', '#9A6B2C']);
-  if (s.resolved) items.push(['吵架和好', s.resolved, '次', '#5B76A3']);
-  if (opt.hard) { items.push(['烏雲時刻', s.cloud, '則', '#9A6B2C']); items.push(['吵架議題', s.fight, '個', '#5B76A3']); }
-  const cols = items.length === 4 ? 2 : Math.min(items.length, 3);
-  const colW = cw / cols;
-  const rowH = sq ? 170 : 210;
-  y += sq ? 60 : 90;
-  items.forEach(([label, n, unit, color], i) => {
-    const cx = x + (i % cols) * colW + (i % cols ? 36 : 0);
-    const ry = y + Math.floor(i / cols) * rowH;
-    if (i % cols) { g.save(); g.strokeStyle = 'rgba(118,99,90,0.4)'; g.lineWidth = 2; g.setLineDash([2, 8]); g.beginPath(); g.moveTo(cx - 36, ry + 10); g.lineTo(cx - 36, ry + rowH - 40); g.stroke(); g.restore(); }
-    g.textAlign = 'left';
-    g.fillStyle = color; g.font = `900 ${sq ? 92 : 112}px ${SERIF}`; g.fillText(String(n), cx, ry + (sq ? 96 : 118));
-    const nw = g.measureText(String(n)).width;
-    g.font = `400 ${sq ? 34 : 38}px ${KAI}`; g.fillText(unit, cx + nw + 10, ry + (sq ? 96 : 118));
-    g.fillStyle = CARD_MUTED; g.font = `500 ${sq ? 26 : 28}px ${SERIF}`; spaced(g, label, cx + 2, ry + (sq ? 142 : 170), 6);
-  });
-  y += Math.ceil(items.length / cols) * rowH;
-  // 這段期間最想記住的一刻：寫在便條紙上
-  const mw = sq ? 300 : 420; const mh = mw * 112 / 160;
-  if (opt.highlight && s.highlight && !sq) {
-    g.font = `400 40px ${KAI}`;
-    const lines = wrapText(g, s.highlight.title, cw - 120, 3);
-    const nh = 110 + lines.length * 62 + 60;
-    y += 40;
-    note(g, x, y, cw - 40, nh, -1.2);
-    g.fillStyle = CARD_ACCENT; g.font = `700 26px ${SERIF}`; spaced(g, '最想記住的一刻', x + 44, y + 70, 8);
-    g.fillStyle = CARD_INK; g.font = `400 40px ${KAI}`;
-    lines.forEach((l, i) => g.fillText(l, x + 44, y + 138 + i * 62));
-    g.fillStyle = CARD_MUTED; g.font = `500 26px ${SERIF}`; g.fillText(shortDate(s.highlight.date), x + 44, y + 138 + lines.length * 62 + 10);
-    y += nh;
+  if (nl) { y += sq ? 58 : 72; g.fillStyle = CARD_MUTED; g.font = `400 ${sq ? 32 : 38}px ${KAI}`; g.fillText(nl, x, y); }
+  // 拍立得
+  const picks = s.picks || [];
+  const slots = (COLLAGE[sq ? 'square' : 'story'][Math.min(picks.length, sq ? 2 : 3)] || []).slice();
+  const imgs = await Promise.all(picks.map(async (r) => { const id = (r.photoIds || [])[0]; const u = id ? await photoUrl(id) : null; return u ? loadImg(u) : null; }));
+  for (let i = slots.length - 1; i >= 0; i--) {
+    const r = picks[i];
+    polaroid(g, slots[i], imgs[i], i, opt.highlight ? r.title : '', shortDate(r.date), { emoji: (r.emojis || [])[0] });
   }
-  await drawMascot(g, s.happy ? 'celebrate' : 'happy', b.x + b.w - b.pad - mw + 20, Math.max(y + 10, limit - mh - 12), mw);
+  if (!picks.length) {
+    const mw = sq ? 360 : 560;
+    await drawMascot(g, 'happy', sq ? W - b.pad - mw - 40 : (W - mw) / 2, sq ? 380 : 680, mw);
+  }
+  // 數字貼紙
+  const stk = [[s.happy, '個美好', CARD_ACCENT]];
+  if (s.cleared) stk.push([s.cleared, '次放晴', '#9A6B2C']);
+  if (s.resolved) stk.push([s.resolved, '次和好', '#5B76A3']);
+  if (opt.hard) { stk.push([s.cloud, '則烏雲', '#8C7A6B']); stk.push([s.fight, '個議題', '#6F7F99']); }
+  const spots = sq
+    ? [[220, 560, 105, -8], [330, 700, 68, 6], [150, 700, 58, -4], [380, 470, 52, 8], [260, 440, 48, 5]]
+    : picks.length >= 3
+      ? [[800, 1360, 125, -8], [620, 1500, 82, 6], [935, 1545, 74, -5], [760, 1590, 64, 4], [520, 1350, 60, 7]]
+      : [[810, 1480, 115, -8], [630, 1560, 72, 6], [960, 1380, 64, -5], [600, 1400, 58, 4], [950, 1590, 52, 7]];
+  stk.slice(0, spots.length).forEach(([n, label, color], i) => { const [cx, cy, r, d] = spots[i]; sticker(g, cx, cy, r, n, label, color, d); });
+  // 這段時間的心情
+  if (s.moods && s.moods.length) {
+    const my = sq ? limit - 90 : limit - 110;
+    g.textAlign = 'left'; g.fillStyle = CARD_MUTED; g.font = `500 ${sq ? 26 : 30}px ${SERIF}`;
+    spaced(g, '這段時間的心情', x, my, 4);
+    const es = sq ? 50 : 60;
+    g.font = `${es}px "Apple Color Emoji","Noto Color Emoji",sans-serif`;
+    s.moods.forEach((e, i) => g.fillText(e, x + i * es * 1.3, my + (sq ? 70 : 84)));
+  }
 }
 
 async function drawRecord(g, W, H, r, opt) {
@@ -354,7 +421,7 @@ async function renderCard(kind, data, opt) {
   const g = c.getContext('2d');
   const text = JSON.stringify(data && data.title ? data.title : '') + '啾啾日記美好時刻烏雲放晴吵架和好最想記住的一刻在一起第天週年從開始個次則每週每月回憶紀念日—' + namesLine(opt)
     + (kind === 'record' ? `${data.title}${data.description || ''}` : '') + (data && data.range ? data.range.title + data.range.label : '')
-    + (data && data.stats && data.stats.highlight ? data.stats.highlight.title : '') + '0123456789年月日一二三四五六（）' + (NAMES.since ? longDate(NAMES.since) : '');
+    + (data && data.stats && data.stats.picks ? data.stats.picks.map((r) => r.title).join('') : '') + '這段時間的心情個美好次放晴次和好則烏雲個議題' + '0123456789年月日一二三四五六（）' + (NAMES.since ? longDate(NAMES.since) : '');
   await ensureFonts(text);
   if (kind === 'record') await drawRecord(g, W, H, data, opt);
   else if (kind === 'days') await drawDays(g, W, H, data, opt);
@@ -416,7 +483,7 @@ async function viewCard(kind, id) {
     </div></div>
     <div class="field"><div class="label">要放什麼</div><div class="chips">
       <button class="chip on" data-opt="names">名字</button>
-      ${kind === 'week' || kind === 'month' ? '<button class="chip on" data-opt="highlight">一則美好的標題</button><button class="chip" data-opt="hard">烏雲和吵架的數字</button>' : ''}
+      ${kind === 'week' || kind === 'month' ? '<button class="chip on" data-opt="highlight">照片上的標題</button><button class="chip" data-opt="hard">烏雲和吵架的數字</button>' : ''}
       ${kind === 'record' && data.description ? '<button class="chip" data-opt="text">內容</button>' : ''}
     </div></div>
     ${nPhotos > 1 ? `<div class="field"><div class="label">用哪張照片</div><div class="chips">${Array.from({ length: nPhotos }, (_, i) => `<button class="chip ${i === 0 ? 'on' : ''}" data-photo="${i}">第 ${i + 1} 張</button>`).join('')}</div></div>` : ''}
