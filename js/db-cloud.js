@@ -505,6 +505,10 @@ const CloudDB = CLOUD_ENABLED ? (() => {
       const { data, error } = await client.rpc('am_i_admin');
       return !error && data === true;
     },
+    async adminFeedback(limit = 30) {
+      const { data, error } = await client.rpc('admin_feedback', { p_limit: limit });
+      return error ? null : data;
+    },
     async adminStats() {
       const { data, error } = await client.rpc('admin_stats');
       if (error) throw new Error(/沒有權限/.test(error.message) ? '沒有權限' : error.message);

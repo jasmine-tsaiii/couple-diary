@@ -848,3 +848,12 @@ body { background: var(--paper, none), var(--bg); background-attachment: fixed; 
 .plan-big { font-size: 20px; }
 .plus-who { font-size: 14px; }
 .plus-groups { font-size: 13px; padding: 4px 12px; border-radius: 99px; background: var(--resolved-bg); color: var(--resolved-ink); }
+.fb-item { display: flex; flex-direction: column; gap: 4px; padding-top: 10px; border-top: 1px solid var(--line); }
+.fb-item:first-of-type { border-top: 0; padding-top: 0; }
+.mission-box { display: flex; flex-direction: column; gap: 8px; width: 100%; text-align: left; padding: 12px; border-radius: 14px; background: var(--lock-bg); }
+.mission-tabs { gap: 6px; }
+.mission-tabs .chip { font-size: 13px; }
+.mission-list { display: flex; flex-direction: column; gap: 6px; }
+.mission-box .mission-card { display: flex; gap: 8px; align-items: flex-start; font-size: 14px; line-height: 1.5; padding: 10px 12px; border-radius: 12px; background: var(--card); border: 1px solid var(--line); }
+.mission-no { flex: none; width: 20px; height: 20px; border-radius: 50%; background: var(--lock); color: var(--card); font-size: 12px; font-weight: 700; display: grid; place-items: center; margin-top: 2px; }
+.qpack-dlg .tpl-box .btn { width: 100%; }

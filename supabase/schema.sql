@@ -2512,3 +2512,18 @@ drop policy if exists "photos: capsule delete" on storage.objects;
 create policy "photos: capsule delete" on storage.objects
   for delete to authenticated
   using (bucket_id = 'photos' and (storage.foldername(name))[1] = auth.uid()::text and storage.filename(name) like 'cap-%');
+
+-- 數據看板：最新的意見回饋（只有管理員看得到）
+create or replace function public.admin_feedback(p_limit int default 30) returns jsonb
+language plpgsql stable security definer set search_path = public as $$
+begin
+  if not public.is_admin() then raise exception '沒有權限'; end if;
+  return jsonb_build_object(
+    'total', (select count(*) from public.feedback),
+    'week', (select count(*) from public.feedback where created_at >= now() - interval '7 days'),
+    'items', (select coalesce(jsonb_agg(jsonb_build_object('at', f.created_at, 'kind', f.kind, 'message', f.message,
+        'contact', f.contact, 'page', f.page, 'mode', f.mode) order by f.created_at desc), '[]'::jsonb)
+      from (select * from public.feedback order by created_at desc limit least(greatest(coalesce(p_limit, 30), 1), 100)) f));
+end $$;
+revoke all on function public.admin_feedback(int) from public, anon;
+grant execute on function public.admin_feedback(int) to authenticated;

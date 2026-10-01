@@ -80,6 +80,7 @@ async function showPlusSheet(feature, opts = {}) {
     ${opts.free ? '' : '<div class="small muted">解除綁定時，Plus 會留在付費的人身上；已經寫下的內容都不會被刪除。</div>'}
   </div>`;
   document.body.appendChild(box);
+  if (opts.onOpen) opts.onOpen(box);
   const close = () => { box.remove(); if (opts.onClose) opts.onClose(); };
   box.querySelector('#plus-no').addEventListener('click', close);
   box.querySelector('#plus-x').addEventListener('click', close);
@@ -504,10 +505,19 @@ const MISSION_POOLS = [
   ['節日', '🎉', ['讓對方在不知不覺中說出想要的禮物', '幫對方安排一個 10 分鐘的小驚喜']],
 ];
 function missionPackSheet() {
+  const card = (k) => `<div class="mission-list">${MISSION_POOLS[k][2].map((t, i) => `<div class="mission-card"><span class="mission-no">${i + 1}</span>${esc(t)}</div>`).join('')}</div>`;
   showPlusSheet('mission_pack', {
     title: '臥底任務卡包',
-    lead: '臥底任務：抽一張只有你看得到的任務卡，在對方沒發現的情況下完成，最後再一起揭曉。對方可以猜你在做什麼，猜中就算抓包。主題卡包讓任務更貼近你們的狀況。',
-    preview: `<div class="mission-cards">${MISSION_POOLS.map(([name, icon, cards]) => `<div class="mission-pool"><div class="small bold">${icon} ${esc(name)}</div>${cards.map((t) => `<div class="mission-card">${esc(t)}</div>`).join('')}</div>`).join('')}</div>`,
+    lead: '抽一張只有你看得到的任務卡，在對方沒發現的情況下完成，最後一起揭曉；對方猜中就算抓包。',
+    preview: `<div class="mission-box">
+      <div class="small bold">主題卡包・每包看 2 張範例</div>
+      <div class="chips mission-tabs">${MISSION_POOLS.map(([n, icon], k) => `<button class="chip ${k ? '' : 'on'}" data-pool="${k}" aria-pressed="${!k}">${icon} ${esc(n)}</button>`).join('')}</div>
+      <div id="mission-show">${card(0)}</div>
+    </div>`,
+    onOpen: (box) => box.querySelectorAll('[data-pool]').forEach((b) => b.addEventListener('click', () => {
+      box.querySelectorAll('[data-pool]').forEach((x) => { const on = x === b; x.classList.toggle('on', on); x.setAttribute('aria-pressed', String(on)); });
+      box.querySelector('#mission-show').innerHTML = card(Number(b.dataset.pool));
+    })),
   });
 }
 
@@ -525,9 +535,23 @@ function questionPackSheet() {
     <div class="small muted">每天一題之外，挑一個主題深聊：金錢觀、價值觀、未來規劃、家庭、親密關係…每包 30 題。這是「金錢觀」的 3 題範例，選一題試答看看。</div>
     <div class="tpl-list">${QPACK.map((q, i) => `<button class="tpl-item" data-q="${i}"><span>${esc(q)}</span></button>`).join('')}</div>
     <div id="qp-try"></div>
+    <button class="btn" id="qp-yes">我有興趣，推出時通知我</button>
+    <button class="btn secondary small" id="qp-no">先不用</button>
   </div>`;
   document.body.appendChild(box);
   const close = () => box.remove();
+  const yes = box.querySelector('#qp-yes');
+  const markDone = () => { yes.disabled = true; yes.textContent = DONE_TEXT; };
+  hasInterest('daily_question').then((d) => { if (d) markDone(); });
+  const want = async () => {
+    if (yes.disabled) { toast('已經登記過了，推出時通知你'); return; }
+    yes.disabled = true;
+    const fresh = await registerInterest('daily_question');
+    markDone();
+    toast(fresh ? '謝謝！推出時會通知你' : '已經登記過了，推出時通知你');
+  };
+  yes.addEventListener('click', want);
+  box.querySelector('#qp-no').addEventListener('click', close);
   box.querySelector('#qp-x').addEventListener('click', close);
   box.addEventListener('click', (ev) => { if (ev.target === box) close(); });
   box.querySelectorAll('[data-q]').forEach((b) => b.addEventListener('click', () => {
@@ -542,8 +566,8 @@ function questionPackSheet() {
       if (!box.querySelector('#qp-ans').value.trim()) { toast('寫一點再送出'); return; }
       t.innerHTML = `<div class="pack-preview" style="text-align:center"><div style="font-size:30px">🔒</div>
         <div class="bold">兩個人都答了，才看得到對方的答案</div><div class="small muted">主題題庫即將推出。這題是試玩，答案沒有存起來。</div>
-        <button class="btn small" id="qp-want">我有興趣</button></div>`;
-      box.querySelector('#qp-want').addEventListener('click', () => { close(); showPlusSheet('daily_question', { title: '主題題庫', lead: '金錢觀、價值觀、未來規劃、家庭、親密關係…每包 30 題，兩個人都答了才揭曉。' }); });
+        </div>`;
+      yes.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
     });
   }));
 }

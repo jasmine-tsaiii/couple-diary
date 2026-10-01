@@ -27,7 +27,9 @@ const U = (process.env.U || 'http://localhost:8770/');
   // 臥底任務卡包
   await p.click('#row-mission'); await p.waitForTimeout(500);
   log('no prices on mission sheet', !/NT\$/.test(await p.textContent('.plus-dlg')));
-  log('mission sheet', await p.locator('.plus-dlg .mission-card').count() === 8);
+  log('mission sheet', await p.locator('.plus-dlg .mission-card').count() === 2 && await p.locator('[data-pool]').count() === 4);
+  await p.click('[data-pool="2"]'); await p.waitForTimeout(200);
+  log('mission tab switch', (await p.textContent('#mission-show')).includes('冰箱'));
   await p.screenshot({ path: SHOT('mission-pack.png') });
   await p.click('#plus-yes'); await p.waitForTimeout(400);
   log('mission registered', await p.locator('#plus-yes').isDisabled());
@@ -44,9 +46,12 @@ const U = (process.env.U || 'http://localhost:8770/');
   await p.click('#qp-send'); await p.waitForTimeout(300);
   log('qpack locked message', (await p.textContent('.qpack-dlg')).includes('兩個人都答了，才看得到對方的答案'));
   await p.screenshot({ path: SHOT('question-pack.png') });
-  await p.click('#qp-want'); await p.waitForTimeout(500);
-  log('qpack plus sheet', await p.locator('.plus-dlg').count() === 1);
-  await p.click('#plus-no'); await p.waitForTimeout(300);
+  await p.click('#qp-yes'); await p.waitForTimeout(400);
+  log('qpack registered', (await p.textContent('#qp-yes')).includes('已登記') && await p.evaluate(() => !!localStorage.getItem('interest:guest:daily_question')));
+  await p.click('#qp-no'); await p.waitForTimeout(300);
+  await p.click('#row-qpack'); await p.waitForTimeout(500);
+  log('qpack remembers', await p.locator('#qp-yes').isDisabled());
+  await p.click('#qp-no'); await p.waitForTimeout(300);
 
   // 時光膠囊（存在這支手機）
   await p.goto(U + '#/capsules'); await p.waitForTimeout(800);

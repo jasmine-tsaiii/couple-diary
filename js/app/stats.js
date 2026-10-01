@@ -108,6 +108,8 @@ async function viewStats() {
       <div class="empty no-mascot">${/沒有權限/.test(e.message) ? '這一頁只有管理員看得到。' : `讀不到數據：${esc(cloudErrorText(e))}`}</div>`;
     return;
   }
+  let fb = null;
+  try { fb = await CloudDB.adminFeedback(30); } catch (e) { fb = null; }
   const n = s.now || {};
   const daily = s.daily || [];
   const weekly = s.weekly || [];
@@ -128,6 +130,15 @@ async function viewStats() {
     ${n.interest_by_feature ? `<h2 class="section-title">各功能「我有興趣」人數</h2>
     <div class="card" style="gap:6px">${Object.entries(INTEREST_NAMES).map(([k, label]) => `<div class="row between"><span>${label}</span><b>${Number(n.interest_by_feature[k]) || 0} 人</b></div>`).join('')}
       <div class="small muted">一個人按很多次也只算 1 人。看過入口的人數在 GA4 的 paywall_view 事件。</div></div>` : ''}
+    ${fb ? `<h2 class="section-title" id="stats-feedback">意見回饋</h2>
+    <div class="card" style="gap:10px">
+      <div class="small muted">一共 ${Number(fb.total) || 0} 則，最近 7 天 ${Number(fb.week) || 0} 則。大家在「我的 → 其他 → 意見回饋」寫的都在這裡，最新的在最上面。</div>
+      ${(fb.items || []).length ? fb.items.map((f) => `<div class="fb-item">
+        <div class="small muted">${esc(new Date(f.at).toLocaleString('zh-TW', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' }))}・${esc(f.kind)}${f.page ? `・從「${esc(f.page)}」頁` : ''}${f.mode ? `・${esc({ partner: '另一半', cloud: '雲端', phone: '手機' }[f.mode] || f.mode)}` : ''}</div>
+        <div class="prose">${esc(f.message)}</div>
+        ${f.contact ? `<div class="small">聯絡方式：${esc(f.contact)}</div>` : ''}
+      </div>`).join('') : '<div class="muted">還沒有人寫回饋</div>'}
+    </div>` : ''}
     <h2 class="section-title">最近 30 天</h2>
     <div class="card" style="gap:18px">${daily.length ? STAT_LINES.map(([k, label]) => statLine(daily, k, label)).join('') : '<div class="muted">還沒有資料</div>'}</div>
     <h2 class="section-title">每週留存</h2>

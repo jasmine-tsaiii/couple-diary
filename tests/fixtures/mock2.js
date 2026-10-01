@@ -88,6 +88,11 @@
     return q;
   }
   const rpcs = {
+    admin_feedback(S, u) {
+      if (!(S.admins || []).includes(u.id)) throw new Error('沒有權限');
+      const items = (S.t.feedback || []).slice().reverse().map((f) => ({ at: f.created_at || new Date().toISOString(), kind: f.kind, message: f.message, contact: f.contact || '', page: f.page || '', mode: f.mode || '' }));
+      return { total: items.length, week: items.length, items };
+    },
     am_i_admin(S, u) { return (S.admins || []).includes(u.id); },
     admin_stats(S, u) {
       if (!(S.admins || []).includes(u.id)) throw new Error('沒有權限');
