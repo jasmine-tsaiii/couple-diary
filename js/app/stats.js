@@ -100,7 +100,7 @@ async function viewStats() {
   clearInterval(statsTimer);
   app.className = '';
   app.innerHTML = `<div class="topbar"><a class="icon-btn" href="#/settings" aria-label="返回">${ICON.back}</a><h1>數據看板</h1></div>
-    <div class="empty no-mascot">讀取中…</div>`;
+    ${loaderHtml()}`;
   let s;
   try { s = await CloudDB.adminStats(); } catch (e) {
     app.innerHTML = `<div class="topbar"><a class="icon-btn" href="#/settings" aria-label="返回">${ICON.back}</a><h1>數據看板</h1></div>

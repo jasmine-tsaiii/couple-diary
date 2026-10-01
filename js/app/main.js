@@ -44,7 +44,7 @@ async function renderRoute() {
   if (title) {
     setTimeout(() => {
       if (lastHash === location.hash && app.firstElementChild === shown && shown) {
-        app.innerHTML = `<div class="topbar"><h1>${esc(title)}</h1></div><div class="empty no-mascot page-loading">讀取中…</div>`;
+        app.innerHTML = `<div class="topbar"><h1>${esc(title)}</h1></div><div class="page-loading">${loaderHtml()}</div>`;
       }
     }, 150);
   }

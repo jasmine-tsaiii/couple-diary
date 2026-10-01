@@ -288,6 +288,17 @@ let HOME_APP_SEEN = false;
 const HOME_APP_FRESH_DAYS = 30;
 // ---------- 吉祥物「啾啾與啵啵」 ----------
 let MASCOT_PICK = null;
+// 讀取中的小動畫：兩隻啾啾輪流跳（樣式在 style.css 的 .boot-loader；compact = 小卡預覽那種小尺寸）
+function loaderHtml(text = '讀取中', compact = false) {
+  let svg = '';
+  try {
+    svg = window.Mascot.svg('happy', MASCOT_PICK || window.Mascot.DEFAULT);
+    const a = svg.indexOf('<g transform="translate(104 70)'); const b = svg.indexOf('<g transform="translate(56 70)'); const e = svg.lastIndexOf('</svg>');
+    if (a > 0 && b > a) svg = svg.slice(0, a) + '<g class="ld-bird ld-r">' + svg.slice(a, b) + '</g><g class="ld-bird ld-l">' + svg.slice(b, e) + '</g>' + svg.slice(e);
+    svg = svg.replace(/role="img" aria-label="[^"]*"/, 'aria-hidden="true" class="ld-svg"');
+  } catch (e) { svg = ''; }
+  return `<div class="boot-loader${compact ? ' compact' : ''}" role="status" aria-label="${esc(text)}">${svg}<div class="ld-text">${esc(text)}<span class="ld-dots" aria-hidden="true"><i>.</i><i>.</i><i>.</i></span></div></div>`;
+}
 function mascotHtml(mood, width, extraClass = '') {
   if (!window.Mascot) return '';
   return `<div class="mascot ${extraClass}" style="width:${width}px" aria-hidden="true">${window.Mascot.svg(mood, MASCOT_PICK || window.Mascot.DEFAULT)}</div>`;

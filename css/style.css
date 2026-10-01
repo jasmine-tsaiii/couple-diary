@@ -713,3 +713,6 @@ body.quiz-focus #app { padding-bottom: calc(96px + env(safe-area-inset-bottom));
 .card-steps li.done { color: var(--accent-text); font-weight: 700; }
 .card-steps li.done .st-dot { background: var(--accent); border-color: var(--accent); color: #fff; }
 .card-steps li.done .st-dot::after { content: '✓'; }
+.boot-loader.compact { min-height: 0; padding: 24px 0; }
+.boot-loader.compact .ld-svg { width: 120px; }
+.page-loading .boot-loader { min-height: 50vh; }
