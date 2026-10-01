@@ -337,11 +337,6 @@ const CloudDB = CLOUD_ENABLED ? (() => {
       if (r.error && /note_interest|function/i.test(r.error.message || '')) { await client.rpc('note_upgrade_interest'); return true; }
       return !!check(r);
     },
-    // 已經有幾組情侶登記 Plus（真實數字；讀不到回傳 null，畫面就不顯示）
-    async interestGroups() {
-      const { data, error } = await client.rpc('interest_groups');
-      return error || typeof data !== 'number' ? null : data;
-    },
     async myInterests() {
       const { data, error } = await client.rpc('my_interests');
       return error ? [] : data || [];

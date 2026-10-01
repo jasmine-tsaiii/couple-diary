@@ -128,10 +128,6 @@ async function viewStats() {
     ${n.interest_by_feature ? `<h2 class="section-title">各功能「我有興趣」人數</h2>
     <div class="card" style="gap:6px">${Object.entries(INTEREST_NAMES).map(([k, label]) => `<div class="row between"><span>${label}</span><b>${Number(n.interest_by_feature[k]) || 0} 人</b></div>`).join('')}
       <div class="small muted">一個人按很多次也只算 1 人。看過入口的人數在 GA4 的 paywall_view 事件。</div></div>` : ''}
-    ${n.interest_by_price ? `<h2 class="section-title">年費價格測試</h2>
-    <div class="card" style="gap:6px">${[690, 790].map((pr) => `<div class="row between"><span>看到 NT$${pr} 的人按了</span><b>${Number(n.interest_by_price[pr]) || 0} 人</b></div>`).join('')}
-      ${n.interest_groups != null ? `<div class="row between"><span>登記 Plus 的情侶</span><b>${Number(n.interest_groups) || 0} 組</b></div>` : ''}
-      <div class="small muted">每個人固定看到其中一個價格。要算比例，除以 GA4 paywall_view 裡同一個 price 的人數。</div></div>` : ''}
     <h2 class="section-title">最近 30 天</h2>
     <div class="card" style="gap:18px">${daily.length ? STAT_LINES.map(([k, label]) => statLine(daily, k, label)).join('') : '<div class="muted">還沒有資料</div>'}</div>
     <h2 class="section-title">每週留存</h2>

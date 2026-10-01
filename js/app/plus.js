@@ -32,57 +32,21 @@ async function registerInterest(feature) {
   if (await hasInterest(feature)) return false;
   let fresh = true;
   if (usingCloud()) {
-    try { fresh = await CloudDB.noteInterest(feature, yearPrice()); } catch (e) { /* 記不到雲端，至少這支手機記住 */ }
+    try { fresh = await CloudDB.noteInterest(feature); } catch (e) { /* 記不到雲端，至少這支手機記住 */ }
     if (cloudInterests) cloudInterests.push(feature);
   }
   setLocalFlag('interest', feature);
-  if (fresh) track('upgrade_interest', { feature, price: yearPrice() });
+  if (fresh) track('upgrade_interest', { feature });
   return fresh;
 }
 function notePaywallView(feature) {
   if (localFlag('pwview', feature)) return;
   setLocalFlag('pwview', feature);
-  track('paywall_view', { feature, price: yearPrice() });
+  track('paywall_view', { feature });
 }
 
-// ---------- 價格（2026-10-01 定案，規格第五～七節） ----------
-// 一人付兩人用；年費＝一次買 12 個月、不自動續約；月費可隨時取消。
-// 價格測試：一半的人看到年費 690、一半看到 790，同一個人永遠看到同一個
-// （登入的人用帳號 id 算，換手機也一樣；試用的人隨機一次記在這支手機）。
-const PRICE_A = 690;
-const PRICE_B = 790;
-const PRICE_MONTH = 75;
-// 2026-10-01 12:17 改：早鳥只給前 20 組，沒有第二波
-const WAVES = [{ upto: 20, price: 490, name: '首發早鳥' }];
-function yearPrice() {
-  let id = '';
-  try { id = usingCloud() ? CloudDB.myId() || '' : ''; } catch (e) { id = ''; }
-  if (id) { let h = 0; for (const ch of id) h = (h * 31 + ch.charCodeAt(0)) >>> 0; return h % 2 ? PRICE_B : PRICE_A; }
-  try {
-    let v = localStorage.getItem('priceVariant');
-    if (v !== String(PRICE_A) && v !== String(PRICE_B)) { v = String(Math.random() < 0.5 ? PRICE_A : PRICE_B); localStorage.setItem('priceVariant', v); }
-    return Number(v);
-  } catch (e) { return PRICE_A; }
-}
-function priceLadderHtml(groups) {
-  const y = yearPrice();
-  const save = Math.round((1 - y / (PRICE_MONTH * 12)) * 100);
-  const perDay = y / 365 / 2;
-  return `<div class="plus-ladder">
-    <div class="plan early"><div class="plan-top"><span class="plan-name">${WAVES[0].name}：前 ${WAVES[0].upto} 組</span><span class="plan-badge">續約也是這個價</span></div>
-      <div><s>NT$${y}</s> <b>NT$${WAVES[0].price}</b>／年</div>
-      <div class="small muted">第 ${WAVES[0].upto + 1} 組起 NT$${y}／年</div></div>
-    <div class="plan on"><div class="plan-top"><span class="plan-name">年費</span><span class="plan-badge">最划算・省 ${save}%</span></div>
-      <div><b class="plan-big">每月 NT$${Math.round(y / 12)}</b></div>
-      <div class="small muted">一年 NT$${y}，一次買 12 個月，不會自動續約</div></div>
-    <div class="plan"><div class="plan-top"><span class="plan-name">月費</span></div>
-      <div>NT$${PRICE_MONTH}／月</div>
-      <div class="small muted">一年下來 NT$${PRICE_MONTH * 12}，可以隨時取消</div></div>
-  </div>
-  <div class="plus-who"><b>一人付，兩人用</b>・每人每天${perDay < 1 ? '不到 1 元' : `約 ${Math.round(perDay * 10) / 10} 元`}</div>
-  ${groups ? `<div class="plus-groups">已有 <b>${groups}</b> 組情侶登記</div>` : ''}
-  <div class="small muted">推出時可以先免費試用 7 天，不用綁卡。</div>`;
-}
+// 價格：2026-10-01 13:13 Jasmine 決定先不上線定價（先累積使用量和回饋），付費頁一律不顯示價格、早鳥、試用。
+// 之後的定價在規格第九、十節；價格測試的程式在 git 527aac0 / ccbc92f 可以找回來。
 
 // ---------- Plus 說明（即將推出） ----------
 const PLUS_PERKS = [
@@ -98,8 +62,6 @@ async function showPlusSheet(feature, opts = {}) {
   notePaywallView(feature);
   const done = await hasInterest(feature);
   const singleDone = opts.single ? await hasInterest(opts.single.feature) : false;
-  let groups = null;
-  if (!opts.free && CLOUD_ENABLED) { try { groups = await CloudDB.interestGroups(); } catch (e) { groups = null; } }
   const box = document.createElement('div');
   box.className = 'celebrate plus-dlg';
   box.innerHTML = `<div class="celebrate-box plus-box" role="dialog" aria-modal="true" aria-label="${esc(opts.title || '啾啾 Plus')}">
@@ -110,11 +72,11 @@ async function showPlusSheet(feature, opts = {}) {
     ${opts.preview || ''}
     ${opts.free ? '' : `<div class="plus-subhead">啾啾 Plus：一個人訂閱，你們兩個人都能用</div>
     <ul class="plus-perks">${PLUS_PERKS.map(([i, t]) => `<li><span aria-hidden="true">${i}</span>${t}</li>`).join('')}</ul>
-    ${priceLadderHtml(groups)}`}
+    `}
     <button class="btn" id="plus-yes" ${done ? 'disabled' : ''}>${done ? DONE_TEXT : '我有興趣，推出時通知我'}</button>
     ${opts.single ? `<button class="btn secondary small" id="plus-single" ${singleDone ? 'disabled' : ''}>${singleDone ? DONE_TEXT : esc(opts.single.label)}</button>` : ''}
     <button class="btn secondary small" id="plus-no">${opts.noLabel || '先不用'}</button>
-    <div class="small muted">${opts.free ? '想要的人夠多，就會先做這個。' : '還沒開始收費，按了也不會扣款。'}${done ? '' : '每個人按一次就記下來了。'}</div>
+    <div class="small muted">${opts.free ? '想要的人夠多，就會先做這個。' : '還在準備中，按了只是登記，推出時通知你。'}${done ? '' : '每個人按一次就記下來了。'}</div>
     ${opts.free ? '' : '<div class="small muted">解除綁定時，Plus 會留在付費的人身上；已經寫下的內容都不會被刪除。</div>'}
   </div>`;
   document.body.appendChild(box);
@@ -448,7 +410,7 @@ function previewSkin(s) {
   bar.querySelector('#skin-apply').addEventListener('click', () => showPlusSheet('theme', {
     title: `「${s.name}」是 Plus 主題`,
     lead: '主題只會換你這支手機的樣子，不會影響對方。',
-    single: { feature: 'theme_single', label: '只想單買這個主題 NT$30–60（即將推出）' },
+    single: { feature: 'theme_single', label: '只想單買這個主題（即將推出）' },
     onClose: endSkinPreview,
   }));
 }
