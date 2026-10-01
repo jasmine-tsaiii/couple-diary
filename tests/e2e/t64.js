@@ -51,6 +51,9 @@ const OUT = (process.env.SHOT_DIR || '.') + '/';
   await save('card-week-square.png');
   const [dl] = await Promise.all([p.waitForEvent('download', { timeout: 8000 }).catch(() => null), p.click('#card-share')]);
   console.log('download', !!dl && dl.suggestedFilename());
+  // 首頁的提醒：每月 1～7 號提醒月卡、其他天提醒週卡；看過提醒的那張就消失
+  const pendingKind = await p.evaluate(() => (Number(today().slice(8, 10)) <= 7 ? 'month' : 'week'));
+  if (pendingKind === 'month') { await p.goto(U + '#/card/month'); await p.waitForTimeout(1500); }
   await p.goto(U); await p.waitForTimeout(700);
   console.log('banner gone after view', !(await p.isVisible('.card-banner')));
   await p.goto(U + '#/view/' + id); await p.waitForTimeout(700);
