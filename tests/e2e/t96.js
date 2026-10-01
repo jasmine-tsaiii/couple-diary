@@ -24,8 +24,13 @@ const U = (process.env.U || 'http://localhost:8770/');
   await p.click('#plus-yes'); await p.waitForTimeout(400);
   log('nest registered', await p.locator('#plus-yes').isDisabled() && await p.evaluate(() => !!localStorage.getItem('interest:guest:nest') && !!localStorage.getItem('pwview:guest:nest')));
   await p.click('#plus-x'); await p.waitForTimeout(300);
-  // 臥底任務卡包
+  // 臥底任務卡包（這支手機抽到 790 的那組）
+  await p.evaluate(() => localStorage.setItem('priceVariant', '790'));
   await p.click('#row-mission'); await p.waitForTimeout(500);
+  log('790 variant', (await p.textContent('.plus-dlg')).includes('每月 NT$66') && (await p.textContent('.plus-dlg')).includes('省 12%'));
+  await p.evaluate(() => document.querySelector('.plus-box').scrollTo(0, 99999)); await p.waitForTimeout(200);
+  await p.screenshot({ path: SHOT('plus-790.png') });
+  await p.evaluate(() => document.querySelector('.plus-box').scrollTo(0, 0));
   log('mission sheet', await p.locator('.plus-dlg .mission-card').count() === 8);
   await p.screenshot({ path: SHOT('mission-pack.png') });
   await p.click('#plus-yes'); await p.waitForTimeout(400);

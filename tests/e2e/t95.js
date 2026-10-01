@@ -53,12 +53,18 @@ const U = (process.env.U || 'http://localhost:8770/');
   log('button says registered', (await p.textContent('#plus-yes')).includes('已登記，推出時通知你') && await p.locator('#plus-yes').isDisabled());
   await p.click('#plus-no'); await p.waitForTimeout(300);
   await p.click('#cap-new'); await p.waitForTimeout(600);
+  const price = await p.evaluate(() => yearPrice());
+  const sheet = await p.textContent('.plus-dlg');
+  log('ladder shows plans', sheet.includes(`每月 NT$${Math.round(price / 12)}`) && sheet.includes('NT$490') && sheet.includes('NT$590') && sheet.includes('一人付，兩人用') && sheet.includes('不會自動續約'));
+  log('real group count', sheet.includes('已有 1 組情侶登記'));
+  log('price stable', await p.evaluate(() => yearPrice() === yearPrice()) && [690, 790].includes(price));
   log('second open already registered', await p.locator('#plus-yes').isDisabled() && (await p.textContent('#plus-yes')).includes('已登記'));
   await p.screenshot({ path: SHOT('plus-registered.png') });
   await p.click('#plus-no'); await p.waitForTimeout(300);
   // 直接再叫幾次也只會有一列
   await p.evaluate(async () => { await CloudDB.noteInterest('capsule'); await registerInterest('capsule'); });
   let S = await server();
+  log('price recorded', S.interestPrice[oid + ':capsule'] === price);
   log('one interest row per person', Object.keys(S.interests).filter((k) => k.endsWith(':capsule')).length === 1);
   log('paywall_view remembered', await p.evaluate((u) => !!localStorage.getItem(`pwview:${u}:capsule`), oid));
 
@@ -73,6 +79,9 @@ const U = (process.env.U || 'http://localhost:8770/');
   await p.goto(U + '#/capsule/' + capId); await p.waitForTimeout(800);
   log('sealed url bounces', p.url().endsWith('#/capsules'));
 
+  // 另一半也登記：同一對情侶還是只算 1 組
+  await p.evaluate(() => registerInterest('theme'));
+  log('couple counts once', await p.evaluate(() => CloudDB.interestGroups()) === 1);
   // 到了打開日期：另一半首頁提示，點進去看得到
   await p.evaluate((d) => { const S = JSON.parse(localStorage.mockServer); S.capToday = d; localStorage.mockServer = JSON.stringify(S); }, openDay);
   await as(pid, '#/');

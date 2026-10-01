@@ -93,7 +93,7 @@
       if (!(S.admins || []).includes(u.id)) throw new Error('沒有權限');
       const days = Array.from({ length: 30 }, (_, i) => { const d = new Date(Date.now() - (29 - i) * 864e5); return { d: d.toISOString().slice(0, 10), signups: i % 4, pairs: i % 7 === 0 ? 1 : 0, active_couples: Math.min(3, Math.floor(i / 8)), writers: i % 5, records: (i * 3) % 7, deleted: i % 9 === 0 ? 1 : 0, interest: i === 20 ? 1 : 0, account_deletes: i === 12 ? 1 : 0 }; });
       const weeks = Array.from({ length: 12 }, (_, i) => ({ wk: new Date(Date.now() - i * 7 * 864e5).toISOString().slice(0, 10), signups: 12 - i, activated: 8 - Math.min(8, i), paired: 5 - Math.min(5, i), d7_n: i < 2 ? 0 : 10, d7_yes: i < 2 ? 0 : 4, d30_n: i < 6 ? 0 : 8, d30_yes: i < 6 ? 0 : 2, writers: 9 - Math.min(9, i) }));
-      return { now: { owners: 42, owners_today: 2, owners_7d: 11, couples: 9, active_couples_7d: 5, both_wrote_7d: 3, writers_today: 4, writers_7d: 13, records_today: 7, edits_today: 2, deleted_records_7d: 1, records_total: 318, interest: 3, interest_by_feature: { capsule: 2, theme: 1 }, accounts_deleted_7d: 0, accounts_deleted_total: 1, last_write_at: new Date().toISOString() }, daily: days, weekly: weeks, at: new Date().toISOString() };
+      return { now: { owners: 42, owners_today: 2, owners_7d: 11, couples: 9, active_couples_7d: 5, both_wrote_7d: 3, writers_today: 4, writers_7d: 13, records_today: 7, edits_today: 2, deleted_records_7d: 1, records_total: 318, interest: 3, interest_by_feature: { capsule: 2, theme: 1 }, interest_by_price: { 690: 2, 790: 1 }, interest_groups: 2, accounts_deleted_7d: 0, accounts_deleted_total: 1, last_write_at: new Date().toISOString() }, daily: days, weekly: weeks, at: new Date().toISOString() };
     },
     // 通知（真的資料庫由觸發器寫入；這裡測試直接放進 S.notifs）
     my_notifications(S, u) { return (S.notifs || []).filter((n) => n.recipient === u.id).sort((a, b) => (a.created_at < b.created_at ? 1 : -1)).slice(0, 50).map(({ recipient, ...n }) => n); },
@@ -374,8 +374,9 @@
     note_interest(S, u, a) {
       if (S.noInterestRpc) throw new Error('Could not find the function public.note_interest');
       S.interests = S.interests || {}; const k = u.id + ':' + a.p_feature;
-      if (S.interests[k]) { S.interests[k]++; return false; } S.interests[k] = 1; return true;
+      if (S.interests[k]) { S.interests[k]++; return false; } S.interests[k] = 1; S.interestPrice = S.interestPrice || {}; S.interestPrice[k] = a.p_price || null; return true;
     },
+    interest_groups(S) { const sp = (uid) => { const p = S.t.partners.find((x) => x.uid === uid && x.approved !== false); return p ? p.owner : uid; }; return new Set(Object.keys(S.interests || {}).filter((k) => !k.endsWith(':nest')).map((k) => sp(k.split(':')[0]))).size; },
     my_interests(S, u) { return Object.keys(S.interests || {}).filter((k) => k.startsWith(u.id + ':')).map((k) => k.split(':')[1]); },
     // 時光膠囊：打開日期前，收件人只拿得到日期（S.capToday 可以指定今天）
     _capSpace(S, u) { return myOwner(S, u) || (real(u) ? u.id : null); },

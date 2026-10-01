@@ -961,8 +961,11 @@ create or replace function public.note_upgrade_interest() returns void
 language sql security definer set search_path = public as $$
   insert into public.upgrade_interest (owner, feature) values (auth.uid(), 'photos') on conflict do nothing
 $$;
+-- 價格測試（2026-10-01）：記下登記時看到的年費（690 或 790），比較兩組按「我有興趣」的比例
+alter table public.upgrade_interest add column if not exists price int;
 -- 「我有興趣」：每個人每個功能只記一次。第一次回傳 true，之後回傳 false（畫面顯示「已登記」）
-create or replace function public.note_interest(p_feature text) returns boolean
+drop function if exists public.note_interest(text);
+create or replace function public.note_interest(p_feature text, p_price int default null) returns boolean
 language plpgsql security definer set search_path = public as $$
 declare v_new boolean;
 begin
@@ -970,7 +973,8 @@ begin
   if p_feature is null or p_feature not in ('photos', 'capsule', 'theme', 'theme_single', 'daily_question', 'task_pack', 'mission_pack', 'recap_premium', 'nest') then
     raise exception '不認得這個功能';
   end if;
-  insert into public.upgrade_interest (owner, feature) values (auth.uid(), p_feature)
+  insert into public.upgrade_interest (owner, feature, price)
+    values (auth.uid(), p_feature, case when p_price in (690, 790) then p_price end)
     on conflict do nothing returning true into v_new;
   if v_new is null then
     update public.upgrade_interest set times = times + 1, last_at = now() where owner = auth.uid() and feature = p_feature;
@@ -978,14 +982,22 @@ begin
   end if;
   return true;
 end $$;
+-- 已經有幾「組」登記 Plus（一對情侶只算一組；啾啾的窩是免費功能不算）。付費頁顯示的是這個真實數字
+create or replace function public.interest_groups() returns int
+language sql stable security definer set search_path = public as $$
+  select count(distinct coalesce((select p.owner from public.partners p where p.uid = i.owner and p.approved limit 1), i.owner))::int
+  from public.upgrade_interest i where i.feature <> 'nest'
+$$;
+revoke all on function public.interest_groups() from public;
+grant execute on function public.interest_groups() to anon, authenticated;
 -- 我按過哪些（換手機也記得）
 create or replace function public.my_interests() returns text[]
 language sql stable security definer set search_path = public as $$
   select coalesce(array_agg(feature order by feature), '{}') from public.upgrade_interest where owner = auth.uid()
 $$;
-revoke all on function public.note_interest(text) from public, anon;
+revoke all on function public.note_interest(text, int) from public, anon;
 revoke all on function public.my_interests() from public, anon;
-grant execute on function public.note_interest(text) to authenticated;
+grant execute on function public.note_interest(text, int) to authenticated;
 grant execute on function public.my_interests() to authenticated;
 revoke all on function public.photo_quota() from public, anon;
 revoke all on function public.photo_quota_ok() from public, anon;
@@ -1716,6 +1728,8 @@ begin
     'records_total', (select count(*) from acts where (data ->> 'deletedAt') is null),
     'interest', (select count(distinct owner) from public.upgrade_interest),
     'interest_by_feature', (select coalesce(jsonb_object_agg(feature, n), '{}'::jsonb) from (select feature, count(*) as n from public.upgrade_interest group by feature) f),
+    'interest_by_price', (select coalesce(jsonb_object_agg(price, n), '{}'::jsonb) from (select price, count(distinct owner) as n from public.upgrade_interest where price is not null group by price) f),
+    'interest_groups', public.interest_groups(),
     'accounts_deleted_7d', (select count(*) from public.account_deletions where deleted_at >= now() - interval '7 days'),
     'accounts_deleted_total', (select count(*) from public.account_deletions),
     'last_write_at', (select max(updated_at) from acts)

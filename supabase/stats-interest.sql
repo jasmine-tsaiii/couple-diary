@@ -14,3 +14,6 @@ select
 from public.upgrade_interest
 group by feature
 order by count(*) desc;
+
+-- 年費價格測試（690 vs 790）：各組按「我有興趣」的人數。要選取這一段單獨跑，才會看到這張表。
+-- select price as 看到的年費, count(distinct owner) as 人數 from public.upgrade_interest where price is not null group by price order by price;
