@@ -96,7 +96,7 @@ function bindStatCharts(daily) {
   });
 }
 
-const INTEREST_NAMES = { capsule: '時光膠囊（第 2 個）', theme: '主題背景（Plus）', theme_single: '單買主題', task_pack: '任務包', mission_pack: '臥底任務卡包', daily_question: '主題題庫', photos: '照片額度' };
+const INTEREST_NAMES = { capsule: '時光膠囊（第 2 個）', theme: '主題背景（Plus）', theme_single: '單買主題', task_pack: '任務包', mission_pack: '臥底任務卡包', daily_question: '主題題庫', nest: '啾啾的窩', photos: '照片額度' };
 async function viewStats() {
   clearInterval(statsTimer);
   app.className = '';

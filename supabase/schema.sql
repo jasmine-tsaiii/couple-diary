@@ -967,7 +967,7 @@ language plpgsql security definer set search_path = public as $$
 declare v_new boolean;
 begin
   if auth.uid() is null then return false; end if;
-  if p_feature is null or p_feature not in ('photos', 'capsule', 'theme', 'theme_single', 'daily_question', 'task_pack', 'mission_pack', 'recap_premium') then
+  if p_feature is null or p_feature not in ('photos', 'capsule', 'theme', 'theme_single', 'daily_question', 'task_pack', 'mission_pack', 'recap_premium', 'nest') then
     raise exception '不認得這個功能';
   end if;
   insert into public.upgrade_interest (owner, feature) values (auth.uid(), p_feature)

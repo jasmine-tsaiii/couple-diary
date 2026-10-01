@@ -17,6 +17,13 @@ const U = (process.env.U || 'http://localhost:8770/');
   await p.goto(U + '#/together'); await p.waitForTimeout(1000);
   log('guest together rows', await p.locator('#row-mission').count() === 1 && (await p.textContent('#app')).includes('時光膠囊'));
 
+  // 啾啾的窩（免費功能的假門：沒有價格）
+  await p.click('#row-nest'); await p.waitForTimeout(500);
+  log('nest sheet', await p.locator('.plus-dlg .nest-preview').count() === 1 && !(await p.textContent('.plus-dlg')).includes('NT$'));
+  await p.screenshot({ path: SHOT('nest.png') });
+  await p.click('#plus-yes'); await p.waitForTimeout(400);
+  log('nest registered', await p.locator('#plus-yes').isDisabled() && await p.evaluate(() => !!localStorage.getItem('interest:guest:nest') && !!localStorage.getItem('pwview:guest:nest')));
+  await p.click('#plus-x'); await p.waitForTimeout(300);
   // 臥底任務卡包
   await p.click('#row-mission'); await p.waitForTimeout(500);
   log('mission sheet', await p.locator('.plus-dlg .mission-card').count() === 8);

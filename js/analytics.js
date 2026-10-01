@@ -11,7 +11,7 @@
   const realVisit = CFG.GA_ANY_HOST || (/(^|\.)jas-soul\.com$/.test(location.hostname) && !navigator.webdriver);
   const ID = (realVisit && CFG.GA_MEASUREMENT_ID) || '';
   const TYPES = ['happy', 'cloud', 'fight'];
-  const FEATURES = ['photos', 'capsule', 'theme', 'theme_single', 'daily_question', 'task_pack', 'mission_pack', 'recap_premium'];
+  const FEATURES = ['photos', 'capsule', 'theme', 'theme_single', 'daily_question', 'task_pack', 'mission_pack', 'recap_premium', 'nest'];
   const oneOf = (list) => (v) => (list.includes(v) ? v : undefined);
   const bool = (v) => (v ? 'yes' : 'no');
   const code = (v) => (typeof v === 'string' && /^[a-z0-9_-]{1,40}$/i.test(v) ? v : undefined);

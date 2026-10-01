@@ -7,7 +7,7 @@
 // - 假門：任務範本（任務包）、臥底任務卡包、主題題庫（每日一問）
 
 // ---------- 「我有興趣」：每人每功能一次 ----------
-const PLUS_FEATURES = ['photos', 'capsule', 'theme', 'theme_single', 'daily_question', 'task_pack', 'mission_pack', 'recap_premium'];
+const PLUS_FEATURES = ['photos', 'capsule', 'theme', 'theme_single', 'daily_question', 'task_pack', 'mission_pack', 'recap_premium', 'nest'];
 function interestWho() {
   try { return usingCloud() ? CloudDB.myId() || 'guest' : 'guest'; } catch (e) { return 'guest'; }
 }
@@ -63,16 +63,16 @@ async function showPlusSheet(feature, opts = {}) {
   box.className = 'celebrate plus-dlg';
   box.innerHTML = `<div class="celebrate-box plus-box" role="dialog" aria-modal="true" aria-label="${esc(opts.title || '啾啾 Plus')}">
     <button class="card-x" id="plus-x" aria-label="關閉">${ICON.x}</button>
-    <div class="plus-tag">啾啾 Plus・即將推出</div>
+    <div class="plus-tag">${opts.free ? '即將推出' : '啾啾 Plus・即將推出'}</div>
     <h2 style="font-size:20px">${esc(opts.title || '這是 Plus 功能')}</h2>
     ${opts.lead ? `<div class="muted">${opts.lead}</div>` : ''}
     ${opts.preview || ''}
-    <ul class="plus-perks">${PLUS_PERKS.map(([i, t]) => `<li><span aria-hidden="true">${i}</span>${t}</li>`).join('')}</ul>
-    <div class="plus-price"><b>年費 NT$690</b>・月費 NT$75<div class="small">前 100 人早鳥年費 NT$490</div></div>
+    ${opts.free ? '' : `<ul class="plus-perks">${PLUS_PERKS.map(([i, t]) => `<li><span aria-hidden="true">${i}</span>${t}</li>`).join('')}</ul>
+    <div class="plus-price"><b>年費 NT$690</b>・月費 NT$75<div class="small">前 100 人早鳥年費 NT$490</div></div>`}
     <button class="btn" id="plus-yes" ${done ? 'disabled' : ''}>${done ? DONE_TEXT : '我有興趣，推出時通知我'}</button>
     ${opts.single ? `<button class="btn secondary small" id="plus-single" ${singleDone ? 'disabled' : ''}>${singleDone ? DONE_TEXT : esc(opts.single.label)}</button>` : ''}
     <button class="btn secondary small" id="plus-no">${opts.noLabel || '先不用'}</button>
-    <div class="small muted">還沒開始收費，按了也不會扣款。${done ? '' : '每個人按一次就記下來了。'}</div>
+    <div class="small muted">${opts.free ? '想要的人夠多，就會先做這個。' : '還沒開始收費，按了也不會扣款。'}${done ? '' : '每個人按一次就記下來了。'}</div>
   </div>`;
   document.body.appendChild(box);
   const close = () => { box.remove(); if (opts.onClose) opts.onClose(); };
@@ -542,14 +542,33 @@ function questionPackSheet() {
     });
   }));
 }
+// ---------- 假門：啾啾的窩（兩個人一起做事掉羽毛，布置窩；免費功能，先看有沒有人想要） ----------
+const NEST_LEVELS = [['🪵', '樹枝'], ['🪺', '小窩'], ['🛖', '有屋頂'], ['🌳', '樹屋'], ['🏡', '森林小屋']];
+const NEST_FEATHERS = [['兩個人都答了每天一題', 3], ['完成對方出的任務', 3], ['烏雲按下「放晴」', 2], ['時光膠囊打開', 5]];
+function nestSheet() {
+  showPlusSheet('nest', {
+    free: true,
+    title: '啾啾的窩',
+    lead: '兩個人一起做事會掉下羽毛，用羽毛布置啾啾的窩：盆栽、燈串、小帽子、圍巾。羽毛越多，窩會越長越大。',
+    preview: `<div class="nest-preview">
+      <div class="nest-bird">${mascotHtml('happy', 96)}<div class="nest-base" aria-hidden="true">🪺</div></div>
+      <div class="nest-levels">${NEST_LEVELS.map(([i, n], k) => `<div class="nest-lv${k === 1 ? ' on' : ''}"><span aria-hidden="true">${i}</span>${n}</div>`).join('<span class="nest-arrow" aria-hidden="true">›</span>')}</div>
+      <div class="nest-feathers">${NEST_FEATHERS.map(([t, n]) => `<div class="row between"><span>${t}</span><b>🪶 ${n}</b></div>`).join('')}</div>
+      <div class="small muted">只有「一起」才會掉羽毛。啾啾不會餓、不會生病，吵架那幾天沒互動，窩只是停在原地。</div>
+    </div>`,
+  });
+}
 // 「一起」分頁：搶先看
 function previewRows() {
   return [
+    navRow({ href: '#/together', id: 'row-nest', icon: '<span class="nav-emoji" aria-hidden="true">🪺</span>', title: '啾啾的窩', sub: '即將推出・一起做事掉羽毛，布置啾啾的家' }),
     navRow({ href: '#/together', id: 'row-mission', icon: '<span class="nav-emoji" aria-hidden="true">🕵️</span>', title: '臥底任務卡包', sub: '即將推出・偷偷完成任務，看對方會不會發現' }),
     navRow({ href: '#/together', id: 'row-qpack', icon: '<span class="nav-emoji" aria-hidden="true">💬</span>', title: '主題題庫', sub: '即將推出・金錢觀、價值觀、未來…一起深聊' }),
   ];
 }
 function bindPreviewRows() {
+  const n = document.getElementById('row-nest');
+  if (n) n.addEventListener('click', (ev) => { ev.preventDefault(); nestSheet(); });
   const m = document.getElementById('row-mission');
   if (m) m.addEventListener('click', (ev) => { ev.preventDefault(); missionPackSheet(); });
   const q = document.getElementById('row-qpack');
