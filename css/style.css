@@ -687,3 +687,4 @@ body.quiz-focus #app { padding-bottom: calc(96px + env(safe-area-inset-bottom));
 .pick-list { display: flex; flex-direction: column; gap: 6px; }
 .pick-list .pick-rec { display: flex; justify-content: space-between; gap: 10px; width: 100%; text-align: left; white-space: normal; overflow-wrap: anywhere; }
 .pick-list .pick-rec .small { flex: none; }
+.pick-list .pick-rec.on .small { color: inherit; opacity: .85; }
