@@ -18,6 +18,7 @@ async function viewPartnerHome() {
   const bound = CloudDB.isBoundPartner();
   const quizQ = await quizStatus();
   const dailyQ = await dailyStatus();
+  const caps = await loadCapsulesSafe();
   // 提示卡一次最多一張，照順序取第一個符合的
   const tips = [
     info.paused ? `<div class="card" id="paused-note" style="background:var(--lock-bg);border-color:transparent;gap:4px">
@@ -25,6 +26,7 @@ async function viewPartnerHome() {
       <div class="small" style="color:var(--lock)">這段時間看不到${esc(ownerName())}寫的紀錄，你自己寫的照舊。${esc(ownerName())}恢復之後就會回來，什麼都不會不見。</div>
     </div>` : '',
     quizTipHtml(quizQ, 'urgent'),
+    capsuleTipHtml(caps),
     pending.length ? `<a class="card" href="#/view/${esc(pending[0].record_id)}" style="background:var(--lock-bg);border-color:transparent;gap:4px">
       <div class="bold" style="color:var(--lock)">有 ${pending.length} 個任務等你確認</div>
       <div class="small" style="color:var(--lock)">${esc(ownerName())}完成了你出的任務，點這裡去看看，確認後那則紀錄就會解鎖給${esc(ownerName())}看。</div>
@@ -301,6 +303,7 @@ function viewPartnerSettings() {
     </div>` : ''}
     ${tourCard()}
     ${themeCard()}
+    ${skinCard()}
     ${analyticsCard()}
     ${feedbackCard()}
     <div class="card">

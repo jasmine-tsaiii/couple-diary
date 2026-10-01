@@ -37,6 +37,8 @@ const Wishes = {
 // 印章要用到「完成了幾件」，讀清單時順便記下來
 let wishDoneCount = 0;
 async function loadWishesSafe() {
+  // 時光膠囊的章也在這時候一起算（plus.js）
+  if (typeof loadCapsulesSafe === 'function') await loadCapsulesSafe();
   try { const list = await Wishes.list(); wishDoneCount = list.filter((w) => w.done).length; return list; } catch (e) { return null; }
 }
 // 完成後要記成美好時刻：先把標題、日期帶到新增畫面
@@ -245,8 +247,12 @@ function applyTheme(t = currentTheme()) {
   const root = document.documentElement;
   if (t === 'light' || t === 'dark') root.dataset.theme = t; else delete root.dataset.theme;
   const dark = t === 'dark' || (t === 'system' && window.matchMedia && matchMedia('(prefers-color-scheme: dark)').matches);
+  // 主題背景（plus.js）：淺色時才換配色，夜空一律是深色
+  const skin = root.dataset.skin || '';
+  root.dataset.mode = dark || skin === 'night' ? 'dark' : 'light';
+  const skinBg = { paper: '#F4EEDF', sakura: '#FFF3F5', xmas: '#F6F1E7' }[skin];
   const meta = document.querySelector('meta[name="theme-color"]');
-  if (meta) meta.setAttribute('content', dark ? '#1C1816' : '#FBF7F2');
+  if (meta) meta.setAttribute('content', skin === 'night' ? '#141A33' : dark ? '#1C1816' : skinBg || '#FBF7F2');
 }
 applyTheme();
 if (window.matchMedia) { try { matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => applyTheme()); } catch (e) { /* 舊瀏覽器 */ } }
@@ -599,6 +605,10 @@ const STAMP_GROUPS = [
     steps: [[1, '🔓', '第一次解鎖'], [5, '🗝️', '解鎖 5 個'], [10, '🎁', '解鎖 10 個']] },
   { key: 'wish', title: '一起完成', help: '在首頁的「一起完成的事」清單打勾，每完成 1 件算 1 個，你們兩個誰打勾都算。', unit: '件一起完成的事', u: '件', count: (c) => c.wishes,
     steps: [[1, '✅', '第一件完成'], [5, '🎯', '完成 5 件'], [10, '🗺️', '完成 10 件'], [30, '🌟', '完成 30 件']] },
+  { key: 'capsule', title: '時光膠囊', help: '在「一起 → 時光膠囊」寫一段話給對方、選一個打開的日子，就算 1 個。', unit: '個時光膠囊', u: '個', count: (c) => c.capsules,
+    steps: [[1, '💌', '第一個時光膠囊']] },
+  { key: 'capopen', title: '打開膠囊', help: '時光膠囊到了打開日期就會打開，你寫的、對方寫給你的都算。', unit: '個打開的時光膠囊', u: '個', count: (c) => c.capsOpened,
+    steps: [[1, '🎁', '第一次打開膠囊']] },
   { key: 'days', title: '在一起', help: '到設定頁填「在一起的日期」，每天自動累積，在一起那天算第 1 天。', unit: '天', u: '天', count: (c) => c.days,
     steps: [[100, '💯', '100 天'], [365, '🎂', '一週年'], [1000, '💍', '1000 天']] },
 ];
@@ -610,6 +620,8 @@ function stampCounts(all) {
     reflections: all.reduce((n, r) => n + (r.reflections || []).length, 0),
     unlocked: all.filter((r) => r.visibility === 'task' && r.unlocked).length,
     wishes: wishDoneCount,
+    capsules: typeof capsuleCounts === 'undefined' ? 0 : capsuleCounts.made,
+    capsOpened: typeof capsuleCounts === 'undefined' ? 0 : capsuleCounts.opened,
     days: togetherDays(),
   };
 }

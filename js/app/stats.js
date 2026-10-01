@@ -96,6 +96,7 @@ function bindStatCharts(daily) {
   });
 }
 
+const INTEREST_NAMES = { capsule: '時光膠囊（第 2 個）', theme: '主題背景（Plus）', theme_single: '單買主題', task_pack: '任務包', mission_pack: '臥底任務卡包', daily_question: '主題題庫', photos: '照片額度' };
 async function viewStats() {
   clearInterval(statsTimer);
   app.className = '';
@@ -124,6 +125,9 @@ async function viewStats() {
       </div>${k === 'interest' ? `<div class="stat-tile"><div class="stat-num">${interestRate}</div><div class="small">我有興趣比例</div><div class="small muted">目標 5%</div></div>` : ''}`).join('')}
     </div>
     <div class="small muted">最後有人寫：${lastWrite}</div>
+    ${n.interest_by_feature ? `<h2 class="section-title">各功能「我有興趣」人數</h2>
+    <div class="card" style="gap:6px">${Object.entries(INTEREST_NAMES).map(([k, label]) => `<div class="row between"><span>${label}</span><b>${Number(n.interest_by_feature[k]) || 0} 人</b></div>`).join('')}
+      <div class="small muted">一個人按很多次也只算 1 人。看過入口的人數在 GA4 的 paywall_view 事件。</div></div>` : ''}
     <h2 class="section-title">最近 30 天</h2>
     <div class="card" style="gap:18px">${daily.length ? STAT_LINES.map(([k, label]) => statLine(daily, k, label)).join('') : '<div class="muted">還沒有資料</div>'}</div>
     <h2 class="section-title">每週留存</h2>

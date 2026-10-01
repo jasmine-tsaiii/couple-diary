@@ -275,6 +275,7 @@ async function viewSettings() {
     <h2 class="section-title set-sec" id="set-other">其他</h2>
     ${tourCard()}
     ${themeCard()}
+    ${skinCard()}
     ${analyticsCard()}
     ${feedbackCard()}
   `;

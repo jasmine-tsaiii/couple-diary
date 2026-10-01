@@ -60,7 +60,7 @@ const SHOT = (n) => (process.env.SHOT_DIR || '.') + '/' + n;
   // 一起
   await p.click('#tabbar [data-tab="together"]'); await p.waitForSelector('.nav-row');
   const rows = await p.$$eval('.nav-row .nav-text .bold', (e) => e.map((x) => x.textContent).join(','));
-  log('together rows', rows === '每天一題,一起完成的事,解鎖任務,印章冊,回憶小卡', rows);
+  log('together rows', rows === '每天一題,一起完成的事,解鎖任務,時光膠囊,印章冊,回憶小卡,臥底任務卡包,主題題庫', rows);
   await p.screenshot({ path: SHOT('b-together.png') });
 
   // 我的

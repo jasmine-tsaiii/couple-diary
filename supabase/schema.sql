@@ -916,12 +916,24 @@ create policy "plans: owner read" on public.plans
   for select to authenticated using (owner = auth.uid());
 
 -- 誰按過「我有興趣」（付費功能還沒推出，先看有多少人想要）
+-- 2026-10-01 起分功能記：每個人每個功能只算一次（同一個人按很多次，只留一列）
 create table if not exists public.upgrade_interest (
-  owner       uuid primary key references auth.users (id) on delete cascade,
+  owner       uuid not null references auth.users (id) on delete cascade,
+  feature     text not null default 'photos',
   times       int not null default 1,
   first_at    timestamptz not null default now(),
-  last_at     timestamptz not null default now()
+  last_at     timestamptz not null default now(),
+  primary key (owner, feature)
 );
+alter table public.upgrade_interest add column if not exists feature text not null default 'photos';
+-- 舊版只有 owner 一個主鍵：換成 (owner, feature)
+do $$ begin
+  if (select array_length(conkey, 1) from pg_constraint
+      where conname = 'upgrade_interest_pkey' and conrelid = 'public.upgrade_interest'::regclass) = 1 then
+    alter table public.upgrade_interest drop constraint upgrade_interest_pkey;
+    alter table public.upgrade_interest add constraint upgrade_interest_pkey primary key (owner, feature);
+  end if;
+end $$;
 alter table public.upgrade_interest enable row level security;
 
 create or replace function public.photo_quota() returns jsonb
@@ -944,11 +956,37 @@ create or replace function public.photo_quota_ok() returns boolean
 language sql stable security definer set search_path = public as $$
   select (q ->> 'limit') is null or (q ->> 'used')::int < (q ->> 'limit')::int from (select public.photo_quota() as q) x
 $$;
+-- 舊版 App 用的（照片額度的「我有興趣」）：一樣每人只算一次
 create or replace function public.note_upgrade_interest() returns void
 language sql security definer set search_path = public as $$
-  insert into public.upgrade_interest (owner) values (auth.uid())
-  on conflict (owner) do update set times = public.upgrade_interest.times + 1, last_at = now()
+  insert into public.upgrade_interest (owner, feature) values (auth.uid(), 'photos') on conflict do nothing
 $$;
+-- 「我有興趣」：每個人每個功能只記一次。第一次回傳 true，之後回傳 false（畫面顯示「已登記」）
+create or replace function public.note_interest(p_feature text) returns boolean
+language plpgsql security definer set search_path = public as $$
+declare v_new boolean;
+begin
+  if auth.uid() is null then return false; end if;
+  if p_feature is null or p_feature not in ('photos', 'capsule', 'theme', 'theme_single', 'daily_question', 'task_pack', 'mission_pack', 'recap_premium') then
+    raise exception '不認得這個功能';
+  end if;
+  insert into public.upgrade_interest (owner, feature) values (auth.uid(), p_feature)
+    on conflict do nothing returning true into v_new;
+  if v_new is null then
+    update public.upgrade_interest set times = times + 1, last_at = now() where owner = auth.uid() and feature = p_feature;
+    return false;
+  end if;
+  return true;
+end $$;
+-- 我按過哪些（換手機也記得）
+create or replace function public.my_interests() returns text[]
+language sql stable security definer set search_path = public as $$
+  select coalesce(array_agg(feature order by feature), '{}') from public.upgrade_interest where owner = auth.uid()
+$$;
+revoke all on function public.note_interest(text) from public, anon;
+revoke all on function public.my_interests() from public, anon;
+grant execute on function public.note_interest(text) to authenticated;
+grant execute on function public.my_interests() to authenticated;
 revoke all on function public.photo_quota() from public, anon;
 revoke all on function public.photo_quota_ok() from public, anon;
 revoke all on function public.note_upgrade_interest() from public, anon;
@@ -1676,7 +1714,8 @@ begin
     'deleted_records_7d', (select count(*) from acts where (data ->> 'deletedAt') is not null
         and to_timestamp((data ->> 'deletedAt')::bigint / 1000.0) >= now() - interval '7 days'),
     'records_total', (select count(*) from acts where (data ->> 'deletedAt') is null),
-    'interest', (select count(*) from public.upgrade_interest),
+    'interest', (select count(distinct owner) from public.upgrade_interest),
+    'interest_by_feature', (select coalesce(jsonb_object_agg(feature, n), '{}'::jsonb) from (select feature, count(*) as n from public.upgrade_interest group by feature) f),
     'accounts_deleted_7d', (select count(*) from public.account_deletions where deleted_at >= now() - interval '7 days'),
     'accounts_deleted_total', (select count(*) from public.account_deletions),
     'last_write_at', (select max(updated_at) from acts)
@@ -1701,7 +1740,7 @@ begin
     'deleted', (select count(*) from acts a where a.dd = x.d),
     'writers', (select count(distinct a.who) from acts a where a.ud = x.d),
     'active_couples', (select count(distinct a.owner) from acts a join couples c on c.owner = a.owner where a.ud = x.d),
-    'interest', (select count(*) from public.upgrade_interest i where (i.first_at at time zone 'Asia/Taipei')::date = x.d),
+    'interest', (select count(*) from (select owner, min(first_at) as f from public.upgrade_interest group by owner) i where (i.f at time zone 'Asia/Taipei')::date = x.d),
     'account_deletes', (select count(*) from public.account_deletions z where (z.deleted_at at time zone 'Asia/Taipei')::date = x.d)
   ) order by x.d), '[]'::jsonb) into v_daily from days x;
 
@@ -2315,3 +2354,147 @@ begin
 end $$;
 revoke all on function public.daily_history(date, int) from public, anon;
 grant execute on function public.daily_history(date, int) to authenticated;
+
+-- ============================================================
+-- 時光膠囊（2026-10-01）：寫給對方的一段話（可以加一張照片），到「打開日期」才看得到。
+-- 打開日期之前，對方只拿得到「有一個膠囊、哪天打開」：資料表沒有任何讀取規則，只能透過下面的函式讀，
+-- 內容在資料庫這層就擋掉，不是只靠畫面藏起來。寫的人自己隨時看得到，打開之前都能改。
+-- for_uid：收膠囊的人。單人時寫的先空著，另一半加入後第一次讀到時才定下來；
+-- 換了另一半，新的人看不到寫給前一位的膠囊。
+-- 免費：同一時間 1 個還沒打開的膠囊（plans.plan = 'plus' 不限）。
+-- ============================================================
+create table if not exists public.capsules (
+  id          uuid primary key default gen_random_uuid(),
+  space       uuid not null references auth.users (id) on delete cascade,
+  author      uuid not null references auth.users (id) on delete cascade,
+  for_uid     uuid references auth.users (id) on delete set null,
+  open_on     date not null,
+  occasion    text not null default 'custom' check (occasion in ('anniversary', 'birthday', 'custom')),
+  body        text not null default '' check (char_length(body) <= 2000),
+  photo_path  text,
+  created_at  timestamptz not null default now(),
+  updated_at  timestamptz not null default now()
+);
+create index if not exists capsules_space on public.capsules (space, open_on);
+alter table public.capsules enable row level security;
+revoke all on public.capsules from anon, authenticated;
+
+create or replace function public.capsule_today() returns date
+language sql stable as $$ select (now() at time zone 'Asia/Taipei')::date $$;
+
+create or replace function public.capsule_list() returns jsonb
+language plpgsql security definer set search_path = public as $$
+declare
+  v_space uuid := public.quiz_space();
+  v_today date := public.capsule_today();
+  v_members uuid[];
+begin
+  if v_space is null or auth.uid() is null then return '[]'::jsonb; end if;
+  v_members := public.quiz_members(v_space);
+  -- 單人時寫的膠囊：現在的另一半第一次讀到時，就是收件人
+  update public.capsules set for_uid = auth.uid()
+    where space = v_space and for_uid is null and author <> auth.uid() and author = any(v_members);
+  return (select coalesce(jsonb_agg(case
+      when c.author = auth.uid() or c.open_on <= v_today then jsonb_build_object(
+        'id', c.id, 'mine', c.author = auth.uid(), 'author_name', public.space_member_name(v_space, c.author),
+        'open_on', c.open_on, 'occasion', c.occasion, 'opened', c.open_on <= v_today,
+        'body', c.body, 'photo_path', c.photo_path, 'for_set', c.for_uid is not null,
+        'created_at', c.created_at, 'updated_at', c.updated_at)
+      else jsonb_build_object(
+        'id', c.id, 'mine', false, 'author_name', public.space_member_name(v_space, c.author),
+        'open_on', c.open_on, 'occasion', c.occasion, 'opened', false, 'sealed', true, 'created_at', c.created_at)
+    end order by c.open_on, c.created_at), '[]'::jsonb)
+    from public.capsules c
+    where c.space = v_space
+      and (c.author = auth.uid()
+           or (c.author = any(v_members) and c.for_uid = auth.uid()
+               -- 主人暫停分享時，另一半看不到主人寫的
+               and not (c.author = v_space and public.my_owner() is not null and public.space_paused(v_space)))));
+end $$;
+
+create or replace function public.capsule_save(p_id uuid, p_open_on date, p_occasion text, p_body text, p_photo text)
+returns jsonb
+language plpgsql security definer set search_path = public as $$
+declare
+  v_space uuid := public.quiz_space();
+  v_today date := public.capsule_today();
+  v_body text := coalesce(btrim(p_body), '');
+  v_other uuid;
+  c public.capsules;
+begin
+  if v_space is null or auth.uid() is null then raise exception '要先登入才能寫時光膠囊'; end if;
+  if p_open_on is null or p_open_on <= v_today then raise exception '打開日期要選明天以後'; end if;
+  if p_open_on > v_today + 3660 then raise exception '打開日期最多選 10 年後'; end if;
+  if coalesce(p_occasion, '') not in ('anniversary', 'birthday', 'custom') then raise exception '不認得這個日子'; end if;
+  if char_length(v_body) > 2000 then raise exception '最多 2000 個字'; end if;
+  if v_body = '' and p_photo is null then raise exception '寫一點話，或放一張照片'; end if;
+  if p_photo is not null and p_photo !~ ('^' || auth.uid()::text || '/cap-[a-z0-9]{6,40}\.jpg$') then raise exception '照片不對，請重新選一次'; end if;
+  if p_id is not null then
+    select * into c from public.capsules where id = p_id and author = auth.uid() and space = v_space for update;
+    if c.id is null then raise exception '找不到這個時光膠囊'; end if;
+    if c.open_on <= v_today then raise exception '已經打開了，不能再改'; end if;
+    update public.capsules set open_on = p_open_on, occasion = p_occasion, body = v_body, photo_path = p_photo, updated_at = now()
+      where id = p_id;
+    return jsonb_build_object('id', p_id, 'old_photo', case when c.photo_path is distinct from p_photo then c.photo_path end);
+  end if;
+  perform pg_advisory_xact_lock(hashtext('capsule:' || auth.uid()::text));
+  if coalesce((select plan from public.plans where owner = auth.uid()), 'free') <> 'plus'
+     and exists (select 1 from public.capsules where author = auth.uid() and space = v_space and open_on > v_today) then
+    raise exception 'capsule_limit';
+  end if;
+  v_other := (select m from unnest(public.quiz_members(v_space)) m where m <> auth.uid() limit 1);
+  insert into public.capsules (space, author, for_uid, open_on, occasion, body, photo_path)
+    values (v_space, auth.uid(), v_other, p_open_on, p_occasion, v_body, p_photo)
+    returning * into c;
+  return jsonb_build_object('id', c.id);
+end $$;
+
+-- 只有寫的人能刪；回傳照片路徑，App 順手把照片刪掉
+create or replace function public.capsule_delete(p_id uuid) returns text
+language plpgsql security definer set search_path = public as $$
+declare v_photo text;
+begin
+  delete from public.capsules where id = p_id and author = auth.uid() returning photo_path into v_photo;
+  return v_photo;
+end $$;
+
+-- 膠囊照片：寫的人放在自己資料夾（cap- 開頭，最多 20 張）；收件人到了打開日期才讀得到
+create or replace function public.capsule_photo_ok() returns boolean
+language sql stable security definer set search_path = public as $$
+  select (select count(*) from storage.objects o where o.bucket_id = 'photos'
+          and o.name like auth.uid()::text || '/cap-%') < 20
+$$;
+create or replace function public.capsule_photo_visible(p_name text) returns boolean
+language sql stable security definer set search_path = public as $$
+  select exists (select 1 from public.capsules c
+    where c.photo_path = p_name and c.space = public.quiz_space()
+      and (c.author = auth.uid() or (c.for_uid = auth.uid() and c.open_on <= public.capsule_today()
+           and not (c.author = c.space and public.my_owner() is not null and public.space_paused(c.space)))))
+$$;
+revoke all on function public.capsule_list() from public, anon;
+revoke all on function public.capsule_save(uuid, date, text, text, text) from public, anon;
+revoke all on function public.capsule_delete(uuid) from public, anon;
+revoke all on function public.capsule_photo_ok() from public, anon;
+revoke all on function public.capsule_photo_visible(text) from public, anon;
+grant execute on function public.capsule_list() to authenticated;
+grant execute on function public.capsule_save(uuid, date, text, text, text) to authenticated;
+grant execute on function public.capsule_delete(uuid) to authenticated;
+grant execute on function public.capsule_photo_ok() to authenticated;
+grant execute on function public.capsule_photo_visible(text) to authenticated;
+
+drop policy if exists "photos: capsule insert" on storage.objects;
+create policy "photos: capsule insert" on storage.objects
+  for insert to authenticated
+  with check (
+    bucket_id = 'photos' and (storage.foldername(name))[1] = auth.uid()::text
+    and coalesce((storage.foldername(name))[2], '') = '' and storage.filename(name) like 'cap-%'
+    and public.capsule_photo_ok()
+  );
+drop policy if exists "photos: capsule read" on storage.objects;
+create policy "photos: capsule read" on storage.objects
+  for select to authenticated
+  using (bucket_id = 'photos' and storage.filename(name) like 'cap-%' and public.capsule_photo_visible(name));
+drop policy if exists "photos: capsule delete" on storage.objects;
+create policy "photos: capsule delete" on storage.objects
+  for delete to authenticated
+  using (bucket_id = 'photos' and (storage.foldername(name))[1] = auth.uid()::text and storage.filename(name) like 'cap-%');

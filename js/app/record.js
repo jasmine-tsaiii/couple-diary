@@ -542,7 +542,8 @@ async function viewForm(mode, arg) {
             <button class="opt ${rec.task.mode === 'photo' ? 'on' : ''}" data-taskmode="photo">要上傳照片</button>
             <button class="opt ${rec.task.mode === 'answer' ? 'on' : ''}" data-taskmode="answer">要回答問題</button>
           </div>
-          <label for="f-task" class="muted">${rec.task.mode === 'answer' ? `想問${esc(otherName())}的問題` : '對方要完成的任務'}</label>
+          <div class="row between"><label for="f-task" class="muted">${rec.task.mode === 'answer' ? `想問${esc(otherName())}的問題` : '對方要完成的任務'}</label>
+            <button class="btn small secondary tpl-btn" id="task-tpl" type="button">從範本選</button></div>
           <input id="f-task" class="input" maxlength="${LIMITS.task}" value="${esc(rec.task.text)}" placeholder="${rec.task.mode === 'answer' ? '例如：你覺得那天我為什麼不開心？' : '例如：帶我去吃早午餐，拍一張合照給我'}">
           ${mode === 'edit' && originalUnlocked && originalVisibility === 'task' ? `<div class="small muted">這則已經解鎖了，改任務內容不會重新上鎖，${esc(otherName())}還是看得到。想收回的話，改成「上鎖」。</div>` : ''}` : ''}
         <div class="muted small vis-help">${partner ? `<div>給${esc(ownerName())}看：${esc(ownerName())}看得到。</div><div>上鎖：只有你看得到，${esc(ownerName())}只會看到「有一則上鎖」。</div><div>任務解鎖：${esc(ownerName())}完成你出的任務、你按通過後才看得到。</div>`
@@ -632,6 +633,8 @@ async function viewForm(mode, arg) {
     });
     formGuard = { dirty: () => dirty || newPhotos.size > 0, leave: () => { clearTimeout(draftTimer); if (mode === 'new') clearDraft(); } };
     app.querySelectorAll('[data-taskmode]').forEach((b) => b.addEventListener('click', () => { collect(); rec.task.mode = b.dataset.taskmode; render(); }));
+    const tpl = document.getElementById('task-tpl');
+    if (tpl) tpl.addEventListener('click', () => { collect(); taskTemplateSheet((t) => { rec.task.mode = t.mode; rec.task.text = t.text; dirty = true; render(); }); });
     const photoInput = document.getElementById('f-photos');
     if (photoInput) photoInput.addEventListener('change', async (ev) => {
       collect();

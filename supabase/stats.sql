@@ -10,7 +10,8 @@
 --   第30天還在      新註冊的人裡，註冊後第 30～36 天有新增或修改紀錄（還沒滿 37 天的週會是空的）
 --   這週有寫的人    這週有新增或修改紀錄的人（主人和另一半都算）
 --   兩個人都有寫    這週主人和另一半都有寫的配對數
---   按我有興趣      這週第一次按「我有興趣」（照片付費方案）的人
+--   按我有興趣      這週第一次按「我有興趣」的人（任何付費功能都算，一個人只算一次）
+-- 想看每個付費功能各有幾個人按「我有興趣」：改跑 supabase/stats-interest.sql（設定 → 數據看板也看得到）。
 -- 注意：「有沒有寫」看的是每則紀錄最後修改的時間，舊紀錄後來又被改過的話，只算最後那次。
 
 with weeks as (
@@ -49,7 +50,7 @@ select
      group by a.owner
      having bool_or(a.who = a.owner) and bool_or(a.who <> a.owner)
    ) x) as 兩個人都有寫,
-  (select count(*) from public.upgrade_interest i where i.first_at >= w.wk and i.first_at < w.wk + interval '1 week') as 按我有興趣
+  (select count(*) from (select owner, min(first_at) as f from public.upgrade_interest group by owner) i where i.f >= w.wk and i.f < w.wk + interval '1 week') as 按我有興趣
 from weeks w
 left join per_user u on u.created_at >= w.wk and u.created_at < w.wk + interval '1 week'
 group by w.wk

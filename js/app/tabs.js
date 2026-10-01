@@ -78,6 +78,7 @@ async function viewTogether() {
   const wishes = await loadWishesSafe();
   const wishDone = wishes ? wishes.filter((w) => w.done).length : 0;
   const daily = cloud ? await dailyStatus() : null;
+  const caps = await loadCapsulesSafe();
   let taskSub = '上鎖紀錄的解鎖任務';
   let taskBadge = '';
   if (cloud) {
@@ -96,12 +97,14 @@ async function viewTogether() {
   const doRows = guest
     ? [
       navRow({ href: '#/wishes', icon: TILE_ICON.wish, title: '一起完成的事', sub: wishes && wishes.length ? `情侶待辦・${wishDone} / ${wishes.length}` : '情侶待辦清單' }),
+      capsuleRowNav(caps),
       navRow({ href: '#/signup', id: 'row-signup', icon: TILE_ICON.share, title: '註冊後可以和另一半一起玩', sub: '每天一題、重新認識你、解鎖任務' }),
     ]
     : [
       cloud && (!CloudDB.isAnonymous() || partner) ? dailyRowHtml(daily) : '',
       navRow({ href: '#/wishes', icon: TILE_ICON.wish, title: '一起完成的事', sub: wishes && wishes.length ? `情侶待辦・${wishDone} / ${wishes.length}` : '情侶待辦清單' }),
       cloud ? navRow({ href: '#/tasks', icon: ICON.lock, title: '解鎖任務', sub: taskSub, badge: taskBadge }) : '',
+      capsuleRowNav(caps),
     ];
   app.innerHTML = `
     <div class="topbar"><h1>一起</h1></div>
@@ -110,7 +113,9 @@ async function viewTogether() {
       stamps ? navRow({ href: '#/stamps', icon: TILE_ICON.stamp, title: '印章冊', sub: `已集 ${stamps.filter((x) => x.got).length} / ${stamps.length}` }) : '',
       navRow({ href: '#/cards', icon: TILE_ICON.card, title: '回憶小卡', sub: '做成圖分享出去' }),
     ])}
+    ${navGroup('搶先看', previewRows())}
   `;
+  bindPreviewRows();
   const su = document.getElementById('row-signup');
   if (su) su.addEventListener('click', (ev) => { ev.preventDefault(); track('signup_prompt', { where: 'together' }); showSignupSheet('註冊後就能和另一半一起玩', '每天一題、重新認識你、解鎖任務都要兩個人一起用。現在試用寫的紀錄，註冊後會自動搬上雲端。'); });
 }
@@ -145,7 +150,7 @@ async function viewMe() {
       navRow({ href: '#/settings/records', icon: ICON.book, title: '整理紀錄', sub: '分類、標籤、最近刪除、重新編號' }),
       navRow({ href: '#/settings/backup', icon: TILE_ICON.backup, title: '備份與匯出', sub: '匯出備份、閱讀版' }),
       navRow({ href: '#/settings/account', icon: ICON.lock, title: '帳號與安全', sub: '登入方式、App 解鎖碼、結束這段關係' }),
-      navRow({ href: '#/settings/theme', icon: TILE_ICON.theme, title: '外觀', sub: '淺色、深色' }),
+      navRow({ href: '#/settings/theme', icon: TILE_ICON.theme, title: '外觀', sub: '淺色、深色、主題背景' }),
       admin ? navRow({ href: '#/stats', icon: TILE_ICON.chart, title: '數據看板', sub: '只有你看得到' }) : '',
     ])}
     ${navGroup('更多', [

@@ -11,6 +11,7 @@
   const realVisit = CFG.GA_ANY_HOST || (/(^|\.)jas-soul\.com$/.test(location.hostname) && !navigator.webdriver);
   const ID = (realVisit && CFG.GA_MEASUREMENT_ID) || '';
   const TYPES = ['happy', 'cloud', 'fight'];
+  const FEATURES = ['photos', 'capsule', 'theme', 'theme_single', 'daily_question', 'task_pack', 'mission_pack', 'recap_premium'];
   const oneOf = (list) => (v) => (list.includes(v) ? v : undefined);
   const bool = (v) => (v ? 'yes' : 'no');
   const code = (v) => (typeof v === 'string' && /^[a-z0-9_-]{1,40}$/i.test(v) ? v : undefined);
@@ -40,7 +41,10 @@
     pin_enable: {},
     pause_share: {},
     end_relationship: { mode: oneOf(['archive', 'delete']) },
-    upgrade_interest: { feature: oneOf(['photos']) },
+    upgrade_interest: { feature: oneOf(FEATURES) },
+    paywall_view: { feature: oneOf(FEATURES) },
+    capsule_create: { occasion: oneOf(['anniversary', 'birthday', 'custom']) },
+    theme_change: { skin: oneOf(['default', 'paper']) },
     feedback_send: {},
     signup_prompt: { where: oneOf(['tour', 'share', 'third_record']) },
     card_view: { kind: oneOf(['week', 'month', 'days', 'record']), size: oneOf(['story', 'square']) },

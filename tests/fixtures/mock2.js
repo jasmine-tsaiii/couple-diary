@@ -93,7 +93,7 @@
       if (!(S.admins || []).includes(u.id)) throw new Error('沒有權限');
       const days = Array.from({ length: 30 }, (_, i) => { const d = new Date(Date.now() - (29 - i) * 864e5); return { d: d.toISOString().slice(0, 10), signups: i % 4, pairs: i % 7 === 0 ? 1 : 0, active_couples: Math.min(3, Math.floor(i / 8)), writers: i % 5, records: (i * 3) % 7, deleted: i % 9 === 0 ? 1 : 0, interest: i === 20 ? 1 : 0, account_deletes: i === 12 ? 1 : 0 }; });
       const weeks = Array.from({ length: 12 }, (_, i) => ({ wk: new Date(Date.now() - i * 7 * 864e5).toISOString().slice(0, 10), signups: 12 - i, activated: 8 - Math.min(8, i), paired: 5 - Math.min(5, i), d7_n: i < 2 ? 0 : 10, d7_yes: i < 2 ? 0 : 4, d30_n: i < 6 ? 0 : 8, d30_yes: i < 6 ? 0 : 2, writers: 9 - Math.min(9, i) }));
-      return { now: { owners: 42, owners_today: 2, owners_7d: 11, couples: 9, active_couples_7d: 5, both_wrote_7d: 3, writers_today: 4, writers_7d: 13, records_today: 7, edits_today: 2, deleted_records_7d: 1, records_total: 318, interest: 3, accounts_deleted_7d: 0, accounts_deleted_total: 1, last_write_at: new Date().toISOString() }, daily: days, weekly: weeks, at: new Date().toISOString() };
+      return { now: { owners: 42, owners_today: 2, owners_7d: 11, couples: 9, active_couples_7d: 5, both_wrote_7d: 3, writers_today: 4, writers_7d: 13, records_today: 7, edits_today: 2, deleted_records_7d: 1, records_total: 318, interest: 3, interest_by_feature: { capsule: 2, theme: 1 }, accounts_deleted_7d: 0, accounts_deleted_total: 1, last_write_at: new Date().toISOString() }, daily: days, weekly: weeks, at: new Date().toISOString() };
     },
     // 通知（真的資料庫由觸發器寫入；這裡測試直接放進 S.notifs）
     my_notifications(S, u) { return (S.notifs || []).filter((n) => n.recipient === u.id).sort((a, b) => (a.created_at < b.created_at ? 1 : -1)).slice(0, 50).map(({ recipient, ...n }) => n); },
@@ -370,6 +370,50 @@
       return { plan: plus ? 'plus' : 'free', limit: plus ? null : 30, used: folders.reduce((n, f) => n + cnt(f), 0), mine: cnt(u.id) };
     },
     note_upgrade_interest(S, u) { S.interest = S.interest || {}; S.interest[u.id] = (S.interest[u.id] || 0) + 1; },
+    // 「我有興趣」：每人每功能一列（S.interests['uid:feature'] = 按了幾次，只有第一次回傳 true）
+    note_interest(S, u, a) {
+      if (S.noInterestRpc) throw new Error('Could not find the function public.note_interest');
+      S.interests = S.interests || {}; const k = u.id + ':' + a.p_feature;
+      if (S.interests[k]) { S.interests[k]++; return false; } S.interests[k] = 1; return true;
+    },
+    my_interests(S, u) { return Object.keys(S.interests || {}).filter((k) => k.startsWith(u.id + ':')).map((k) => k.split(':')[1]); },
+    // 時光膠囊：打開日期前，收件人只拿得到日期（S.capToday 可以指定今天）
+    _capSpace(S, u) { return myOwner(S, u) || (real(u) ? u.id : null); },
+    capsule_list(S, u) {
+      if (S.noCapsules) throw new Error('Could not find the function public.capsule_list');
+      const space = rpcs._capSpace(S, u); if (!space) return [];
+      const today = S.capToday || new Date(Date.now() + 8 * 3600e3).toISOString().slice(0, 10);
+      const members = [space, ...S.t.partners.filter((x) => x.owner === space && x.approved !== false).map((x) => x.uid)];
+      const nameOf = (m) => { if (m === space) { const sh = S.t.shares.find((x) => x.owner === space); return (sh && sh.owner_name) || '對方'; } const p = S.t.partners.find((x) => x.uid === m); return (p && p.name) || '對方'; };
+      (S.capsules || []).forEach((c) => { if (c.space === space && !c.for_uid && c.author !== u.id && members.includes(c.author)) c.for_uid = u.id; });
+      return (S.capsules || []).filter((c) => c.space === space && (c.author === u.id || (members.includes(c.author) && c.for_uid === u.id)))
+        .sort((a, b) => (a.open_on < b.open_on ? -1 : 1))
+        .map((c) => (c.author === u.id || c.open_on <= today
+          ? { id: c.id, mine: c.author === u.id, author_name: nameOf(c.author), open_on: c.open_on, occasion: c.occasion, opened: c.open_on <= today, body: c.body, photo_path: c.photo_path, created_at: c.created_at }
+          : { id: c.id, mine: false, author_name: nameOf(c.author), open_on: c.open_on, occasion: c.occasion, opened: false, sealed: true, created_at: c.created_at }));
+    },
+    capsule_save(S, u, a) {
+      const space = rpcs._capSpace(S, u); if (!space) throw new Error('要先登入才能寫時光膠囊');
+      const today = S.capToday || new Date(Date.now() + 8 * 3600e3).toISOString().slice(0, 10);
+      if (!a.p_open_on || a.p_open_on <= today) throw new Error('打開日期要選明天以後');
+      if (!(a.p_body || '').trim() && !a.p_photo) throw new Error('寫一點話，或放一張照片');
+      S.capsules = S.capsules || [];
+      if (a.p_id) {
+        const c = S.capsules.find((x) => x.id === a.p_id && x.author === u.id); if (!c) throw new Error('找不到這個時光膠囊');
+        if (c.open_on <= today) throw new Error('已經打開了，不能再改');
+        const old = c.photo_path !== a.p_photo ? c.photo_path : null;
+        Object.assign(c, { open_on: a.p_open_on, occasion: a.p_occasion, body: a.p_body, photo_path: a.p_photo });
+        return { id: c.id, old_photo: old };
+      }
+      if ((S.plans || {})[u.id] !== 'plus' && S.capsules.some((x) => x.author === u.id && x.space === space && x.open_on > today)) throw new Error('capsule_limit');
+      const members = [space, ...S.t.partners.filter((x) => x.owner === space && x.approved !== false).map((x) => x.uid)];
+      const c = { id: 'cap' + (++S.n), space, author: u.id, for_uid: members.find((m) => m !== u.id) || null, open_on: a.p_open_on, occasion: a.p_occasion, body: a.p_body, photo_path: a.p_photo, created_at: new Date().toISOString() };
+      S.capsules.push(c); return { id: c.id };
+    },
+    capsule_delete(S, u, a) {
+      const c = (S.capsules || []).find((x) => x.id === a.p_id && x.author === u.id); if (!c) return null;
+      S.capsules = S.capsules.filter((x) => x !== c); return c.photo_path || null;
+    },
     partner_add_wish(S, u, a) {
       const p = S.t.partners.find((x) => x.uid === u.id && x.approved !== false); if (!p) throw new Error('你還沒有用分享碼加入');
       S.t.wishes = S.t.wishes || [];
@@ -486,7 +530,8 @@
             return {
               async upload(path, blob) {
                 const S = load(); const u = me(); const folder = path.split('/')[0]; const file = path.split('/').pop();
-                if (folder !== u.id || !(real(u) || (myOwner(S, u) && file.startsWith('task-')))) return err('new row violates row-level security policy');
+                if (folder !== u.id || !(real(u) || (myOwner(S, u) && (file.startsWith('task-') || file.startsWith('cap-'))))) return err('new row violates row-level security policy');
+                if (file.startsWith('cap-')) { S.files[path] = await toDataUrl(blob); save(S); return { data: {}, error: null }; }
                 if (real(u) && !S.files[path]) {
                   const parts = path.split('/');
                   if (parts.length === 3 && !S.files[parts[0] + '/' + parts[2]]) return err('new row violates row-level security policy');
@@ -500,11 +545,12 @@
                 const ok = folder === u.id
                   || (folder === myOwner(S, u) && S.t.records.some((r) => (r.author || r.owner) === r.owner && recVisibleToPartner(S, u, r) && (r.data.photoIds || []).includes(id)))
                   || (real(u) && S.t.records.some((r) => r.owner === u.id && r.author === folder && r.author !== u.id && !r.data.deletedAt && (r.visibility === 'shared' || (r.visibility === 'task' && r.unlocked)) && (r.data.photoIds || []).includes(id)))
-                  || (real(u) && S.t.task_submissions.some((t) => t.photo_path === path && S.t.records.some((r) => r.id === t.record_id && (r.author || r.owner) === u.id)));
+                  || (real(u) && S.t.task_submissions.some((t) => t.photo_path === path && S.t.records.some((r) => r.id === t.record_id && (r.author || r.owner) === u.id)))
+                  || (file.startsWith('cap-') && (S.capsules || []).some((c) => c.photo_path === path && c.for_uid === u.id && c.open_on <= (S.capToday || new Date(Date.now() + 8 * 3600e3).toISOString().slice(0, 10))));
                 if (!ok || !S.files[path]) return err('not found');
                 return { data: await (await fetch(S.files[path])).blob(), error: null };
               },
-              async remove(paths) { const S = load(); const u = me(); paths.filter((p) => (p.startsWith(u.id + '/') && real(u)) || (real(u) && S.t.task_submissions.some((t) => t.owner === u.id && t.photo_path === p))).forEach((p) => delete S.files[p]); save(S); return { data: {}, error: null }; },
+              async remove(paths) { const S = load(); const u = me(); paths.filter((p) => (p.startsWith(u.id + '/') && (real(u) || p.split('/').pop().startsWith('cap-'))) || (real(u) && S.t.task_submissions.some((t) => t.owner === u.id && t.photo_path === p))).forEach((p) => delete S.files[p]); save(S); return { data: {}, error: null }; },
               async list(prefix) { const S = load(); return { data: Object.keys(S.files).filter((p) => p.startsWith(prefix + '/') && !p.slice(prefix.length + 1).includes('/')).map((p) => ({ name: p.slice(prefix.length + 1) })), error: null }; },
             };
           },

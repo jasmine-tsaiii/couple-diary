@@ -301,7 +301,7 @@ function loaderHtml(text = '讀取中', compact = false) {
 }
 function mascotHtml(mood, width, extraClass = '') {
   if (!window.Mascot) return '';
-  return `<div class="mascot ${extraClass}" style="width:${width}px" aria-hidden="true">${window.Mascot.svg(mood, MASCOT_PICK || window.Mascot.DEFAULT)}</div>`;
+  return `<div class="mascot ${extraClass}" style="width:${width}px;--ms:${width}px" aria-hidden="true">${window.Mascot.svg(mood, MASCOT_PICK || window.Mascot.DEFAULT)}</div>`;
 }
 // 空白狀態（.empty）自動加上等紀錄的吉祥物；錯誤畫面加 no-mascot 就不放
 new MutationObserver(() => {
@@ -488,10 +488,13 @@ function showPaywall(q) {
   const close = () => box.remove();
   box.querySelector('#pw-no').addEventListener('click', close);
   box.addEventListener('click', (ev) => { if (ev.target === box) close(); });
-  box.querySelector('#pw-yes').addEventListener('click', async () => {
-    track('upgrade_interest', { feature: 'photos' });
-    try { await CloudDB.noteUpgradeInterest(); } catch (e) { /* 記不到也沒關係 */ }
+  notePaywallView('photos');
+  const yes = box.querySelector('#pw-yes');
+  hasInterest('photos').then((done) => { if (done && document.body.contains(yes)) { yes.disabled = true; yes.textContent = '已登記，推出時通知你'; } });
+  yes.addEventListener('click', async () => {
+    yes.disabled = true;
+    const fresh = await registerInterest('photos');
     close();
-    toast('謝謝！已經記下你有興趣');
+    toast(fresh ? '謝謝！推出時會通知你' : '已經登記過了，推出時通知你');
   });
 }

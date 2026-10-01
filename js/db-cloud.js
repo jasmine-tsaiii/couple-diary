@@ -329,6 +329,34 @@ const CloudDB = CLOUD_ENABLED ? (() => {
     async noteUpgradeInterest() {
       await client.rpc('note_upgrade_interest');
     },
+    // 「我有興趣」：每人每功能只記一次，回傳 true 代表第一次（舊資料庫沒有 note_interest 時退回舊函式）
+    async noteInterest(feature) {
+      const r = await client.rpc('note_interest', { p_feature: feature });
+      if (r.error && /note_interest|function/i.test(r.error.message || '')) { await client.rpc('note_upgrade_interest'); return true; }
+      return !!check(r);
+    },
+    async myInterests() {
+      const { data, error } = await client.rpc('my_interests');
+      return error ? [] : data || [];
+    },
+    // ---- 時光膠囊（打開日期前對方讀不到內容，資料庫函式擋） ----
+    async capsuleList() {
+      const r = await client.rpc('capsule_list');
+      if (r.error && /capsule_list|function/i.test(r.error.message || '')) { const e = new Error('時光膠囊要等資料庫更新後才能用'); e.notReady = true; throw e; }
+      return check(r) || [];
+    },
+    async capsuleSave(c) {
+      const r = await client.rpc('capsule_save', { p_id: c.id || null, p_open_on: c.open_on, p_occasion: c.occasion, p_body: c.body, p_photo: c.photo_path || null });
+      if (r.error && /capsule_limit/.test(r.error.message || '')) { const e = new Error('capsule_limit'); e.limit = true; throw e; }
+      return check(r);
+    },
+    async capsuleDelete(id) { return check(await client.rpc('capsule_delete', { p_id: id })); },
+    async capsuleUpload(blob) {
+      const path = `${userId()}/cap-${LocalDB.uid()}.jpg`;
+      check(await client.storage.from(BUCKET).upload(path, blob, { contentType: 'image/jpeg' }));
+      return path;
+    },
+    async capsuleRemovePhoto(path) { try { await client.storage.from(BUCKET).remove([path]); } catch (e) { /* 刪不掉就留著 */ } },
     // ---- 一起完成的事（主人直接寫；另一半透過資料庫函式新增、打勾、刪自己加的） ----
     async listWishes() {
       const data = await cached(`wishes:${dataOwner()}`, async () => {

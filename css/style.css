@@ -716,3 +716,109 @@ body.quiz-focus #app { padding-bottom: calc(96px + env(safe-area-inset-bottom));
 .boot-loader.compact { min-height: 0; padding: 24px 0; }
 .boot-loader.compact .ld-svg { width: 120px; }
 .page-loading .boot-loader { min-height: 50vh; }
+
+/* ---------- 付費功能（plus.js）：Plus 說明、時光膠囊、主題背景、假門 ---------- */
+.plus-box { position: relative; max-width: 360px; max-height: calc(100vh - 48px - env(safe-area-inset-top) - env(safe-area-inset-bottom)); overflow-y: auto; gap: 10px; }
+.plus-box .card-x, .tpl-box .card-x { color: var(--muted); }
+.plus-tag { display: inline-block; font-size: 12px; font-weight: 700; padding: 3px 10px; border-radius: 99px; background: var(--lock-bg); color: var(--lock); }
+.plus-perks { list-style: none; margin: 0; padding: 10px 12px; background: var(--bg); border-radius: 14px; text-align: left; width: 100%; display: flex; flex-direction: column; gap: 6px; font-size: 14px; }
+.plus-perks li { display: flex; gap: 8px; align-items: baseline; }
+.plus-price { font-size: 14px; color: var(--soft); }
+.plus-price b { color: var(--ink); font-size: 16px; }
+.plus-box .btn { width: 100%; }
+.plus-box > *, .tpl-box > * { flex-shrink: 0; }
+.plus-box .btn:disabled { opacity: 1; background: var(--resolved-bg); color: var(--resolved-ink); border-color: transparent; }
+.nav-emoji { font-size: 20px; line-height: 1; }
+
+.cap-hero { align-items: center; text-align: center; gap: 8px; }
+.cap-hero-icon { font-size: 40px; line-height: 1; }
+.cap-hero .btn { width: 100%; }
+.cap-note { background: var(--happy-bg); color: var(--happy-dark); border-radius: 10px; padding: 8px 10px; }
+.cap-row { display: flex; align-items: center; gap: 12px; padding: 14px 16px; text-decoration: none; color: inherit; min-height: 56px; cursor: pointer; }
+.cap-row + .cap-row { border-top: 1px solid var(--line); }
+.cap-row:active { background: var(--press); }
+.cap-icon { flex: none; width: 40px; height: 40px; border-radius: 12px; background: var(--happy-bg); display: grid; place-items: center; font-size: 22px; }
+.cap-row.sealed .cap-icon { background: var(--lock-bg); }
+.cap-lock { color: var(--lock); flex: none; }
+.cap-lock svg { width: 18px; height: 18px; }
+.cap-photo { width: 100%; max-height: 360px; object-fit: cover; border-radius: 14px; display: block; }
+.cap-letter { gap: 8px; padding: 20px; }
+.cap-opened-head { display: flex; flex-direction: column; align-items: center; gap: 4px; text-align: center; }
+
+.skin-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); gap: 8px; }
+.skin-opt { display: flex; flex-direction: column; align-items: stretch; gap: 6px; padding: 8px; border-radius: 14px; border: 1.5px solid var(--line); background: var(--card); color: var(--ink); cursor: pointer; font: inherit; font-size: 13px; }
+.skin-opt.on { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-bg); font-weight: 700; }
+.skin-sw { display: flex; height: 34px; border-radius: 9px; overflow: hidden; border: 1px solid rgba(74, 53, 48, .15); }
+.skin-sw i { flex: 1; }
+.skin-name { display: inline-flex; align-items: center; justify-content: center; gap: 4px; }
+.skin-lock { display: inline-flex; color: var(--lock); }
+.skin-lock svg { width: 13px; height: 13px; }
+.skin-bar {
+  position: fixed; left: 12px; right: 12px; bottom: calc(76px + env(safe-area-inset-bottom)); z-index: 25; max-width: 520px; margin: 0 auto;
+  display: flex; align-items: center; gap: 8px; padding: 10px 12px; border-radius: 16px;
+  background: var(--card); color: var(--ink); border: 1px solid var(--line); box-shadow: 0 8px 24px rgba(0, 0, 0, .18);
+}
+.skin-bar .btn { width: auto; padding: 0 14px; flex: none; }
+
+.tpl-box { position: relative; max-width: 380px; max-height: calc(100vh - 48px - env(safe-area-inset-top) - env(safe-area-inset-bottom)); overflow-y: auto; align-items: stretch; text-align: left; gap: 10px; }
+.tpl-box h2, .tpl-box > .plus-tag { align-self: flex-start; }
+.tpl-list { display: flex; flex-direction: column; gap: 6px; }
+.tpl-item { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 10px 12px; border-radius: 12px; border: 1px solid var(--line); background: var(--card); color: var(--ink); text-align: left; font: inherit; font-size: 14px; cursor: pointer; }
+.tpl-item.on { border-color: var(--accent); background: var(--accent-bg); }
+.tpl-mode { flex: none; font-size: 11px; color: var(--muted); background: var(--seg); border-radius: 99px; padding: 2px 8px; }
+.tpl-packs { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+.tpl-pack { display: flex; align-items: center; gap: 6px; padding: 10px; border-radius: 12px; border: 1px dashed var(--dash); background: var(--bg); color: var(--ink); font: inherit; font-size: 14px; cursor: pointer; }
+.tpl-pack .skin-lock { margin-left: auto; }
+.tpl-pack.on { border-style: solid; border-color: var(--lock); }
+.tpl-btn { width: auto; height: 32px; padding: 0 12px; font-size: 13px; }
+.pack-preview { display: flex; flex-direction: column; gap: 6px; padding: 12px; border-radius: 14px; background: var(--lock-bg); color: var(--ink); }
+.pack-sample { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 8px 10px; border-radius: 10px; background: var(--card); font-size: 14px; }
+.pack-sample.more { justify-content: center; color: var(--muted); font-size: 13px; filter: blur(.3px); }
+.mission-cards { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; width: 100%; text-align: left; }
+.mission-pool { display: flex; flex-direction: column; gap: 6px; }
+.mission-card { font-size: 12.5px; line-height: 1.45; padding: 8px; border-radius: 10px; background: var(--lock-bg); color: var(--ink); border: 1px dashed var(--dash); }
+
+/* 主題背景：淺色時換配色和紙紋（data-mode 由 applyTheme 設定）；夜空一律深色 */
+body { background: var(--paper, none), var(--bg); background-attachment: fixed; }
+:root[data-skin="paper"][data-mode="light"] {
+  --bg: #F4EEDF; --card: #FFFCF4; --line: #E6DCC6; --field: #DCCFB4; --seg: #ECE3CF; --press: #F7F1E4; --dash: #C9B894;
+  --happy: #9C4A3A; --happy-dark: #73352A; --happy-bg: #F3E2D8; --happy-text: #9C4A3A;
+  --paper: radial-gradient(circle, rgba(140, 115, 70, .18) 1px, transparent 1.4px) 0 0 / 18px 18px;
+}
+:root[data-skin="sakura"][data-mode="light"] {
+  --bg: #FFF3F5; --card: #FFFFFF; --line: #F6D9E0; --field: #EEC6D1; --seg: #FBE6EC; --press: #FFF7F9; --dash: #E6AFC0;
+  --happy: #B83F70; --happy-dark: #8E2E57; --happy-bg: #FCE1EA; --happy-text: #B83F70;
+  --paper: radial-gradient(ellipse 7px 4px at 20% 30%, rgba(236, 150, 180, .35), transparent 70%) 0 0 / 90px 90px,
+           radial-gradient(ellipse 5px 3px at 70% 75%, rgba(236, 150, 180, .3), transparent 70%) 0 0 / 120px 120px;
+}
+:root[data-skin="xmas"][data-mode="light"] {
+  --bg: #F6F1E7; --card: #FFFFFF; --line: #E7DCCB; --field: #D9CCB6; --seg: #EEE6D6; --press: #FAF6EE; --dash: #C8B79C;
+  --happy: #A3262F; --happy-dark: #7A1B22; --happy-bg: #F6DEDC; --happy-text: #A3262F;
+  --paper: radial-gradient(circle, rgba(47, 107, 69, .22) 1.5px, transparent 2px) 0 0 / 40px 40px,
+           radial-gradient(circle, rgba(163, 38, 47, .18) 1.5px, transparent 2px) 20px 20px / 40px 40px;
+}
+:root[data-skin="night"] {
+  color-scheme: dark;
+  --bg: #141A33; --card: #1E2546; --line: #2E3760; --field: #3A4475;
+  --ink: #EEF0FF; --muted: #A9B0D6; --soft: #C7CCEB;
+  --happy: #B98A2E; --happy-dark: #F3D98A; --happy-bg: #2F2E45; --happy-text: #F3D98A;
+  --cloud: #9A6A1E; --cloud-dark: #E9C27F; --cloud-bg: #2E2A33; --cloud-text: #E9C27F;
+  --fight: #5566B0; --fight-dark: #AEB9EE; --fight-bg: #232B52; --fight-text: #AEB9EE;
+  --lock: #C3B2E3; --lock-bg: #2A2950;
+  --open-bg: #3A2440; --open-ink: #F4AFC3;
+  --progress-bg: #33304A; --progress-ink: #EBC87E;
+  --resolved-bg: #1D3340; --resolved-ink: #9FD3C8;
+  --seg: #262E55; --dash: #4A5488; --press: #232A50;
+  --danger: #F09A8C; --danger-line: #5A2E3E;
+  --toast-bg: #EEF0FF; --toast-ink: #141A33;
+  --paper: radial-gradient(circle, rgba(255, 255, 255, .55) .8px, transparent 1.3px) 0 0 / 70px 70px,
+           radial-gradient(circle, rgba(255, 240, 200, .4) 1px, transparent 1.6px) 35px 45px / 110px 110px;
+}
+/* 啾啾的小配件 */
+:root[data-skin="night"] .mascot, :root[data-skin="sakura"] .mascot, :root[data-skin="xmas"] .mascot { position: relative; }
+:root[data-skin="night"] .mascot::after, :root[data-skin="sakura"] .mascot::after, :root[data-skin="xmas"] .mascot::after {
+  position: absolute; top: 2%; right: 6%; font-size: calc(var(--ms, 120px) * .18); line-height: 1; pointer-events: none;
+}
+:root[data-skin="night"] .mascot::after { content: "🌙"; }
+:root[data-skin="sakura"] .mascot::after { content: "🌸"; }
+:root[data-skin="xmas"] .mascot::after { content: "🎄"; }

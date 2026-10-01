@@ -85,6 +85,7 @@ async function viewHome() {
   // 重新認識你：對方交卷了換我、或可以開始新的一回
   const quizQ = hasPartner && usingCloud() && !CloudDB.isAnonymous() ? await quizStatus() : null;
   const dailyQ = hasPartner && usingCloud() && !CloudDB.isAnonymous() ? await dailyStatus() : null;
+  const caps = await loadCapsulesSafe();
 
   const guestCard = `<div class="card" id="guest-account" style="background:var(--happy-bg);border-color:transparent;gap:4px">
       <div class="bold" style="color:var(--happy-dark)">${all.length ? '註冊，把紀錄存到雲端' : '免費註冊，保存你們的紀錄'}</div>
@@ -112,6 +113,7 @@ async function viewHome() {
       <div class="btn-row"><button class="btn small" data-home-approve="${esc(j.uid)}" data-name="${esc(j.name)}">同意</button><button class="btn small secondary" data-home-reject="${esc(j.uid)}" data-name="${esc(j.name)}">拒絕</button></div>
     </div>`).join(''),
     quizTipHtml(quizQ, 'urgent'),
+    capsuleTipHtml(caps),
     pending.length ? `<a class="card" href="#/view/${esc(pending[0].record_id)}" style="background:var(--lock-bg);border-color:transparent;gap:4px">
       <div class="bold" style="color:var(--lock)">有 ${pending.length} 個任務等你確認</div>
       <div class="small" style="color:var(--lock)">${esc(liveOther(pending[0].partner_name))} 完成了任務，點這裡去看看，確認後那則紀錄就會解鎖給對方看。</div>
