@@ -88,6 +88,10 @@ const SHOT = (n) => (process.env.SHOT_DIR || '.') + '/' + n;
   await p.locator('.daily-past summary').first().click(); await p.waitForTimeout(200);
   log('history shows both answers', (await p.textContent('.daily-past')).includes('今天好累') && (await p.textContent('.daily-past')).includes('抱抱你'));
   await p.screenshot({ path: SHOT('daily-history.png'), fullPage: true });
+  await p.emulateMedia({ colorScheme: 'dark' }); await p.locator('.daily-past').last().scrollIntoViewIfNeeded(); await p.waitForTimeout(200);
+  log('closed history card is compact', await p.evaluate(() => { const d = [...document.querySelectorAll('.daily-past')].find((x) => !x.open); const s = d.querySelector('summary'); return d.getBoundingClientRect().height - s.getBoundingClientRect().height < 40; }));
+  await p.screenshot({ path: SHOT('daily-history-dark.png') });
+  await p.emulateMedia({ colorScheme: 'light' });
   // 主人那邊：沒有「等你寫」
   await as(owner); await open('#/daily');
   log('owner has no pending', await p.locator('[data-late]').count() === 0);

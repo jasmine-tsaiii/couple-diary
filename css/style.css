@@ -397,7 +397,8 @@ body.reading { overflow: hidden; }
 .set-sec { scroll-margin-top: 64px; }
 
 /* iPhone 最上面的時間、電量那一條：放一塊底色，捲動時文字不會跑到它下面 */
-body::before { content: ''; position: fixed; top: 0; left: 0; right: 0; height: env(safe-area-inset-top); background: var(--bg); z-index: 20; pointer-events: none; }
+/* 用真的元素（.sb-guard，在 index.html 最上面）擋：iPhone 上 body::before 有時候畫不出來 */
+.sb-guard { position: fixed; top: 0; left: 0; right: 0; height: env(safe-area-inset-top, 0px); background: var(--bg); z-index: 40; pointer-events: none; transform: translateZ(0); }
 
 /* 6 格數字密碼 */
 .digits-input { max-width: 330px; height: 52px; font-size: 24px; font-weight: 700; letter-spacing: .5em; text-align: center; font-variant-numeric: tabular-nums; padding-left: .5em; }
@@ -654,10 +655,14 @@ body.quiz-focus #app { padding-bottom: calc(96px + env(safe-area-inset-bottom));
 
 /* 每天一題（2026-09-30） */
 .daily-state { color: var(--happy-dark); line-height: 1.5; }
-.daily-past summary { display: flex; flex-direction: column; gap: 2px; cursor: pointer; list-style: none; }
+/* details 在 Safari 用 flex 會替收起來的內容留空白，改成一般區塊 */
+.card.daily-past { display: block; padding: 14px 16px; }
+.daily-past summary { display: grid; grid-template-columns: 1fr auto; column-gap: 10px; row-gap: 2px; align-items: center; cursor: pointer; list-style: none; }
+.daily-past summary > .bold { grid-column: 1; line-height: 1.45; overflow-wrap: anywhere; }
+.daily-past summary::after { content: '看答案'; grid-column: 2; grid-row: 1 / span 2; font-size: 13px; color: var(--accent-text, var(--muted)); white-space: nowrap; }
+.daily-past[open] summary::after { content: '收起'; }
 .daily-past summary::-webkit-details-marker { display: none; }
-.daily-past[open] summary { margin-bottom: 8px; }
-.daily-past-body { display: flex; flex-direction: column; gap: 8px; }
+.daily-past-body { display: flex; flex-direction: column; gap: 8px; margin-top: 10px; }
 .daily-today .prose, .daily-past .prose { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; }
 
 /* 重新認識你：揭曉頁（一問一答，由你判定對方猜得準不準） */
