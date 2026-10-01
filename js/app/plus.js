@@ -52,7 +52,8 @@ function notePaywallView(feature) {
 const PRICE_A = 690;
 const PRICE_B = 790;
 const PRICE_MONTH = 75;
-const WAVES = [{ upto: 100, price: 490, name: '首發早鳥' }, { upto: 300, price: 590, name: '第二波' }];
+// 2026-10-01 12:17 改：早鳥只給前 20 組，沒有第二波
+const WAVES = [{ upto: 20, price: 490, name: '首發早鳥' }];
 function yearPrice() {
   let id = '';
   try { id = usingCloud() ? CloudDB.myId() || '' : ''; } catch (e) { id = ''; }
@@ -68,9 +69,9 @@ function priceLadderHtml(groups) {
   const save = Math.round((1 - y / (PRICE_MONTH * 12)) * 100);
   const perDay = y / 365 / 2;
   return `<div class="plus-ladder">
-    <div class="plan early"><div class="plan-top"><span class="plan-name">${WAVES[0].name}・前 ${WAVES[0].upto} 組</span><span class="plan-badge">續約也是這個價</span></div>
+    <div class="plan early"><div class="plan-top"><span class="plan-name">${WAVES[0].name}：前 ${WAVES[0].upto} 組</span><span class="plan-badge">續約也是這個價</span></div>
       <div><s>NT$${y}</s> <b>NT$${WAVES[0].price}</b>／年</div>
-      <div class="small muted">第 ${WAVES[0].upto + 1}–${WAVES[1].upto} 組 NT$${WAVES[1].price}／年</div></div>
+      <div class="small muted">第 ${WAVES[0].upto + 1} 組起 NT$${y}／年</div></div>
     <div class="plan on"><div class="plan-top"><span class="plan-name">年費</span><span class="plan-badge">最划算・省 ${save}%</span></div>
       <div><b class="plan-big">每月 NT$${Math.round(y / 12)}</b></div>
       <div class="small muted">一年 NT$${y}，一次買 12 個月，不會自動續約</div></div>
