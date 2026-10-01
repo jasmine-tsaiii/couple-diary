@@ -173,6 +173,8 @@ const justUnlocked = (r) => r.visibility === 'task' && r.unlocked && r.unlockedA
 const RECORD_VERSION = 1; // 紀錄的資料格式版本，之後改格式時用來判斷要不要轉換
 // LINE、IG、FB 等 App 內建的瀏覽器：資料和 Safari／Chrome 分開，Google 登入也會被擋
 const IN_APP = /Line\/|FBAN|FBAV|Instagram|MicroMessenger/i.test(navigator.userAgent);
+// iPhone／iPad（新 iPad 的 Safari 會假裝是 Mac，用觸控點數補判斷）
+const IS_IOS = /iphone|ipad|ipod/i.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
 // iPhone 在 Safari 分頁裡用（不是主畫面、不是 LINE/IG）：7 天沒打開，Safari 可能清掉這個網站存在手機裡的資料
 const IOS_SAFARI_TAB = /iphone|ipad|ipod/i.test(navigator.userAgent) && !IN_APP
   && !(window.matchMedia && window.matchMedia('(display-mode: standalone)').matches) && navigator.standalone !== true;

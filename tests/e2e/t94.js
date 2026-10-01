@@ -5,7 +5,7 @@ const OUT = (process.env.SHOT_DIR || '.') + '/';
 (async () => {
   const b = await pw.chromium.launch(require('./_launch'));
   const errs = [];
-  const ctx = await b.newContext({ viewport: { width: 390, height: 844 } });
+  const ctx = await b.newContext({ viewport: { width: 390, height: 844 }, acceptDownloads: true });
   await ctx.addInitScript(() => { localStorage.setItem('tourDone', '1'); localStorage.setItem('a2hsNever', '1'); window.__noCelebrate = 1; new MutationObserver(() => document.querySelectorAll('.celebrate:not(.wish-dlg):not(.danger-dlg)').forEach((e) => e.remove())).observe(document, { childList: true, subtree: true }); });
   const p = await ctx.newPage(); p.on('pageerror', (e) => errs.push(e.message)); p.on('dialog', (d) => d.accept());
   const add = async (type, title, photo) => {
@@ -32,6 +32,7 @@ const OUT = (process.env.SHOT_DIR || '.') + '/';
       await DB.putRecord(r);
     }
   });
+  const log2 = (...a) => console.log(...a);
   const save = async (name) => { const src = await p.evaluate(() => { const i = document.getElementById('card-img'); const c = document.createElement('canvas'); c.width = i.naturalWidth; c.height = i.naturalHeight; c.getContext('2d').drawImage(i, 0, 0); return c.toDataURL('image/png'); }); require('fs').writeFileSync(OUT + name, Buffer.from(src.split(',')[1], 'base64')); };
   await p.goto(U + '#/card/month'); await p.waitForTimeout(3000);
   console.log('story size', await p.evaluate(() => document.getElementById('card-img').naturalHeight) === 1920);
@@ -57,5 +58,12 @@ const OUT = (process.env.SHOT_DIR || '.') + '/';
   await save('card-month-square-hard.png');
   await p.click('[data-size="story"]'); await p.waitForTimeout(2500);
   await save('card-month-hard.png');
+  // 儲存圖片：下載後步驟「存到相簿」打勾、按鈕變「已存好 ✓」
+  log2('steps start with made only', (await p.$$eval('#card-steps li.done', (l) => l.map((x) => x.dataset.step))).join() === 'make');
+  const [dl] = await Promise.all([p.waitForEvent('download', { timeout: 8000 }).catch(() => null), p.click('#card-save')]);
+  await p.waitForTimeout(400);
+  log2('save downloads png', !!dl && dl.suggestedFilename().endsWith('.png'));
+  log2('save step done', (await p.$$eval('#card-steps li.done', (l) => l.map((x) => x.dataset.step))).join() === 'make,save' && (await p.textContent('#card-save')).includes('已存好') && (await p.textContent('#card-hint')).includes('存好了'));
+  await p.screenshot({ path: OUT + 'card-saved.png', fullPage: true });
   console.log('errors', errs); await b.close();
 })();

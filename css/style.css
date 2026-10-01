@@ -704,3 +704,12 @@ body.quiz-focus #app { padding-bottom: calc(96px + env(safe-area-inset-bottom));
 @keyframes ld-heart { 0% { opacity: 0; transform: translate(-50%, 12px) scale(.6); } 30% { opacity: 1; transform: translate(-50%, 0) scale(1); } 70% { opacity: 1; transform: translate(-50%, -14px) scale(1.05); } 100% { opacity: 0; transform: translate(-50%, -26px) scale(.9); } }
 @keyframes ld-dot { 0%, 60%, 100% { transform: translateY(0); opacity: .4; } 30% { transform: translateY(-4px); opacity: 1; } }
 @media (prefers-reduced-motion: reduce) { .boot-loader, .ld-bird, .ld-heart, .ld-dots i { animation: none; } .ld-heart { opacity: 1; } }
+/* 小卡頁：儲存／分享兩顆並排，下面是完成步驟 */
+.card-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.card-steps { list-style: none; margin: 0; padding: 0; display: flex; justify-content: center; gap: 6px; font-size: 13px; color: var(--muted); }
+.card-steps li { display: flex; align-items: center; gap: 5px; }
+.card-steps li + li::before { content: ''; width: 18px; height: 1px; background: var(--field); margin-right: 1px; }
+.card-steps .st-dot { width: 18px; height: 18px; border-radius: 50%; border: 1.5px solid var(--field); display: grid; place-items: center; font-size: 11px; line-height: 1; }
+.card-steps li.done { color: var(--accent-text); font-weight: 700; }
+.card-steps li.done .st-dot { background: var(--accent); border-color: var(--accent); color: #fff; }
+.card-steps li.done .st-dot::after { content: '✓'; }

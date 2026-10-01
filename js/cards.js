@@ -490,8 +490,16 @@ async function viewCard(kind, id) {
     </div></div>
     ${periodPool.length > 1 ? `<div class="field"><div class="label">放哪幾則（最多 3 則，照點的順序排）</div><div class="pick-list">${periodPool.map((r) => `<button class="chip pick-rec ${data.stats.picks.includes(r) ? 'on' : ''}" data-pick="${esc(r.id)}">${(r.photoIds || []).length ? '📷 ' : ''}${esc(r.title)}<span class="muted small">${shortDate(r.date)}</span></button>`).join('')}</div></div>` : ''}
     ${nPhotos > 1 ? `<div class="field"><div class="label">用哪張照片</div><div class="chips">${Array.from({ length: nPhotos }, (_, i) => `<button class="chip ${i === 0 ? 'on' : ''}" data-photo="${i}">第 ${i + 1} 張</button>`).join('')}</div></div>` : ''}
-    <button class="btn" id="card-share">分享小卡</button>
-    <div class="small muted" style="text-align:center">手機會跳出分享選單，可以傳到 IG、LINE，或選「儲存影像」存到相簿。</div>
+    <div class="card-actions">
+      <button class="btn secondary" id="card-save">儲存圖片</button>
+      <button class="btn" id="card-share">分享小卡</button>
+    </div>
+    <ol class="card-steps" id="card-steps" aria-label="完成步驟">
+      <li class="done" data-step="make"><span class="st-dot"></span>做好小卡</li>
+      <li data-step="save"><span class="st-dot"></span>存到相簿</li>
+      <li data-step="share"><span class="st-dot"></span>分享出去</li>
+    </ol>
+    <div class="small muted" id="card-hint" style="text-align:center">${IS_IOS ? 'iPhone 按「儲存圖片」會跳出選單，選「儲存影像」就會存到相簿。' : '存好之後，打開 IG 限動或 LINE 就能從相簿選這張。'}</div>
   `;
   track('card_view', { kind, size: opt.size });
   let blob = null;
@@ -531,15 +539,45 @@ async function viewCard(kind, id) {
     app.querySelectorAll('[data-photo]').forEach((x) => x.classList.toggle('on', x === b));
     redraw();
   }));
+  const stepDone = (step, hint) => {
+    const li = document.querySelector(`#card-steps [data-step="${step}"]`);
+    if (li) li.classList.add('done');
+    if (hint) document.getElementById('card-hint').textContent = hint;
+  };
+  const fileOf = () => new File([blob], `jiujiu-diary-${kind}-${today()}.png`, { type: 'image/png' });
+  const ensureBlob = async () => { if (!blob) await redraw(); if (!blob) { toast('小卡還沒做好，再按一次'); return false; } return true; };
+  const download = (file) => {
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob); a.download = file.name;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+  };
+  const SAVED_HINT = '存好了！打開 IG 限動、LINE 或相簿就能找到這張。';
+  // 儲存：iPhone 存到相簿要走分享選單的「儲存影像」；其他手機和電腦直接下載
+  const saveBtn = document.getElementById('card-save');
+  let saved = false;
+  saveBtn.addEventListener('click', () => withBusy(saveBtn, '準備中…', async () => {
+    if (!(await ensureBlob())) return;
+    const file = fileOf();
+    if (IN_APP) { await showLongPressSave(blob); stepDone('save'); track('card_save', { kind, how: 'longpress' }); return; }
+    if (IS_IOS && navigator.canShare && navigator.canShare({ files: [file] })) {
+      try { await navigator.share({ files: [file] }); } catch (e) { if (e && e.name === 'AbortError') return; download(file); }
+      saved = true; stepDone('save', SAVED_HINT); track('card_save', { kind, how: 'share' }); return;
+    }
+    download(file);
+    saved = true; stepDone('save', SAVED_HINT);
+    toast('圖片已存好');
+    track('card_save', { kind, how: 'download' });
+  }).then(() => { if (saved) saveBtn.textContent = '已存好 ✓'; }));
   const shareBtn = document.getElementById('card-share');
   shareBtn.addEventListener('click', () => withBusy(shareBtn, '準備中…', async () => {
-    if (!blob) await redraw();
-    if (!blob) { toast('小卡還沒做好，再按一次'); return; }
-    const file = new File([blob], `jiujiu-diary-${kind}-${today()}.png`, { type: 'image/png' });
+    if (!(await ensureBlob())) return;
+    const file = fileOf();
     if (navigator.canShare && navigator.canShare({ files: [file] })) {
       try {
         // 只送圖片：加了 title 或 text，LINE、Threads 會把那段字當成貼文內容
         await navigator.share({ files: [file] });
+        stepDone('share', '完成了！你們的回憶已經分享出去 🎉');
         track('card_share', { kind, size: opt.size, how: 'share' });
         return;
       } catch (e) {
@@ -548,11 +586,9 @@ async function viewCard(kind, id) {
       }
     }
     // LINE、IG 裡的瀏覽器不能下載：改成放大顯示圖片，讓人長按存到相簿
-    if (IN_APP) { await showLongPressSave(blob); track('card_share', { kind, size: opt.size, how: 'download' }); return; }
-    const a = document.createElement('a');
-    a.href = URL.createObjectURL(blob); a.download = file.name;
-    document.body.appendChild(a); a.click(); a.remove();
-    setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+    if (IN_APP) { await showLongPressSave(blob); stepDone('save'); track('card_share', { kind, size: opt.size, how: 'download' }); return; }
+    download(file);
+    stepDone('save', SAVED_HINT);
     toast('已下載圖片');
     track('card_share', { kind, size: opt.size, how: 'download' });
   }));
