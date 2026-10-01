@@ -4,10 +4,10 @@ const U = (process.env.U || 'http://localhost:8770/');
 (async () => {
   const b = await chromium.launch(require('./_launch'));
   const log = (...a) => console.log(...a); const errs = [];
-  const run = async (gaId) => {
+  const run = async (gaId, anyHost = true) => {
     const ctx = await b.newContext({ viewport: { width: 390, height: 844 } });
     await ctx.route('**/vendor/supabase-2.117.2.js', (r) => r.fulfill({ contentType: 'text/javascript', body: fs.readFileSync('mock2.js', 'utf8') }));
-    await ctx.route('**/js/config.js', async (r) => { const res = await r.fetch(); let body = await res.text(); body = body.replace(/GA_MEASUREMENT_ID: '[^']*'/, `GA_MEASUREMENT_ID: '${gaId}'`); r.fulfill({ contentType: 'text/javascript', body }); });
+    await ctx.route('**/js/config.js', async (r) => { const res = await r.fetch(); let body = await res.text(); body = body.replace(/GA_MEASUREMENT_ID: '[^']*'/, `GA_MEASUREMENT_ID: '${gaId}'${anyHost ? ', GA_ANY_HOST: true' : ''}`); r.fulfill({ contentType: 'text/javascript', body }); });
     const gtm = [];
     await ctx.route('https://www.googletagmanager.com/**', (r) => { gtm.push(r.request().url()); r.fulfill({ contentType: 'text/javascript', body: '' }); });
     await ctx.addInitScript(() => { localStorage.setItem('tourDone', '1'); localStorage.setItem('a2hsNever', '1'); window.__noCelebrate = 1; });
@@ -15,8 +15,13 @@ const U = (process.env.U || 'http://localhost:8770/');
     p.on('console', (m) => { if (m.type() === 'error' && /Content Security/.test(m.text())) errs.push(m.text()); });
     return { ctx, p, gtm };
   };
+  // 有 ID 但不是正式網址（測試、自動化瀏覽器）：不載入 Google，免得測試灌爆 GA 的使用者數
+  let { ctx, p, gtm } = await run('G-TEST12345', false);
+  await p.goto(U + '#/'); await p.waitForTimeout(800);
+  log('test host: no gtm', gtm.length === 0, 'no dataLayer', await p.evaluate(() => !window.dataLayer));
+  await ctx.close();
   // 沒有 ID：不載入 Google
-  let { ctx, p, gtm } = await run('');
+  ({ ctx, p, gtm } = await run(''));
   await p.goto(U + '#/'); await p.waitForTimeout(800);
   log('no id: gtm loaded', gtm.length, 'dataLayer', await p.evaluate(() => !!window.dataLayer));
   await p.goto(U + '#/settings'); await p.waitForTimeout(500);

@@ -4,8 +4,12 @@
 // - 網址只送頁面名稱（#/view/abc123 會變成 /view），網址參數只留 utm_ 開頭的。
 // - 使用者可以在設定頁關掉（存在這支手機的 localStorage：analyticsOff）。
 // - config.js 的 GA_MEASUREMENT_ID 留空就什麼都不做。
+// - 只在正式網址（diary.jas-soul.com）送；自動化瀏覽器（Playwright 測試、截圖程式，navigator.webdriver）也不送，
+//   不然 GitHub Actions 每跑一次測試，就會在 GA 多出幾十個「美國新使用者」。測試要驗證統計時用 GA_ANY_HOST: true 打開。
 (function () {
-  const ID = (window.APP_CONFIG && window.APP_CONFIG.GA_MEASUREMENT_ID) || '';
+  const CFG = window.APP_CONFIG || {};
+  const realVisit = CFG.GA_ANY_HOST || (/(^|\.)jas-soul\.com$/.test(location.hostname) && !navigator.webdriver);
+  const ID = (realVisit && CFG.GA_MEASUREMENT_ID) || '';
   const TYPES = ['happy', 'cloud', 'fight'];
   const oneOf = (list) => (v) => (list.includes(v) ? v : undefined);
   const bool = (v) => (v ? 'yes' : 'no');
