@@ -37,5 +37,7 @@ const U = process.env.U || 'http://localhost:8770/';
   await p.mouse.move(box.x + box.width - 3, box.y + box.height / 2); await p.waitForTimeout(200);
   console.log('hover tip', /\d+\/\d+：\d+/.test((await p.textContent('.stat-chart .stat-tip')) || ''));
   await p.screenshot({ path: (process.env.SHOT_DIR || '.') + '/stats-dark.png', fullPage: true });
+  await p.evaluate(() => { const h = [...document.querySelectorAll('.section-title')].find((x) => x.textContent.includes('我有興趣')); window.scrollTo(0, h.getBoundingClientRect().top + window.scrollY - 60); }); await p.waitForTimeout(200);
+  await p.screenshot({ path: (process.env.SHOT_DIR || '.') + '/stats-interest-feedback.png' });
   console.log('errors', errs); await b.close();
 })();
