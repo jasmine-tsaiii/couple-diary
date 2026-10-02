@@ -245,10 +245,12 @@ const THEMES = [['system', '跟隨手機'], ['light', '淺色'], ['dark', '深�
 function currentTheme() { try { return localStorage.getItem('theme') || 'system'; } catch (e) { return 'system'; } }
 function applyTheme(t = currentTheme()) {
   const root = document.documentElement;
+  // 主題背景（plus.js）：選了手帳紙、櫻花、聖誕就用它自己的淺色配色（手機是深色模式也一樣），夜空一律是深色
+  const skin = root.dataset.skin || '';
+  const lightSkin = skin === 'paper' || skin === 'sakura' || skin === 'xmas';
+  if (lightSkin) t = 'light';
   if (t === 'light' || t === 'dark') root.dataset.theme = t; else delete root.dataset.theme;
   const dark = t === 'dark' || (t === 'system' && window.matchMedia && matchMedia('(prefers-color-scheme: dark)').matches);
-  // 主題背景（plus.js）：淺色時才換配色，夜空一律是深色
-  const skin = root.dataset.skin || '';
   root.dataset.mode = dark || skin === 'night' ? 'dark' : 'light';
   const skinBg = { paper: '#F4EEDF', sakura: '#FFF3F5', xmas: '#F6F1E7' }[skin];
   const meta = document.querySelector('meta[name="theme-color"]');
@@ -268,6 +270,18 @@ document.addEventListener('click', (ev) => {
   const b = ev.target.closest && ev.target.closest('[data-theme-pick]');
   if (!b) return;
   try { localStorage.setItem('theme', b.dataset.themePick); } catch (e) { /* 存不了就只改這次 */ }
+  // 手帳紙、櫻花、聖誕是淺色主題：改選深色時換回啾啾粉，不然按了看起來沒反應
+  const sk = document.documentElement.dataset.skin;
+  if (b.dataset.themePick !== 'light' && (sk === 'paper' || sk === 'sakura' || sk === 'xmas') && typeof endSkinPreview === 'function') {
+    endSkinPreview();
+    const still = document.documentElement.dataset.skin;
+    if (b.dataset.themePick === 'dark' && (still === 'paper' || still === 'sakura' || still === 'xmas')) {
+      try { localStorage.removeItem('skin'); } catch (e) { /* 存不了就只改這次 */ }
+      delete document.documentElement.dataset.skin;
+      document.querySelectorAll('[data-skin-pick]').forEach((x) => { const on = x.dataset.skinPick === ''; x.classList.toggle('on', on); x.setAttribute('aria-pressed', String(on)); });
+      toast('深色模式用啾啾粉配色');
+    }
+  }
   applyTheme(b.dataset.themePick);
   document.querySelectorAll('[data-theme-pick]').forEach((x) => { const on = x === b; x.classList.toggle('on', on); x.setAttribute('aria-pressed', String(on)); });
 });

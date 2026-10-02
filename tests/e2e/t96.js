@@ -98,8 +98,20 @@ const U = (process.env.U || 'http://localhost:8770/');
   log('navigating ends preview', (await skin()) === 'paper');
   await p.reload(); await p.waitForTimeout(800);
   log('paper kept after reload', (await skin()) === 'paper');
-  // 深色模式下手帳紙不換配色
-  await p.evaluate(() => { localStorage.setItem('theme', 'dark'); applyTheme('dark'); });
-  log('dark mode wins', await p.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue('--bg').trim().toUpperCase()) === '#1C1816');
+  // 手機是深色模式：選了淺色主題還是要換配色（以前按了沒反應）
+  const bg = () => p.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue('--bg').trim().toUpperCase());
+  await p.emulateMedia({ colorScheme: 'dark' });
+  await p.goto(U + '#/settings/theme'); await p.waitForTimeout(900);
+  log('system dark + paper still paper', (await bg()) === '#F4EEDF');
+  await p.click('[data-skin-pick="sakura"]'); await p.waitForTimeout(300);
+  log('system dark + sakura preview changes', (await bg()) === '#FFF3F5');
+  await p.screenshot({ path: SHOT('skin-sakura-on-dark-phone.png') });
+  await p.click('#skin-end'); await p.waitForTimeout(300);
+  await p.click('[data-skin-pick=""]'); await p.waitForTimeout(300);
+  log('system dark + default is dark', (await bg()) === '#1C1816');
+  await p.click('[data-skin-pick="paper"]'); await p.waitForTimeout(300);
+  // 選了深色外觀：換回啾啾粉，變深色
+  await p.click('[data-theme-pick="dark"]'); await p.waitForTimeout(300);
+  log('dark pick resets light skin', (await skin()) === '' && (await bg()) === '#1C1816' && await p.evaluate(() => localStorage.getItem('skin')) === null);
   log('errors', errs); await b.close();
 })();

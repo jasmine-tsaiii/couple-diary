@@ -423,7 +423,7 @@ function skinCard() {
       <span class="skin-sw" aria-hidden="true">${s.sw.map((c) => `<i style="background:${c}"></i>`).join('')}</span>
       <span class="skin-name">${esc(s.name)}${s.free ? '' : ` <span class="skin-lock" aria-label="Plus">${ICON.lock}</span>`}</span>
     </button>`).join('')}</div>
-    <div class="small muted">換整個 App 的配色和紙紋，只會改這支手機。有鎖頭的是 Plus 主題，可以先點來預覽。深色模式下會用深色配色（夜空除外）。</div>
+    <div class="small muted">換整個 App 的配色和紙紋，只會改這支手機。有鎖頭的是 Plus 主題，可以先點來預覽。選了主題就用主題的配色，手機是深色模式也一樣；想要深色就選啾啾粉或夜空。</div>
   </div>`;
 }
 document.addEventListener('click', (ev) => {
