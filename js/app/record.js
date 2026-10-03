@@ -395,7 +395,7 @@ async function viewForm(mode, arg) {
   let rec;
   if (mode === 'edit') {
     rec = await DB.getRecord(arg);
-    if (!rec) { go('#/'); return; }
+    if (!rec) { toast('找不到這則紀錄，可能已經刪掉了，或沒有分享給你'); go('#/'); return; }
     rec = JSON.parse(JSON.stringify(rec));
   } else {
     const type = TYPES[arg] ? arg : 'happy';

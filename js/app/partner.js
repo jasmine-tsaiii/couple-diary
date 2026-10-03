@@ -397,7 +397,21 @@ async function viewJoinAsOwner(code = '') {
   let others = [];
   try { await loadNames(); } catch (e) { /* 略過 */ }
   try { count = (await DB.allRecords()).filter((r) => !r.deletedAt).length; } catch (e) { count = 0; }
-  try { if (await CloudDB.getShare()) others = (await CloudDB.listPartners()).filter((p) => p.approved !== false); } catch (e) { others = []; }
+  let mine = null;
+  try { mine = await CloudDB.getShare(); if (mine) others = (await CloudDB.listPartners()).filter((p) => p.approved !== false); } catch (e) { others = []; }
+  // 點到自己的邀請連結：提醒要傳給對方，不要讓人以為壞掉
+  if (mine && code && mine.code === code.toUpperCase()) {
+    track('join_blocked', { why: 'own_code' });
+    app.className = '';
+    app.innerHTML = `
+      <div style="display:flex;flex-direction:column;align-items:center;gap:10px;text-align:center;margin-top:40px">
+        ${mascotHtml('happy', 96)}
+        <h1 class="title-xl">這是你自己的邀請連結</h1>
+        <div class="muted">這個連結是要傳給另一半的，對方點開後輸入你私下告訴他的 6 位數分享密碼就能加入。</div>
+      </div>
+      <a class="btn" href="#/settings/share" id="own-code-share">去傳給另一半</a>`;
+    return;
+  }
   const notice = '你現在有一本自己的日記。要和對方用同一本的話，輸入對方給你的分享碼和密碼，對方按「同意」後，你打開 App 就會看到對方那本，每天一題也會變成同一題、看得到彼此的回答。'
     + (count ? `你自己這本的 ${count} 則紀錄可以一起搬過去，或先收起來（不會刪掉）。` : '');
   viewJoin(notice, code, { owner: true, count, others: others.map((p) => p.name) });
@@ -513,11 +527,11 @@ function viewRoleChoice() {
       <div class="muted">${esc(CloudDB.currentEmail() || '')}</div>
     </div>
     <button class="card role-card" id="role-owner">
-      <div class="bold" style="font-size:17px">我要開始寫我們的日記</div>
-      <div class="small muted">你會是這本日記的主人，之後可以邀請另一半加入。</div>
+      <div class="bold" style="font-size:17px">我先開始，再邀請另一半</div>
+      <div class="small muted">另一半還沒用過啾啾日記的話選這個。兩個人共用一本日記，只要一個人開就好，開好再傳邀請連結給對方。</div>
     </button>
     <button class="card role-card" id="role-partner">
-      <div class="bold" style="font-size:17px">我是另一半，要加入對方的日記</div>
+      <div class="bold" style="font-size:17px">另一半已經在用了，我要加入</div>
       <div class="small muted">對方已經在用啾啾日記、給了你分享碼。之前在對方的日記建立過帳號的話，選這個再輸入一次分享碼，之前寫的紀錄都會回來。</div>
     </button>
     <button class="text-link small" id="role-logout" style="background:none;border:none;cursor:pointer">登出，換別的帳號</button>

@@ -139,6 +139,7 @@ async function viewHome() {
       <div class="bold" style="color:var(--happy-dark)">邀請另一半一起寫</div>
       <div class="small" style="color:var(--happy-dark)">傳邀請連結給另一半，對方加入後就能看你分享的紀錄，也能寫自己的美好時刻。</div>
       <div class="btn-row"><a class="btn small" href="#/settings/share" id="invite-go">去邀請</a><button class="btn small secondary" id="invite-hide">之後再說</button></div>
+      <div class="small" style="color:var(--happy-dark)">另一半已經先在用了？<a class="text-link" href="#/join" id="invite-join">輸入對方的分享碼加入</a></div>
     </div>` : '',
     quizTipHtml(quizQ, 'start'),
     cardBanner(cardPending),

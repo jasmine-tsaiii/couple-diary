@@ -1777,7 +1777,14 @@ begin
     'interest_groups', public.interest_groups(),
     'accounts_deleted_7d', (select count(*) from public.account_deletions where deleted_at >= now() - interval '7 days'),
     'accounts_deleted_total', (select count(*) from public.account_deletions),
-    'last_write_at', (select max(updated_at) from acts)
+    'last_write_at', (select max(updated_at) from acts),
+    -- 配對卡關：註冊滿 3 天、自己沒有另一半也不是誰的另一半（其中有寫紀錄的，很可能是兩人各開了一本）
+    'unpaired_3d', (select count(*) from owners o where o.created_at < now() - interval '3 days'
+        and not exists (select 1 from public.partners p where p.approved and (p.owner = o.id or p.uid = o.id))),
+    'unpaired_writers_3d', (select count(*) from owners o where o.created_at < now() - interval '3 days'
+        and not exists (select 1 from public.partners p where p.approved and (p.owner = o.id or p.uid = o.id))
+        and exists (select 1 from acts a where a.who = o.id)),
+    'pending_joins_1d', (select count(*) from public.partners where not approved and joined_at < now() - interval '1 day')
   ) into v_now;
 
   with days as (

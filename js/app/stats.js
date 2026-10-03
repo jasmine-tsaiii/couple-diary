@@ -127,6 +127,13 @@ async function viewStats() {
       </div>${k === 'interest' ? `<div class="stat-tile"><div class="stat-num">${interestRate}</div><div class="small">我有興趣比例</div><div class="small muted">目標 5%</div></div>` : ''}`).join('')}
     </div>
     <div class="small muted">最後有人寫：${lastWrite}</div>
+    <h2 class="section-title">配對卡關</h2>
+    <div class="card" id="stats-pairing" style="gap:6px">
+      <div class="row between"><span>註冊滿 3 天還沒配對</span><b>${Number(n.unpaired_3d) || 0} 人</b></div>
+      <div class="row between"><span>其中自己有寫紀錄（可能兩人各開一本）</span><b>${Number(n.unpaired_writers_3d) || 0} 人</b></div>
+      <div class="row between"><span>送出加入、等同意超過 1 天</span><b>${Number(n.pending_joins_1d) || 0} 個</b></div>
+      <div class="small muted">點了邀請連結卻沒加入成功：看 GA4 的 join_blocked 事件（why = already_partner 已經是另一半、own_code 點到自己的連結），以及帶 utm_source=invite 進來的人數和 partner_join_request 的差距。</div>
+    </div>
     ${n.interest_by_feature ? `<h2 class="section-title">各功能「我有興趣」人數</h2>
     <div class="card" style="gap:6px">${Object.entries(INTEREST_NAMES).map(([k, label]) => `<div class="row between"><span>${label}</span><b>${Number(n.interest_by_feature[k]) || 0} 人</b></div>`).join('')}
       <div class="small muted">一個人按很多次也只算 1 人。看過入口的人數在 GA4 的 paywall_view 事件。</div></div>` : ''}

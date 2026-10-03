@@ -20,3 +20,8 @@ KEEP=1 node run.js t64            # 保留截圖（路徑印在 out/t64.txt 附�
 - `DEVICE=android node run.js`：用 Android 手機的瀏覽器識別、觸控跑全部測試（本機就能跑）。
 - `DEVICE=iphone ENGINE=webkit SKIP="t7 t35 t46 t65" node run.js`：用 Safari 引擎跑（要先 `npx playwright install webkit`）。
 - GitHub → Actions → mobile-tests → Run workflow，兩種會一起跑。
+
+## 配對流程
+- 改到邀請、加入、選身分、另一半相關的程式，一定要跑 `node run.js t97 t98`。
+- t98 是「配對情境表」：沒帳號、試用中、登出過、新帳號、已有日記、點到自己的連結、等同意中、已是另一半、被移除，每一種打開邀請連結都要有清楚的下一步。新增一種身分時，在這張表加一格。
+- 任何把人導走的地方（go('#/') 之類）都要說明原因，不要默默跳走。

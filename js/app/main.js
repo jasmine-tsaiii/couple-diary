@@ -83,6 +83,8 @@ async function renderRoute() {
       if (page === 'join') { renderTabbar(null); await viewJoinAsOwner(arg); return; }
       if (choose && !['settings', 'reset', 'feedback'].includes(page)) { renderTabbar(null); viewRoleChoice(); return; }
     }
+    // 已經是另一半又點了邀請連結：說明為什麼回到首頁，不要默默跳走
+    if (page === 'join' && isPartner()) { toast(`你已經加入${ownerName()}的日記了。要改加入別人的，先到設定「結束這段關係」`); track('join_blocked', { why: 'already_partner' }); go('#/'); return; }
     if (!isGuest() && (page === 'login' || page === 'signup' || page === 'join')) { go('#/'); return; }
     await loadNames();
     // 離線時不整理編號、不清垃圾桶（要寫入雲端），先讓人看得到紀錄
