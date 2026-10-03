@@ -90,12 +90,13 @@ async function renderRoute() {
     await purgeOldTrash().catch(skipIfOffline);
     if (page === 'reset' && usingCloud() && !CloudDB.isAnonymous()) { renderTabbar(null); viewResetPassword(); return; }
     if (isPartner()) {
+      await maybeBringRecords();
       if (!page) { renderTabbar('home'); await viewPartnerHome(); }
       else if (page === 'records') { renderTabbar('records'); await viewRecords(arg); }
       else if (page === 'list' && TYPES[arg] && arg !== 'fight') { renderTabbar(arg); await viewRecords(arg); }
       else if (page === 'fights') { renderTabbar('fight'); await viewRecords('fight'); }
       else if (page === 'together') { renderTabbar('together'); await viewTogether(); }
-      else if (page === 'me' || page === 'settings') { renderTabbar('me'); viewPartnerSettings(); }
+      else if (page === 'me' || page === 'settings') { renderTabbar('me'); await viewPartnerSettings(); }
       else if (page === 'view') { renderTabbar(null); await viewDetail(arg); }
       else if (page === 'new' && TYPES[arg]) { renderTabbar(null); await viewForm('new', arg); }
       else if (page === 'edit') { renderTabbar(null); await viewForm('edit', arg); }

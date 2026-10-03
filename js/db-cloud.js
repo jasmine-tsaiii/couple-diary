@@ -219,6 +219,10 @@ const CloudDB = CLOUD_ENABLED ? (() => {
       } catch (e) { /* 略過 */ }
       await loadPartner();
     },
+    // 加入對方之前自己也開過一本：把自己寫的紀錄搬進共用的日記（dry = 只問有幾則）
+    async bringRecords(dry = false) {
+      return check(await client.rpc('partner_bring_records', { p_dry: dry })) || 0;
+    },
     // 另一半結束這段關係：自己離開，主人下次打開會收到通知
     async partnerEndRelationship() {
       check(await client.rpc('partner_end_relationship'));

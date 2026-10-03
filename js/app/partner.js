@@ -270,7 +270,32 @@ function viewBind(sentTo = '') {
   }));
 }
 
-function viewPartnerSettings() {
+// 加入時勾了「把我寫的紀錄搬過去」：對方同意後第一次打開就搬（只做一次）
+async function maybeBringRecords() {
+  if (!CloudDB.isBoundPartner()) return;
+  const key = `bringRecords:${CloudDB.myId()}`;
+  let want = false;
+  try { want = localStorage.getItem(key) === '1'; localStorage.removeItem(key); } catch (e) { want = false; }
+  if (!want) return;
+  try {
+    const n = await CloudDB.bringRecords();
+    if (n) { track('partner_bring_records', { n }); toast(`你寫的 ${n} 則紀錄搬過來了`); }
+  } catch (e) { toast('紀錄沒搬成功，可以到設定再試一次'); }
+}
+async function bringCardHtml() {
+  if (!CloudDB.isBoundPartner()) return '';
+  let n = 0;
+  try { n = await CloudDB.bringRecords(true); } catch (e) { n = 0; }
+  if (!n) return '';
+  return `<div class="card" id="bring-card">
+      <div class="bold">之前自己那本的紀錄</div>
+      <div class="muted">你加入${esc(ownerName())}的日記前自己寫了 ${n} 則，現在收著看不到。可以搬進你們共用的日記，照片也會跟著。</div>
+      <button class="btn small" id="bring-btn" data-n="${n}">搬過來</button>
+    </div>`;
+}
+
+async function viewPartnerSettings() {
+  const bringCard = await bringCardHtml();
   const info = CloudDB.partnerInfo();
   app.className = '';
   app.innerHTML = `
@@ -285,6 +310,7 @@ function viewPartnerSettings() {
       <div class="small muted">改了之後，${esc(ownerName())}那邊看到的也會一起改。</div>
       <button class="btn small" id="p-save-name">儲存</button>
     </div>
+    ${bringCard}
     <a class="card" href="#/bind" style="gap:4px">
       <div class="row between"><div class="bold">帳號</div><div class="muted">›</div></div>
       <div class="small muted">${CloudDB.isBoundPartner() ? `已建立帳號：${esc(CloudDB.currentEmail() || '')}` : '還沒建立帳號：建立後可以寫自己的美好和烏雲，也能一起寫吵架議題，換手機也不會不見'}</div>
@@ -325,6 +351,16 @@ function viewPartnerSettings() {
     toast('已儲存');
   }));
   bindPinCard(viewPartnerSettings);
+  const bringBtn = document.getElementById('bring-btn');
+  if (bringBtn) bringBtn.addEventListener('click', () => {
+    if (!confirm(`把你之前寫的 ${bringBtn.dataset.n} 則紀錄搬進和${ownerName()}共用的日記？上鎖的${ownerName()}還是看不到，出過的任務要重新解鎖一次。搬過去就不會再回到你自己那本。`)) return;
+    withBusy(bringBtn, '搬移中…', async () => {
+      const n = await CloudDB.bringRecords();
+      track('partner_bring_records', { n, where: 'settings' });
+      toast(`搬過來了：${n} 則`);
+      viewPartnerSettings();
+    });
+  });
   if (logout) logout.addEventListener('click', async () => { await CloudDB.signOut(); photoUrlCache.clear(); go('#/login'); });
 
   document.getElementById('leave').addEventListener('click', async () => {
@@ -363,7 +399,7 @@ async function viewJoinAsOwner(code = '') {
   try { count = (await DB.allRecords()).filter((r) => !r.deletedAt).length; } catch (e) { count = 0; }
   try { if (await CloudDB.getShare()) others = (await CloudDB.listPartners()).filter((p) => p.approved !== false); } catch (e) { others = []; }
   const notice = '你現在有一本自己的日記。要和對方用同一本的話，輸入對方給你的分享碼和密碼，對方按「同意」後，你打開 App 就會看到對方那本，每天一題也會變成同一題、看得到彼此的回答。'
-    + (count ? `你自己這本的 ${count} 則紀錄不會刪掉，只是先收起來；之後離開對方的日記就會回來。` : '');
+    + (count ? `你自己這本的 ${count} 則紀錄可以一起搬過去，或先收起來（不會刪掉）。` : '');
   viewJoin(notice, code, { owner: true, count, others: others.map((p) => p.name) });
 }
 
@@ -382,6 +418,9 @@ function viewJoin(notice, code = '', ownerMode = null) {
       ${digitBoxes('j-pass', '分享密碼（對方告訴你的 6 位數字）')}
       <div class="field"><label for="j-name">你的名字</label>
         <input id="j-name" class="input" maxlength="20" required placeholder="對方會看到這個名字"></div>
+      ${ownerMode && ownerMode.count ? `<label class="row" style="gap:10px;align-items:flex-start"><input type="checkbox" id="j-bring" checked style="margin-top:4px">
+        <span class="grow"><span class="bold">把我寫的 ${ownerMode.count} 則紀錄搬過去</span>
+        <span class="small muted" style="display:block">對方同意後，你寫的美好、烏雲和吵架議題會搬進共用的日記，照片也會跟著，編號接在對方後面；對方看得到的跟原本一樣，上鎖的對方還是看不到，出過的任務要重新解鎖一次。不勾的話先收起來，離開對方的日記就會回來。</span></span></label>` : ''}
       <button class="btn" type="submit" id="join-btn">加入</button>
     </form>
     <div id="join-msg" class="muted" style="text-align:center"></div>
@@ -408,7 +447,8 @@ function viewJoin(notice, code = '', ownerMode = null) {
     if (!SHARE_PASS_RE.test(document.getElementById('j-pass').value)) { fail('分享密碼是 6 位數字，再檢查一下'); return; }
     if (ownerMode && (ownerMode.count || ownerMode.others.length)) {
       const lines = ['加入對方的日記？'];
-      if (ownerMode.count) lines.push(`你自己這本的 ${ownerMode.count} 則紀錄會先收起來（不會刪掉），之後離開對方的日記就會回來。`);
+      const bring = document.getElementById('j-bring');
+      if (ownerMode.count) lines.push(bring && bring.checked ? `對方同意後，你寫的 ${ownerMode.count} 則紀錄會搬進共用的日記。` : `你自己這本的 ${ownerMode.count} 則紀錄會先收起來（不會刪掉），之後離開對方的日記就會回來。`);
       if (ownerMode.others.length) lines.push(`${ownerMode.others.join('、')} 已經加入你的日記，之後你就看不到你們這本了。`);
       if (!confirm(lines.join('\n'))) return;
     }
@@ -425,6 +465,8 @@ function viewJoin(notice, code = '', ownerMode = null) {
       )]);
       track('partner_join_request');
       rejoinNotice = false;
+      const bring = document.getElementById('j-bring');
+      try { if (bring && bring.checked) localStorage.setItem(`bringRecords:${CloudDB.myId()}`, '1'); else localStorage.removeItem(`bringRecords:${CloudDB.myId()}`); } catch (e) { /* 略過 */ }
       if (CloudDB.pendingJoin()) toast('已送出，等對方同意');
       go('#/');
       route();

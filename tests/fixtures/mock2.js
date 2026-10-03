@@ -464,6 +464,21 @@
       S.t.settings = S.t.settings.filter((x) => !(x.owner === u.id && ['lastNo', 'sharePaused', 'partnerLeft'].includes(x.key)));
       const n = S.t.settings.find((x) => x.owner === u.id && x.key === 'names'); if (n) n.value = { ...n.value, partner: '', since: '' };
     },
+    partner_bring_records(S, u, a) {
+      if (!real(u)) throw new Error('要先建立帳號');
+      const p = S.t.partners.find((x) => x.uid === u.id && x.approved !== false); if (!p) throw new Error('你還沒有加入對方的日記，或還在等對方同意');
+      const mine = S.t.records.filter((r) => r.owner === u.id && (r.author || r.owner) === u.id && !r.archived && !r.data.deletedAt)
+        .sort((x, y) => (x.data.date || '').localeCompare(y.data.date || '') || (x.data.createdAt || 0) - (y.data.createdAt || 0));
+      if (a.p_dry) return mine.length;
+      for (const r of mine) {
+        const ls = S.t.settings.find((x) => x.owner === p.owner && x.key === 'lastNo');
+        const no = Math.max(0, ...S.t.records.filter((x) => x.owner === p.owner && x.type === r.type).map((x) => x.data.no || 0), (ls && ls.value[r.type]) || 0) + 1;
+        if (ls) ls.value = { ...ls.value, [r.type]: no }; else S.t.settings.push({ owner: p.owner, key: 'lastNo', value: { [r.type]: no } });
+        r.owner = p.owner; r.author = u.id; r.unlocked = false;
+        r.data = { ...r.data, no, author: u.id, authorName: p.name, unlocked: false, updatedAt: Date.now(), movedAt: Date.now() };
+      }
+      return mine.length;
+    },
     partner_end_relationship(S, u) {
       const p = S.t.partners.find((x) => x.uid === u.id && x.approved !== false); if (!p) throw new Error('你目前沒有加入任何分享');
       S.t.partners = S.t.partners.filter((x) => x.uid !== u.id);

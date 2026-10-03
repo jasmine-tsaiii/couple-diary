@@ -1529,6 +1529,51 @@ end $$;
 revoke all on function public.partner_end_relationship() from public, anon;
 grant execute on function public.partner_end_relationship() to authenticated;
 
+-- 兩個人各自開了日記、後來一方加入另一方：加入的人可以把自己那本寫的紀錄搬進共用的日記
+-- 只搬自己寫的、沒刪除、沒封存的；照片本來就在自己的資料夾，不用搬檔案；編號接在共用日記後面（依日期）
+-- p_dry = true 只回傳有幾則可以搬
+create or replace function public.partner_bring_records(p_dry boolean default false) returns integer
+language plpgsql security definer set search_path = public as $$
+declare
+  p public.partners;
+  r record;
+  n integer := 0;
+  v_now bigint := (extract(epoch from now()) * 1000)::bigint;
+begin
+  if not public.is_real_user() then raise exception '要先建立帳號'; end if;
+  select * into p from public.partners where uid = auth.uid() and approved;
+  if not found then raise exception '你還沒有加入對方的日記，或還在等對方同意'; end if;
+  if p_dry then
+    return (select count(*) from public.records
+      where owner = auth.uid() and coalesce(author, owner) = auth.uid() and not archived and (data ->> 'deletedAt') is null);
+  end if;
+  if (select count(*) from public.records where owner = p.owner and author = auth.uid())
+     + (select count(*) from public.records where owner = auth.uid() and coalesce(author, owner) = auth.uid() and not archived and (data ->> 'deletedAt') is null) > 3000 then
+    raise exception '紀錄太多了';
+  end if;
+  for r in
+    select id, type from public.records
+    where owner = auth.uid() and coalesce(author, owner) = auth.uid() and not archived and (data ->> 'deletedAt') is null
+    order by data ->> 'date', coalesce((data ->> 'createdAt')::bigint, 0), id
+    for update
+  loop
+    -- 任務解鎖要在新的日記重新做一次，不沿用以前的
+    update public.records set
+      owner = p.owner, author = auth.uid(), unlocked = false, updated_at = now(),
+      data = data || jsonb_build_object('no', public.take_next_no(p.owner, r.type), 'author', auth.uid(), 'authorName', p.name,
+                                        'unlocked', false, 'updatedAt', v_now, 'movedAt', v_now)
+    where id = r.id;
+    n := n + 1;
+  end loop;
+  update public.task_submissions t set owner = p.owner
+  from public.records x where x.id = t.record_id and x.owner = p.owner and t.owner = auth.uid();
+  update public.partner_notes t set owner = p.owner
+  from public.records x where x.id = t.record_id and x.owner = p.owner and t.owner = auth.uid();
+  return n;
+end $$;
+revoke all on function public.partner_bring_records(boolean) from public, anon;
+grant execute on function public.partner_bring_records(boolean) to authenticated;
+
 -- 主人看另一半（包括等同意的人）是不是綁定帳號、是不是以前就寫過紀錄的人（回來的另一半）
 create or replace function public.partner_accounts() returns jsonb
 language sql stable security definer set search_path = public as $$
