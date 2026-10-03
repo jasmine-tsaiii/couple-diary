@@ -129,7 +129,7 @@ async function viewMe() {
     try {
       const ps = await CloudDB.listPartners();
       const joined = ps.find((p) => p.approved !== false);
-      shareSub = joined ? `${esc(joined.name || partnerName())}已加入` : ps.length ? '有人想加入，等你同意' : '還沒邀請';
+      shareSub = joined ? `${esc(joined.name || partnerName())}已加入` : ps.length ? '有人想加入，等你同意' : '還沒邀請・也能加入對方的';
     } catch (e) { shareSub = '邀請、暫停分享'; }
   }
   let admin = false;

@@ -354,7 +354,20 @@ function viewPartnerSettings() {
   });
 }
 
-function viewJoin(notice, code = '') {
+// 已經用自己的帳號開始寫（主人）又想加入對方的日記：常見在兩個人各自下載 App、各自開了一本。
+// 以前會直接跳回首頁，只能用無痕視窗打開邀請連結；現在在 App 裡就能加入。
+async function viewJoinAsOwner(code = '') {
+  let count = 0;
+  let others = [];
+  try { await loadNames(); } catch (e) { /* 略過 */ }
+  try { count = (await DB.allRecords()).filter((r) => !r.deletedAt).length; } catch (e) { count = 0; }
+  try { if (await CloudDB.getShare()) others = (await CloudDB.listPartners()).filter((p) => p.approved !== false); } catch (e) { others = []; }
+  const notice = '你現在有一本自己的日記。要和對方用同一本的話，輸入對方給你的分享碼和密碼，對方按「同意」後，你打開 App 就會看到對方那本，每天一題也會變成同一題、看得到彼此的回答。'
+    + (count ? `你自己這本的 ${count} 則紀錄不會刪掉，只是先收起來；之後離開對方的日記就會回來。` : '');
+  viewJoin(notice, code, { owner: true, count, others: others.map((p) => p.name) });
+}
+
+function viewJoin(notice, code = '', ownerMode = null) {
   app.className = '';
   app.innerHTML = `
     <div style="display:flex;flex-direction:column;align-items:center;gap:10px;text-align:center;margin-top:40px">
@@ -372,11 +385,17 @@ function viewJoin(notice, code = '') {
       <button class="btn" type="submit" id="join-btn">加入</button>
     </form>
     <div id="join-msg" class="muted" style="text-align:center"></div>
-    <a class="btn secondary small" href="#/login" id="to-login">${rejoinNotice ? '回到首頁' : '我已經有帳號了，去登入'}</a>
+    ${ownerMode ? '<a class="btn secondary small" href="#/settings" id="to-login">先不要，回到我的日記</a>'
+      : `<a class="btn secondary small" href="#/login" id="to-login">${rejoinNotice ? '回到首頁' : '我已經有帳號了，去登入'}</a>`}
   `;
+  if (ownerMode) {
+    const nm = document.getElementById('j-name');
+    if (!nm.value && NAMES.me) nm.value = NAMES.me;
+  }
   bindDigitBoxes(app);
   document.getElementById('to-login').addEventListener('click', async (ev) => {
     rejoinNotice = false;
+    if (ownerMode) return;
     // 臨時帳號登出，才會回到登入畫面
     if (CloudDB.isSignedIn() && CloudDB.isAnonymous()) { ev.preventDefault(); await CloudDB.signOut(); go('#/login'); route(); }
   });
@@ -387,6 +406,12 @@ function viewJoin(notice, code = '') {
     // 錯誤訊息放在按鈕旁邊也用小提示跳出來，手機鍵盤擋住時也看得到
     const fail = (t) => { msg.textContent = t; toast(t); msg.scrollIntoView({ block: 'center' }); };
     if (!SHARE_PASS_RE.test(document.getElementById('j-pass').value)) { fail('分享密碼是 6 位數字，再檢查一下'); return; }
+    if (ownerMode && (ownerMode.count || ownerMode.others.length)) {
+      const lines = ['加入對方的日記？'];
+      if (ownerMode.count) lines.push(`你自己這本的 ${ownerMode.count} 則紀錄會先收起來（不會刪掉），之後離開對方的日記就會回來。`);
+      if (ownerMode.others.length) lines.push(`${ownerMode.others.join('、')} 已經加入你的日記，之後你就看不到你們這本了。`);
+      if (!confirm(lines.join('\n'))) return;
+    }
     if (document.activeElement) document.activeElement.blur();
     btn.disabled = true;
     btn.textContent = '加入中…';
@@ -522,6 +547,7 @@ async function shareCardHtml() {
       <div class="field"><label for="s-name">你的名字（對方會看到）</label><input id="s-name" class="input" maxlength="${LIMITS.name}" value="${esc(NAMES.me)}"></div>
       ${digitBoxes('s-pass', '分享密碼（自己設 6 位數字，等一下要私下告訴對方）')}
       <button class="btn small" id="s-create">產生分享碼</button>
+      <div class="share-sec small muted" id="join-other">對方已經先開始寫、給了你分享碼？<a class="text-link" href="#/join">改成加入對方的日記</a>，兩個人用同一本，每天一題才會是同一題。</div>
     </div>`;
   }
   const joined = partners.filter((p) => p.approved !== false);
@@ -566,6 +592,7 @@ async function shareCardHtml() {
     <div class="btn-row">
       <button class="btn small danger" id="s-stop">停止分享</button>
     </div>
+    ${joined.length ? '' : '<div class="share-sec small muted" id="join-other">對方已經先開始寫、給了你分享碼？<a class="text-link" href="#/join">改成加入對方的日記</a>，兩個人用同一本，每天一題才會是同一題。</div>'}
   </div>`;
 }
 
@@ -594,7 +621,8 @@ function bindShareCard() {
   if ($('s-copy')) $('s-copy').addEventListener('click', async () => {
     const code = document.querySelector('.share-code').textContent;
     const url = `${location.origin + location.pathname}?utm_source=invite&utm_medium=share#/join/${code}`;
-    const text = `點這個連結，一起用啾啾日記：${url}（6 位數分享密碼我另外告訴你）`;
+    // 對方可能已經裝好 App：從主畫面的 App 點連結常會開到瀏覽器，所以也附上在 App 裡輸入的方法
+    const text = `點這個連結，一起用啾啾日記：${url}\n已經裝了 App 的話：打開 App →「我的」→「分享給另一半」→「改成加入對方的日記」，輸入分享碼 ${code}。（6 位數分享密碼我另外告訴你）`;
     // 手機會跳出分享畫面（LINE、訊息…）。要在按下的當下馬上叫出來，先做別的事 iPhone 會擋掉；不支援或失敗時改成複製
     if (navigator.share) {
       try { await navigator.share({ title: '一起用啾啾日記', text }); track('share_invite', { how: 'share' }); return; } catch (e) { if (e && e.name === 'AbortError') return; }

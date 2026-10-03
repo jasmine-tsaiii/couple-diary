@@ -79,6 +79,8 @@ async function renderRoute() {
         viewJoin(rejoinNotice ? '你已經用原本的帳號登入了，但還沒連到對方的日記。再輸入一次分享碼和密碼，對方按「同意」後就回來了，之前寫的紀錄都還在。' : '輸入對方給你的分享碼和密碼，對方按「同意」後，這個帳號就會接到對方的日記。', arg);
         return;
       }
+      // 已經開始寫自己的日記，又點了對方的邀請連結（或在設定裡選「加入對方的日記」）
+      if (page === 'join') { renderTabbar(null); await viewJoinAsOwner(arg); return; }
       if (choose && !['settings', 'reset', 'feedback'].includes(page)) { renderTabbar(null); viewRoleChoice(); return; }
     }
     if (!isGuest() && (page === 'login' || page === 'signup' || page === 'join')) { go('#/'); return; }
