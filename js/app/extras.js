@@ -889,7 +889,7 @@ async function refreshBell() {
     const taskOn = unreadList.some((n) => n.kind === 'new_task_record' || n.kind === 'task_approved');
     taskTab.dataset.taskDot = taskOn ? '1' : '';
     // 「一起」的紅點也要算秘密留言板的新紙條（notes.js）
-    setTabDot(taskTab, taskOn || (taskTab.dataset.tab === 'together' && noteDotOn));
+    setTabDot(taskTab, taskOn || (taskTab.dataset.tab === 'together' && typeof noteDotOn !== 'undefined' && noteDotOn));
   }
 }
 function setTabDot(tab, on) {

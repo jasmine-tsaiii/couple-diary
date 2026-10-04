@@ -120,7 +120,7 @@ async function renderRoute() {
       afterRender();
       // 剛被同意加入：提醒放到主畫面（一次）；第一次從主畫面打開：說放好了
       if (!page) maybeShowA2hs();
-      if (!page) maybeShowNotePop().catch(() => {});
+      if (!page && typeof maybeShowNotePop === 'function') maybeShowNotePop().catch(() => {});
       return;
     }
     if (!page) { renderTabbar('home'); await viewHome(); }
@@ -154,7 +154,7 @@ async function renderRoute() {
     afterRender();
     if (!page || page === 'view') checkNewStamps().catch(() => {});
     if (!page || page === 'view') { if (!maybeShowSignupNudge()) maybeShowA2hs(); }
-    if (!page) maybeShowNotePop().catch(() => {});
+    if (!page && typeof maybeShowNotePop === 'function') maybeShowNotePop().catch(() => {});
   } catch (e) {
     console.error(e);
     app.innerHTML = `<div class="empty no-mascot">${esc(cloudErrorText(e))}<button class="btn small" id="reload">重新整理</button></div>`;
@@ -166,7 +166,7 @@ async function renderRoute() {
 function afterRender() {
   refreshBell().catch(() => {});
   refreshTabDots().catch(() => {});
-  refreshNoteDot().catch(() => {});
+  if (typeof refreshNoteDot === 'function') refreshNoteDot().catch(() => {});
   bindNotifyCard().catch(() => {});
   bindAdminCard().catch(() => {});
 }

@@ -68,7 +68,8 @@ self.addEventListener('fetch', (ev) => {
   ev.respondWith((async () => {
     const c = await caches.open(SHELL);
     try {
-      const res = await fetch(req);
+      // no-cache：每次都跟網站確認有沒有新版（沒變就不重新下載），不會拿到瀏覽器存了 10 分鐘的舊檔
+      const res = await fetch(req, { cache: 'no-cache' });
       if (res.ok && res.type === 'basic') c.put(key, res.clone());
       return res;
     } catch (e) {
