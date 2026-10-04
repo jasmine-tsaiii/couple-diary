@@ -1,5 +1,5 @@
-// 用分享碼加入、再用 Email 建立帳號的另一半：沒設密碼要明顯提醒（不然登出、換手機後登不回來）；
-// 設好就不再提醒；登入時密碼不對要提示可以按「忘記密碼？」設一組
+// 用分享碼加入、再用 Email 建立帳號的另一半：確認 Email 後一定要設登入密碼才能用 App（不然登出、換電腦後登不回來）；
+// 設好就正常使用；登入時密碼不對要提示可以按「忘記密碼？」設一組
 const { chromium } = require('playwright');
 const fs = require('fs');
 const U = (process.env.U || 'http://localhost:8770/');
@@ -30,13 +30,13 @@ const U = (process.env.U || 'http://localhost:8770/');
   // 到信箱點了確認連結
   await p.evaluate((u) => { const S = JSON.parse(localStorage.mockServer); Object.assign(S.users[u], { is_anonymous: false, email: 'ming@x.com', identities: [{ provider: 'email' }] }); localStorage.mockServer = JSON.stringify(S); }, pid);
   await as(pid);
-  log('home reminds to set password', await p.isVisible('#need-pass-card'));
-  await p.click('#need-pass-card'); await p.waitForTimeout(700);
-  log('bind page asks for password', (await p.textContent('#pw-form')).includes('還差一步'));
+  log('home blocked until password set', await p.isVisible('#must-pass') && !(await p.isVisible('.tabbar a, #tabbar a')) && !(await p.isVisible('.topbar .icon-btn')));
+  await p.goto(U + '#/records'); await p.waitForTimeout(800);
+  log('other pages also go to password step', await p.isVisible('#must-pass'));
   await p.fill('#b-pass', 'newpass123'); await p.click('#b-pass-save'); await p.waitForTimeout(800);
   log('password sent with flag', await p.evaluate(() => window.__updatedUser && window.__updatedUser.password === 'newpass123' && window.__updatedUser.data.has_password === true));
   await as(pid);
-  log('reminder gone after setting', !(await p.isVisible('#need-pass-card')));
+  log('app usable after setting', !(await p.isVisible('#must-pass')) && await p.evaluate(() => location.hash === '#/'));
   // 登入時密碼不對：提示忘記密碼
   await as(null); await p.goto(U + '#/login'); await p.reload(); await p.waitForTimeout(600);
   await p.fill('#email', 'ming@x.com'); await p.fill('#password', 'wrongpass1'); await p.click('#login-btn'); await p.waitForTimeout(800);

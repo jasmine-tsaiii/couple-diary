@@ -92,6 +92,8 @@ async function renderRoute() {
     await purgeOldTrash().catch(skipIfOffline);
     if (page === 'reset' && usingCloud() && !CloudDB.isAnonymous()) { renderTabbar(null); viewResetPassword(); return; }
     if (isPartner()) {
+      // 用 Email 建立帳號一定要設登入密碼才算完成，不然換電腦、登出後就登不回來
+      if (CloudDB.needsPassword() && !['bind', 'feedback'].includes(page)) { renderTabbar(null); viewBind(); return; }
       await maybeBringRecords();
       if (!page) { renderTabbar('home'); await viewPartnerHome(); }
       else if (page === 'records') { renderTabbar('records'); await viewRecords(arg); }

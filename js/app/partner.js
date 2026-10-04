@@ -21,11 +21,6 @@ async function viewPartnerHome() {
   const caps = await loadCapsulesSafe();
   // 提示卡一次最多一張，照順序取第一個符合的
   const tips = [
-    // 沒設密碼最要緊：不設的話換手機、登出後就登不回來
-    CloudDB.needsPassword() ? `<a class="card" href="#/bind" id="need-pass-card" style="background:var(--open-bg);border-color:transparent;gap:4px">
-      <div class="bold" style="color:var(--open-ink)">請設定登入密碼</div>
-      <div class="small" style="color:var(--open-ink)">你的帳號（${esc(CloudDB.currentEmail() || '')}）還沒有密碼。現在這支手機能用，但換手機、換瀏覽器或登出後，要用 Email 和密碼才登得回來 ›</div>
-    </a>` : '',
     info.paused ? `<div class="card" id="paused-note" style="background:var(--lock-bg);border-color:transparent;gap:4px">
       <div class="bold" style="color:var(--lock)">${esc(ownerName())}暫時停止分享</div>
       <div class="small" style="color:var(--lock)">這段時間看不到${esc(ownerName())}寫的紀錄，你自己寫的照舊。${esc(ownerName())}恢復之後就會回來，什麼都不會不見。</div>
@@ -171,19 +166,24 @@ function googleBindErrorText(err) {
 function viewBind(sentTo = '') {
   app.className = 'theme-fight';
   const bound = CloudDB.isBoundPartner();
+  const mustPass = bound && CloudDB.needsPassword();
   app.innerHTML = `
     <div class="topbar">
-      <a class="icon-btn" href="#/" aria-label="返回">${ICON.back}</a>
+      ${mustPass ? '' : `<a class="icon-btn" href="#/" aria-label="返回">${ICON.back}</a>`}
       <h1>建立我的帳號</h1>
     </div>
-    ${bound ? `<div class="card" style="gap:6px">
+    ${mustPass ? `<div class="card" id="must-pass" style="gap:6px;background:var(--open-bg);border-color:transparent">
+      <div class="bold" style="color:var(--open-ink)">最後一步：設定登入密碼</div>
+      <div class="small" style="color:var(--open-ink)">Email（${esc(CloudDB.currentEmail() || '')}）確認好了。設一組登入密碼就完成，之後換手機、換電腦或登出，都用這個 Email 和密碼登入，不用再輸入分享碼。</div>
+    </div>` : ''}
+    ${bound && !mustPass ? `<div class="card" style="gap:6px">
       <div class="bold">帳號建立好了：${esc(CloudDB.currentEmail() || '')}</div>
       <div class="muted">現在可以寫自己的美好和烏雲，也能和${esc(ownerName())}一起寫吵架議題。換手機時用這個帳號登入就好，不用再輸入分享碼。</div>
       <a class="btn small" href="#/" style="align-self:flex-start">回首頁開始寫</a>
-    </div>
-    <form class="card" id="pw-form" style="gap:10px">
-      <div class="bold">${CloudDB.needsPassword() ? '還差一步：設定登入密碼' : '設定帳號密碼'}</div>
-      <div class="small muted">用 Email 建立帳號的話，一定要設登入密碼，換手機、換瀏覽器或登出後才能用 Email 和密碼登入回來。這和加入時的 6 位數分享密碼不一樣。用 Google 建立的可以略過。</div>
+    </div>` : ''}
+    ${bound ? `<form class="card" id="pw-form" style="gap:10px">
+      <div class="bold">${mustPass ? '登入密碼' : '更改登入密碼'}</div>
+      <div class="small muted">這和加入時的 6 位數分享密碼不一樣，至少 8 個字。</div>
       <input id="b-pass" class="input" type="password" autocomplete="new-password" minlength="8" maxlength="72" required placeholder="至少 8 個字" aria-label="新密碼">
       <button class="btn small" id="b-pass-save" type="submit">儲存密碼</button>
     </form>` : `
@@ -195,7 +195,7 @@ function viewBind(sentTo = '') {
     </div>
     ${sentTo ? `<div class="card" style="background:var(--resolved-bg);border-color:transparent;gap:8px">
       <div class="bold" style="color:var(--resolved-ink)">確認信已經寄到 ${esc(sentTo)}</div>
-      <div class="small">到信箱點信裡的連結就完成了。如果是在別的 App 或瀏覽器打開連結，回到這裡按下面的按鈕。</div>
+      <div class="small">到信箱點信裡的連結，回來設一組登入密碼就完成了。如果是在別的 App 或瀏覽器打開連結，回到這裡按下面的按鈕。</div>
       <button class="btn small secondary" id="b-check" style="align-self:flex-start">我已經點了連結</button>
     </div>` : ''}
     ${bindError ? `<div class="card" id="bind-error" role="alert" style="background:var(--open-bg);border-color:transparent;gap:4px">
