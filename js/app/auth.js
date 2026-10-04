@@ -162,7 +162,7 @@ const SIGNUP_SENT_TEXT = '帳號建立好了！請到信箱點確認連結，確
 function authErrorText(e) {
   const m = (e && e.message) || '';
   if ((e && e.offline) || /fetch|network|load failed|timeout/i.test(m)) return navigator.onLine === false ? '現在沒有網路，連上網路後再試一次。' : '連不上網路，請確認網路後再試一次。';
-  if (/invalid login|invalid credentials/i.test(m)) return 'Email 或密碼不對，再試一次。';
+  if (/invalid login|invalid credentials/i.test(m)) return 'Email 或密碼不對，再試一次。如果你是用分享碼加入、後來用 Email 建立帳號，可能還沒設過密碼：在上面填 Email、按「忘記密碼？」設一組就能登入，之前的紀錄都還在。';
   if (/not confirmed/i.test(m)) return '這個帳號還沒確認，請先到信箱點確認連結（也看看垃圾信件匣）。';
   if (/already registered|already exists|already been registered/i.test(m)) return '這個 Email 已經註冊過了，請直接登入。忘記密碼的話，按「忘記密碼？」。';
   if (/password.*(at least|short|characters|weak)|weak password/i.test(m)) return '密碼太短或太簡單，請用至少 8 個字，混合英文和數字。';

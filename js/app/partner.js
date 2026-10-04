@@ -21,6 +21,11 @@ async function viewPartnerHome() {
   const caps = await loadCapsulesSafe();
   // 提示卡一次最多一張，照順序取第一個符合的
   const tips = [
+    // 沒設密碼最要緊：不設的話換手機、登出後就登不回來
+    CloudDB.needsPassword() ? `<a class="card" href="#/bind" id="need-pass-card" style="background:var(--open-bg);border-color:transparent;gap:4px">
+      <div class="bold" style="color:var(--open-ink)">請設定登入密碼</div>
+      <div class="small" style="color:var(--open-ink)">你的帳號（${esc(CloudDB.currentEmail() || '')}）還沒有密碼。現在這支手機能用，但換手機、換瀏覽器或登出後，要用 Email 和密碼才登得回來 ›</div>
+    </a>` : '',
     info.paused ? `<div class="card" id="paused-note" style="background:var(--lock-bg);border-color:transparent;gap:4px">
       <div class="bold" style="color:var(--lock)">${esc(ownerName())}暫時停止分享</div>
       <div class="small" style="color:var(--lock)">這段時間看不到${esc(ownerName())}寫的紀錄，你自己寫的照舊。${esc(ownerName())}恢復之後就會回來，什麼都不會不見。</div>
@@ -177,8 +182,8 @@ function viewBind(sentTo = '') {
       <a class="btn small" href="#/" style="align-self:flex-start">回首頁開始寫</a>
     </div>
     <form class="card" id="pw-form" style="gap:10px">
-      <div class="bold">設定帳號密碼</div>
-      <div class="small muted">用 Email 建立帳號的話，設定帳號密碼後就能在別的手機用 Email 和密碼登入。這和加入時的 6 位數分享密碼不一樣。用 Google 建立的可以略過。</div>
+      <div class="bold">${CloudDB.needsPassword() ? '還差一步：設定登入密碼' : '設定帳號密碼'}</div>
+      <div class="small muted">用 Email 建立帳號的話，一定要設登入密碼，換手機、換瀏覽器或登出後才能用 Email 和密碼登入回來。這和加入時的 6 位數分享密碼不一樣。用 Google 建立的可以略過。</div>
       <input id="b-pass" class="input" type="password" autocomplete="new-password" minlength="8" maxlength="72" required placeholder="至少 8 個字" aria-label="新密碼">
       <button class="btn small" id="b-pass-save" type="submit">儲存密碼</button>
     </form>` : `
@@ -201,6 +206,7 @@ function viewBind(sentTo = '') {
     <button class="btn secondary" id="b-google"${IN_APP ? ' hidden' : ''}>用 Google 建立</button>
     <form class="card" id="b-form" style="gap:10px">
       <label for="b-email" class="bold">用 Email 建立</label>
+      <div class="small muted">到信箱點確認連結後，回來這裡設一組登入密碼就完成了。</div>
       <input id="b-email" class="input" type="email" autocomplete="email" required placeholder="you@example.com">
       <button class="btn" id="b-send" type="submit">寄確認信</button>
     </form>`}
@@ -210,7 +216,7 @@ function viewBind(sentTo = '') {
     ev.preventDefault();
     const v = document.getElementById('b-pass').value;
     if (v.length < 8) { toast('密碼至少 8 個字'); return; }
-    withBusy(document.getElementById('b-pass-save'), '儲存中…', async () => { await CloudDB.updatePassword(v); toast('密碼已設定'); document.getElementById('b-pass').value = ''; });
+    withBusy(document.getElementById('b-pass-save'), '儲存中…', async () => { await CloudDB.updatePassword(v); toast('密碼已設定，之後可以用 Email 和密碼登入'); viewBind(); });
   });
   if (bound) return;
   const lg = document.getElementById('b-login-google');

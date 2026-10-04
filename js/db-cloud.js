@@ -145,7 +145,16 @@ const CloudDB = CLOUD_ENABLED ? (() => {
       check(await client.auth.resetPasswordForEmail(email, { redirectTo: location.origin + location.pathname + '?reset=1' }));
     },
     async updatePassword(password) {
-      check(await client.auth.updateUser({ password }));
+      // 記下「設過密碼」：用分享碼加入、再用 Email 建立帳號的人，沒設密碼就沒辦法用 Email 登入
+      const res = check(await client.auth.updateUser({ password, data: { has_password: true } }));
+      if (res && res.user && session) session = { ...session, user: res.user };
+    },
+    // 用 Email 建立帳號的另一半還沒設登入密碼（有 Google 的可以用 Google 登入，不用提醒）
+    needsPassword() {
+      const u = session && session.user;
+      if (!u || u.is_anonymous || !partner) return false;
+      const m = this.loginMethods();
+      return m.email && !m.google && !(u.user_metadata && u.user_metadata.has_password);
     },
     currentEmail: () => (session ? session.user.email : null),
     // 這個帳號可以用哪些方式登入：{ email: 有沒有 Email 身分, google: 有沒有連結 Google }
@@ -189,11 +198,13 @@ const CloudDB = CLOUD_ENABLED ? (() => {
     partnerInfo: () => partner,
     async signIn(email, password) {
       session = check(await client.auth.signInWithPassword({ email, password })).session;
+      // 用密碼登入成功就代表有密碼，記下來（舊帳號沒有這個記號）
+      if (session && !(session.user.user_metadata && session.user.user_metadata.has_password)) client.auth.updateUser({ data: { has_password: true } }).catch(() => {});
       await loadPartner();
       return session;
     },
     async signUp(email, password) {
-      const data = check(await client.auth.signUp({ email, password }));
+      const data = check(await client.auth.signUp({ email, password, options: { data: { has_password: true } } }));
       session = data.session;
       return session; // 需要到信箱確認時會是 null
     },

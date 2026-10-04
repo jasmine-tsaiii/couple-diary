@@ -558,7 +558,8 @@
             window.__updatedUser = o;
             const S = load(); const u = me();
             if (u && o.email && u.is_anonymous) { S.users[u.id].pendingEmail = o.email; save(S); }
-            return { data: {}, error: null };
+            if (u && o.data) { S.users[u.id].user_metadata = { ...(S.users[u.id].user_metadata || {}), ...o.data }; save(S); }
+            return { data: { user: u ? S.users[u.id] : null }, error: null };
           },
           async refreshSession() { return { data: { session: me() ? { user: me() } : null }, error: null }; },
           async linkIdentity() { if (localStorage.getItem('mockLinkErr')) return { data: {}, error: { message: 'Manual linking is disabled' } }; const S = load(); const u = me(); const wasAnon = S.users[u.id].is_anonymous; S.users[u.id].is_anonymous = false; if (wasAnon) S.users[u.id].email = 'google@x.com'; S.users[u.id].identities = [...(S.users[u.id].identities || []), { provider: 'google' }]; save(S); return { data: {}, error: null }; },
