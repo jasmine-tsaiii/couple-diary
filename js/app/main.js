@@ -375,7 +375,7 @@ let swipe = null;
 const backTarget = () => document.querySelector('.topbar a.icon-btn[aria-label="返回"], .topbar a.icon-btn[aria-label="取消"]');
 document.addEventListener('touchstart', (ev) => {
   const t = ev.touches[0];
-  swipe = (STANDALONE || window.__forceSwipeBack) && ev.touches.length === 1 && t.clientX < 44 && backTarget() && !document.querySelector('.celebrate, .pin-lock, .dlg-back')
+  swipe = (STANDALONE || window.__forceSwipeBack) && ev.touches.length === 1 && t.clientX < 44 && backTarget() && !document.querySelector('.celebrate, .pin-lock, .dlg-back') && !(ev.target.closest && ev.target.closest('.note-pad'))
     ? { x: t.clientX, y: t.clientY, dx: 0, locked: false } : null;
 }, { passive: true });
 document.addEventListener('touchmove', (ev) => {
@@ -403,6 +403,7 @@ document.addEventListener('touchend', endSwipe, { passive: true });
 document.addEventListener('touchcancel', () => { swipe = null; swipeHint.classList.remove('on', 'ready'); swipeHint.style.transform = ''; }, { passive: true });
 
 let lastHash = location.hash;
+let prevHash = ''; // 上一頁的網址（秘密留言板送出後要退回留言板，不是再開一頁）
 window.addEventListener('hashchange', () => {
   if (formGuard && formGuard.dirty()) {
     if (!confirm('還沒儲存，確定要離開嗎？寫的內容會不見。')) {
@@ -413,6 +414,7 @@ window.addEventListener('hashchange', () => {
     formGuard.leave();
   }
   formGuard = null;
+  prevHash = lastHash;
   lastHash = location.hash;
   trackNav(location.hash);
   route();

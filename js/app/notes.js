@@ -260,6 +260,9 @@ async function viewNoteNew() {
   if (typeof ResizeObserver === 'function') new ResizeObserver(() => { if (mode === 'draw') resize(); }).observe(pad);
   setPen('ink');
   setMode(mode);
+  // 手寫還沒送出就要離開（按返回、滑回上一頁）：先問一下；打字有草稿會留著，不用問
+  let sent = false;
+  formGuard = { dirty: () => !sent && strokes.length > 0, leave: () => {} };
 
   const send = document.getElementById('note-send');
   send.addEventListener('click', () => withBusy(send, '放上去中…', async () => {
@@ -278,7 +281,10 @@ async function viewNoteNew() {
     track('note_send', { mode });
     if (mode === 'text') { try { localStorage.removeItem('noteDraft'); } catch (e) { /* 略過 */ } }
     noteForget();
+    sent = true;
     toast(`放到${oname}的留言板了`);
-    go('#/notes');
+    // 從留言板來的就退回去（往回滑才不會又回到寫紙條）；從別的地方來的就把這一頁換成留言板
+    if (prevHash === '#/notes' && navStack.length > 1) history.back();
+    else replaceHash('#/notes');
   }));
 }

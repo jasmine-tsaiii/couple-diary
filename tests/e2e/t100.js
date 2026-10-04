@@ -57,6 +57,22 @@ const SHOT = (n) => (process.env.SHOT_DIR || '.') + '/' + n;
   let S = await server();
   log('draw saved as png', S.notes.length === 1 && S.notes[0].kind === 'draw' && /^data:image\/png;base64,/.test(S.notes[0].image) && S.notes[0].image.length < 400000 && S.notes[0].recipient === pid, S.notes[0] && S.notes[0].image.length);
   log('back on board', p.url().endsWith('#/notes') && (await text()).includes('小安還沒看'));
+  // 送出後按返回（往回滑）回到一起，不是又回到寫紙條
+  await p.click('.topbar a[data-back]'); await p.waitForTimeout(800);
+  log('back after send skips editor', p.url().endsWith('#/together'), p.url());
+  // 手寫寫到一半按返回：先問；從紙的左邊開始寫不會觸發滑回上一頁
+  await p.goto(U + '#/notes'); await p.waitForTimeout(800); await p.click('#note-write'); await p.waitForSelector('#note-cv', { state: 'attached' });
+  await p.click('[data-mode="draw"]');
+  const bx = await p.locator('#note-cv').boundingBox();
+  await p.mouse.move(bx.x + 20, bx.y + 40); await p.mouse.down(); await p.mouse.move(bx.x + 120, bx.y + 60); await p.mouse.up();
+  let asked = 0; p.removeAllListeners('dialog'); p.on('dialog', (d) => { asked++; d.dismiss(); });
+  await p.click('.topbar a[data-back]'); await p.waitForTimeout(600);
+  log('asks before dropping drawing', asked === 1 && p.url().endsWith('#/notes/new'));
+  p.removeAllListeners('dialog'); p.on('dialog', (d) => d.accept());
+  await p.evaluate(() => { window.__forceSwipeBack = 1; });
+  const pad = await p.locator('#note-pad').boundingBox();
+  const startsOnPad = await p.evaluate(([x, y]) => !!document.elementFromPoint(x, y).closest('.note-pad'), [pad.x + 4, pad.y + 60]);
+  log('pad reaches left swipe zone', startsOnPad && pad.x + 4 < 44);
 
   // 打字一張
   await p.goto(U + '#/notes/new'); await p.waitForSelector('#note-ta', { state: 'attached' });
