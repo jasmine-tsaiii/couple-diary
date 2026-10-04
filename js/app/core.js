@@ -459,7 +459,7 @@ function setRecType(t) { if (REC_TYPES.includes(t)) { try { localStorage.setItem
 // 解鎖任務的完成方式
 const taskModeText = (mode) => (mode === 'photo' ? '要上傳照片' : mode === 'answer' ? '要回答問題' : '按完成就好');
 function renderTabbar(route) {
-  document.body.classList.remove('quiz-focus');
+  document.body.classList.remove('quiz-focus', 'note-drawing');
   tabbar.hidden = route === null;
   document.body.classList.toggle('no-tabbar', route === null);
   if (route === null) return;

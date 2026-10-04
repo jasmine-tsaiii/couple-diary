@@ -228,6 +228,12 @@ async function viewNoteNew() {
   cv.addEventListener('pointermove', (e) => { if (!cur) return; e.preventDefault(); cur.p.push(pos(e)); resize(); });
   const end = () => { cur = null; };
   cv.addEventListener('pointerup', end); cv.addEventListener('pointercancel', end);
+  // iPhone：手指在紙上時不要捲動、不要長按選字
+  const stop = (e) => { if (e.cancelable) e.preventDefault(); };
+  cv.addEventListener('touchstart', stop, { passive: false });
+  cv.addEventListener('touchmove', stop, { passive: false });
+  cv.addEventListener('contextmenu', stop);
+  cv.addEventListener('selectstart', stop);
 
   const setCount = () => { count.textContent = mode === 'text' ? `${ta.value.length} / ${NOTE_TEXT_MAX}` : ''; };
   const setMode = (m) => {
@@ -235,6 +241,8 @@ async function viewNoteNew() {
     try { localStorage.setItem('noteMode', m); } catch (e) { /* 略過 */ }
     app.querySelectorAll('.note-seg .seg-btn').forEach((b) => { const on = b.dataset.mode === m; b.classList.toggle('on', on); b.setAttribute('aria-pressed', on); });
     cv.hidden = m !== 'draw'; ta.hidden = m !== 'text';
+    document.body.classList.toggle('note-drawing', m === 'draw');
+    if (m === 'draw') { try { window.getSelection().removeAllRanges(); } catch (e) { /* 略過 */ } }
     document.getElementById('note-undo').hidden = m !== 'draw';
     if (m === 'draw') resize(); else ta.focus();
     setCount();

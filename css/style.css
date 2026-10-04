@@ -897,6 +897,9 @@ body { background: var(--paper, none), var(--bg); background-attachment: fixed; 
 .note-paper.big { width: 100%; max-width: 440px; margin: 0 auto; box-shadow: 0 6px 20px rgba(43, 35, 32, .12); }
 .note-paper img { display: block; width: 100%; height: 100%; object-fit: contain; }
 .note-paper canvas { display: block; width: 100%; height: 100%; touch-action: none; cursor: crosshair; }
+/* 手寫時：長按不要跑出選取的藍底、放大鏡和選單（iPhone 特別容易） */
+.note-pad, .note-pad canvas, body.note-drawing #app { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; -webkit-tap-highlight-color: transparent; }
+.note-pad textarea { -webkit-user-select: text; user-select: text; }
 .note-text { padding: 10px 14px; font-family: "Noto Serif TC", serif; font-size: 15px; line-height: 28px; white-space: pre-wrap; word-break: break-word; }
 .note-paper.big .note-text { font-size: 22px; line-height: 28px; padding: 14px 18px; }
 .note-paper.empty .note-text { color: #6B5E57 !important; font-size: 17px; }
