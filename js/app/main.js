@@ -116,6 +116,8 @@ async function renderRoute() {
       else if (page === 'capsule') { renderTabbar(null); await viewCapsule(arg); }
       else go('#/');
       afterRender();
+      // 剛被同意加入：提醒放到主畫面（一次）；第一次從主畫面打開：說放好了
+      if (!page) maybeShowA2hs();
       return;
     }
     if (!page) { renderTabbar('home'); await viewHome(); }

@@ -1,4 +1,4 @@
-// 加到主畫面的引導：iPhone Safari、Android Chrome、LINE、IG 各自的教法；存好紀錄後跳一次；首頁提示卡可以關；設定頁隨時能找到
+// 加到主畫面的引導：iPhone Safari、Android Chrome、LINE、IG 各自的教法；存好紀錄後跳一次；首頁提示卡可以關；「我的」最上面隨時能找到，電腦上給 QR code
 const { chromium, devices } = require('playwright');
 const fs = require('fs');
 const U = process.env.U || 'http://localhost:8770/';
@@ -63,7 +63,7 @@ const AND = devices['Pixel 5'].userAgent;
     await p.click('#a2hs-card-x'); await p.waitForTimeout(300);
     await p.reload(); await p.waitForSelector('.home-head'); await p.waitForTimeout(600);
     console.log('card hidden after x', !(await p.isVisible('#a2hs-card')));
-    await p.goto(U + '#/settings'); await p.waitForSelector('#a2hs-settings');
+    await p.goto(U + '#/me'); await p.waitForSelector('#a2hs-settings');
     await p.click('#a2hs-settings'); await p.waitForSelector('.a2hs-dlg');
     console.log('settings opens guide', await p.isVisible('.a2hs-steps') && !(await p.locator('#a2hs-never').count()));
     await ctx.close();
@@ -73,8 +73,10 @@ const AND = devices['Pixel 5'].userAgent;
     const ctx = await b.newContext({ viewport: { width: 1200, height: 800 } });
     await ctx.addInitScript(() => { localStorage.setItem('tourDone', '1'); localStorage.setItem('guestStarted', '1'); });
     const p = await ctx.newPage();
-    await p.goto(U + '#/settings'); await p.waitForTimeout(800);
-    console.log('desktop no settings entry', !(await p.locator('#a2hs-settings').count()));
+    await p.goto(U + '#/me'); await p.waitForSelector('#a2hs-settings');
+    console.log('desktop shows phone entry', (await p.textContent('#a2hs-settings')).includes('在手機上用'));
+    await p.click('#a2hs-settings'); await p.waitForSelector('.a2hs-qr svg', { timeout: 5000 }).catch(() => {});
+    console.log('desktop qr code', await p.locator('.a2hs-qr svg').count() === 1);
     await ctx.close();
   }
   console.log('errors', errs); await b.close();

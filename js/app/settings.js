@@ -249,10 +249,6 @@ async function viewSettings() {
     </div>
     ${usingCloud() && !CloudDB.isAnonymous() ? loginMethodsCard() : ''}
     ${notifyCardHtml()}
-    ${['standalone', 'desktop'].includes(a2hsPlatform()) ? '' : `<button class="card" id="a2hs-settings" style="gap:4px;text-align:left;width:100%;font:inherit;color:inherit;cursor:pointer">
-      <div class="row between"><div class="bold">放到手機主畫面</div><div class="muted">›</div></div>
-      <div class="small muted">像 App 一樣點圖示就打開，回來不用再找網址。</div>
-    </button>`}
     ${adminCardHtml()}
     ${localCount ? `<div class="card" style="background:var(--progress-bg);border-color:transparent">
       <div class="bold" style="color:var(--progress-ink)">把這支手機裡的紀錄搬上雲端</div>
@@ -501,8 +497,6 @@ async function viewSettings() {
     toast('已清除');
     go('#/');
   });
-  const a2 = document.getElementById('a2hs-settings');
-  if (a2) a2.addEventListener('click', () => showA2hs('settings'));
   const delAcc = document.getElementById('delete-account');
   if (delAcc) delAcc.addEventListener('click', async () => {
     // 另一半寫的紀錄也存在你的空間裡，刪帳號會一起刪掉，先講清楚

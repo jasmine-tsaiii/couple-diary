@@ -478,6 +478,7 @@ function viewJoin(notice, code = '', ownerMode = null) {
         document.getElementById('j-name').value.trim(),
       )]);
       track('partner_join_request');
+      markA2hsPartnerJoin();
       rejoinNotice = false;
       const bring = document.getElementById('j-bring');
       try { if (bring && bring.checked) localStorage.setItem(`bringRecords:${CloudDB.myId()}`, '1'); else localStorage.removeItem(`bringRecords:${CloudDB.myId()}`); } catch (e) { /* 略過 */ }

@@ -120,6 +120,18 @@ async function viewTogether() {
   if (su) su.addEventListener('click', (ev) => { ev.preventDefault(); track('signup_prompt', { where: 'together' }); showSignupSheet('註冊後就能和另一半一起玩', '每天一題、重新認識你、解鎖任務都要兩個人一起用。現在試用寫的紀錄，註冊後會自動搬上雲端。'); });
 }
 
+// 我的最上面：還沒放到主畫面就放一個入口；電腦上給 QR code 用手機掃
+function a2hsMeRow() {
+  const pf = a2hsPlatform();
+  if (pf === 'standalone') return '';
+  const desk = pf === 'desktop';
+  return `<button class="card" id="a2hs-settings" style="gap:4px;text-align:left;width:100%;font:inherit;color:inherit;cursor:pointer;background:var(--happy-bg);border-color:transparent">
+    <div class="row between"><div class="row" style="gap:10px"><img src="icons/icon-192.png" alt="" width="36" height="36" style="border-radius:9px;flex:none">
+      <div><div class="bold" style="color:var(--happy-dark)">${desk ? '在手機上用' : '放到手機主畫面'}</div>
+      <div class="small" style="color:var(--happy-dark)">${desk ? '用手機掃 QR code 打開，再放到主畫面' : '像 App 一樣點圖示就打開，看圖照做 3 步就好'}</div></div></div>
+      <div style="color:var(--happy-dark)">›</div></div>
+  </button>`;
+}
 // ---------- 我的（#/me）：設定的一層目錄，點進去是設定頁的那一段 ----------
 async function viewMe() {
   app.className = '';
@@ -141,6 +153,7 @@ async function viewMe() {
       <div class="bold" style="color:var(--happy-dark)">註冊或登入</div>
       <div class="small" style="color:var(--happy-dark)">現在的紀錄只存在這支手機。註冊後會自動搬上雲端，也能分享給另一半 ›</div>
     </a>` : ''}
+    ${a2hsMeRow()}
     ${navGroup('我們', [
       navRow({ href: '#/settings/share', id: 'row-share', icon: TILE_ICON.share, title: '分享給另一半', sub: shareSub }),
       navRow({ href: '#/settings/us', icon: ICON.heart, title: '我們', sub: who || '名字、紀念日、吉祥物' }),
@@ -157,6 +170,8 @@ async function viewMe() {
       navRow({ href: '#/settings/other', icon: TILE_ICON.info, title: '其他', sub: '使用導覽、意見回饋、匿名統計' }),
     ])}
   `;
+  const a2 = document.getElementById('a2hs-settings');
+  if (a2) a2.addEventListener('click', () => (a2hsPlatform() === 'desktop' ? showPhoneQr() : showA2hs('settings')));
   const rs = document.getElementById('row-share');
   if (rs && isGuest()) rs.addEventListener('click', (ev) => { ev.preventDefault(); track('signup_prompt', { where: 'share' }); showSignupSheet('註冊後就能分享給另一半', '傳一個邀請連結給對方，兩個人就能一起看、一起寫。現在試用寫的紀錄，註冊後會自動搬上雲端。'); });
 }

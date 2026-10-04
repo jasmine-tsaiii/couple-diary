@@ -171,8 +171,18 @@ async function updateRecord(id, mutate) {
 const JUST_DAYS = 7;
 const justUnlocked = (r) => r.visibility === 'task' && r.unlocked && r.unlockedAt && Date.now() - r.unlockedAt < JUST_DAYS * 86400000;
 const RECORD_VERSION = 1; // 紀錄的資料格式版本，之後改格式時用來判斷要不要轉換
-// LINE、IG、FB 等 App 內建的瀏覽器：資料和 Safari／Chrome 分開，Google 登入也會被擋
-const IN_APP = /Line\/|FBAN|FBAV|Instagram|MicroMessenger/i.test(navigator.userAgent);
+// LINE、IG、Threads、FB 等 App 內建的瀏覽器：資料和 Safari／Chrome 分開，Google 登入也會被擋（Threads 的識別字是 Barcelona）
+const IN_APP = /Line\/|FBAN|FBAV|Instagram|Barcelona|MicroMessenger/i.test(navigator.userAgent);
+// 現在在哪個 App 裡面：給提示文字用
+function inAppName() {
+  const ua = navigator.userAgent;
+  if (/Line\//i.test(ua)) return 'LINE';
+  if (/Barcelona/i.test(ua)) return 'Threads';
+  if (/Instagram/i.test(ua)) return 'IG';
+  if (/FBAN|FBAV/i.test(ua)) return 'Facebook';
+  if (/MicroMessenger/i.test(ua)) return '微信';
+  return '';
+}
 // iPhone／iPad（新 iPad 的 Safari 會假裝是 Mac，用觸控點數補判斷）
 const IS_IOS = /iphone|ipad|ipod/i.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
 // iPhone 在 Safari 分頁裡用（不是主畫面、不是 LINE/IG）：7 天沒打開，Safari 可能清掉這個網站存在手機裡的資料
@@ -183,7 +193,7 @@ function inAppNotice() {
   if (!IN_APP) return '';
   return `<div class="card" style="background:var(--open-bg);border-color:transparent;gap:4px">
     <div class="bold" style="color:var(--open-ink)">請改用 Safari 或 Chrome 打開</div>
-    <div class="small" style="color:var(--open-ink)">你現在是在 LINE（或其他 App）裡面打開的。這裡存的資料之後在瀏覽器看不到，也不能用 Google 登入。請點右上角的「⋯」，選「用瀏覽器開啟」。</div>
+    <div class="small" style="color:var(--open-ink)">你現在是在 ${inAppName() || 'LINE（或其他 App）'} 裡面打開的。這裡存的資料之後在瀏覽器看不到，也不能用 Google 登入。請點右上角的「⋯」，選「用瀏覽器開啟」。</div>
   </div>`;
 }
 // LINE、IG 裡面的瀏覽器存不了檔案：先說清楚，不要假裝已經下載

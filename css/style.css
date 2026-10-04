@@ -584,7 +584,37 @@ body:has(.done-bar) .toast { bottom: calc(150px + env(safe-area-inset-bottom)); 
 .a2hs-app { width: 52px; display: flex; flex-direction: column; align-items: center; gap: 4px; font-size: 11px; color: #3A2E2A; }
 .a2hs-app img { width: 52px; height: 52px; border-radius: 12px; box-shadow: 0 2px 6px rgba(0,0,0,.15); }
 .a2hs-app.ghost::before { content: ''; width: 52px; height: 52px; border-radius: 12px; background: rgba(255,255,255,.55); }
-.a2hs-steps li { line-height: 1.6; }
+.a2hs-steps { padding-left: 0; list-style: none; gap: 10px; }
+.a2hs-steps li { line-height: 1.5; display: flex; gap: 10px; align-items: center; font-size: 15px; }
+.a2hs-n { display: inline-flex; width: 20px; height: 20px; border-radius: 99px; align-items: center; justify-content: center; margin-right: 6px;
+  background: var(--accent); color: #fff; font-size: 12px; vertical-align: 1px; }
+/* 教學小圖：手機畫面的一小塊，紅圈是要點的地方 */
+.a2p { width: 112px; height: 64px; flex: none; }
+.a2p-scr { fill: var(--bg); stroke: var(--line); stroke-width: 1.5; }
+.a2p-bar { fill: var(--seg); }
+.a2p-pill, .a2p-row { fill: var(--card); stroke: var(--line); }
+.a2p-hi { fill: var(--happy-bg); }
+.a2p-line { fill: var(--line); }
+.a2p-t { fill: var(--ink); font-size: 10px; font-family: inherit; }
+.a2p-tb { font-weight: 700; }
+.a2p-s { fill: var(--muted); font-size: 8px; font-family: inherit; }
+.a2p-big { font-size: 15px; }
+.a2p-acc { fill: var(--accent-text); font-weight: 700; }
+.a2p-ico { fill: none; stroke: var(--accent-text); stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round; }
+.a2p-ico-r { fill: none; stroke: var(--muted); stroke-width: 1.4; }
+.a2p-dot { fill: var(--ink); }
+.a2p-ring, .a2p-ring-r { fill: none; stroke: #E0453A; stroke-width: 2.4; }
+@media (prefers-reduced-motion: no-preference) { .a2p-ring, .a2p-ring-r { animation: a2p-pulse 1.6s ease-in-out infinite; } }
+@keyframes a2p-pulse { 50% { stroke-opacity: .35; } }
+/* iPhone 在 IG、Threads 裡：畫面右上角指出「⋯」在哪 */
+.a2hs-corner { position: fixed; top: 10px; right: 12px; background: var(--toast-bg); color: var(--toast-ink); font-size: 14px; font-weight: 700;
+  padding: 8px 12px; border-radius: 12px; display: flex; gap: 6px; align-items: center; z-index: 2; }
+.a2hs-corner span { font-size: 18px; }
+@media (prefers-reduced-motion: no-preference) { .a2hs-corner { animation: a2hs-bob 1.2s ease-in-out infinite; } }
+@keyframes a2hs-bob { 50% { transform: translate(3px, -3px); } }
+.a2hs-qr { background: #fff; border-radius: 12px; padding: 8px; width: 200px; margin: 0 auto; }
+.a2hs-qr svg { display: block; width: 100%; height: auto; }
+.a2hs-qr-dlg .btn, .a2hs-welcome .btn { width: 100%; }
 /* 設定頁「文字＋右邊一顆按鈕」：文字可以換行，按鈕不會被擠成直排 */
 .setting-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .setting-row .setting-text { flex: 1 1 auto; min-width: 0; }
@@ -857,3 +887,5 @@ body { background: var(--paper, none), var(--bg); background-attachment: fixed; 
 .mission-box .mission-card { display: flex; gap: 8px; align-items: flex-start; font-size: 14px; line-height: 1.5; padding: 10px 12px; border-radius: 12px; background: var(--card); border: 1px solid var(--line); }
 .mission-no { flex: none; width: 20px; height: 20px; border-radius: 50%; background: var(--lock); color: var(--card); font-size: 12px; font-weight: 700; display: grid; place-items: center; margin-top: 2px; }
 .qpack-dlg .tpl-box .btn { width: 100%; }
+/* 加到主畫面的教學比較長：小手機上可以捲動 */
+.a2hs-dlg .celebrate-box { max-height: 100%; overflow-y: auto; }

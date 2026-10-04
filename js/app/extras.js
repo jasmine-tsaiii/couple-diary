@@ -312,30 +312,79 @@ let installEvt = null;
 window.addEventListener('beforeinstallprompt', (ev) => { ev.preventDefault(); installEvt = ev; });
 window.addEventListener('appinstalled', () => { installEvt = null; try { localStorage.setItem('a2hsNever', '1'); } catch (e) { /* 略過 */ } });
 const A2HS_GAP_MS = 3 * 86400000;
-function a2hsEligible() {
+const isStandalone = () => window.matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
+// 手機上、還沒放到主畫面、沒按過「不要再提醒」
+function a2hsCanAsk() {
   const ua = navigator.userAgent;
   const mobile = /iphone|ipad|ipod|android/i.test(ua) || (navigator.maxTouchPoints > 1 && /Macintosh/.test(ua));
-  const standalone = window.matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
-  if (!mobile || standalone || HOME_APP_SEEN) return false;
+  if (!mobile || isStandalone() || HOME_APP_SEEN) return false;
+  try { return !localStorage.getItem('a2hsNever'); } catch (e) { return false; }
+}
+function a2hsEligible() {
+  if (!a2hsCanAsk()) return false;
   try {
-    if (localStorage.getItem('a2hsNever')) return false;
     const st = JSON.parse(localStorage.getItem('a2hsShown') || '{"n":0,"at":0}');
     return st.n < 3 && Date.now() - st.at > A2HS_GAP_MS;
   } catch (e) { return false; }
 }
 function markA2hsPending() { try { sessionStorage.setItem('a2hsPending', '1'); } catch (e) { /* 略過 */ } }
-function maybeShowA2hs() {
-  try { if (!sessionStorage.getItem('a2hsPending')) return; } catch (e) { return; }
-  if (!a2hsEligible()) return;
-  // 等慶祝、印章、導覽這些小視窗關掉再出現，免得疊在一起
+// 另一半送出加入要求時記一下，對方同意、第一次看到日記時提醒放到主畫面（以後不用翻 LINE 找連結）
+function markA2hsPartnerJoin() { try { localStorage.setItem('a2hsPartnerJoin', '1'); } catch (e) { /* 略過 */ } }
+// 等慶祝、印章、導覽這些小視窗關掉再出現，免得疊在一起
+function whenNoDialog(fn) {
   let tries = 0;
   const t = setInterval(() => {
     if (++tries > 120) { clearInterval(t); return; }
     if (document.querySelector('.celebrate, .pin-lock')) return;
     clearInterval(t);
+    fn();
+  }, 500);
+}
+function maybeShowA2hs() {
+  if (maybeWelcomeHome()) return;
+  let partnerJoin = false;
+  try { partnerJoin = isPartner() && !!localStorage.getItem('a2hsPartnerJoin'); } catch (e) { partnerJoin = false; }
+  if (partnerJoin) {
+    // 真的跳出來才清掉記號（中途重新整理或換頁的話，下次再提醒）
+    if (!a2hsCanAsk()) { try { localStorage.removeItem('a2hsPartnerJoin'); } catch (e) { /* 略過 */ } return; }
+    whenNoDialog(() => {
+      if (!isPartner() || location.hash.replace(/^#\/?/, '')) return;
+      try { localStorage.removeItem('a2hsPartnerJoin'); } catch (e) { /* 略過 */ }
+      showA2hs('partner_join');
+    });
+    return;
+  }
+  try { if (!sessionStorage.getItem('a2hsPending')) return; } catch (e) { return; }
+  if (!a2hsEligible()) return;
+  whenNoDialog(() => {
     try { sessionStorage.removeItem('a2hsPending'); } catch (e) { /* 略過 */ }
     showA2hs();
-  }, 500);
+  });
+}
+// 第一次從主畫面打開：說一聲放好了（每支手機一次）
+function maybeWelcomeHome() {
+  if (!isStandalone()) return false;
+  try {
+    if (localStorage.getItem('a2hsWelcomed')) return false;
+    localStorage.setItem('a2hsWelcomed', '1');
+    localStorage.setItem('a2hsNever', '1');
+  } catch (e) { return false; }
+  track('a2hs_success', { platform: /android/i.test(navigator.userAgent) ? 'android' : IS_IOS ? 'ios' : 'other' });
+  whenNoDialog(() => {
+    const box = document.createElement('div');
+    box.className = 'celebrate a2hs-welcome';
+    box.innerHTML = `<div class="celebrate-box" role="dialog" aria-modal="true" aria-label="放好了">
+      ${mascotHtml('celebrate', 130)}
+      <h2 style="font-size:20px">放好了！</h2>
+      <div class="muted">之後點主畫面的啾啾就能寫。想起什麼就來記一筆吧。</div>
+      <button class="btn" id="a2hs-welcome-ok">好</button>
+    </div>`;
+    document.body.appendChild(box);
+    const close = () => box.remove();
+    box.querySelector('#a2hs-welcome-ok').addEventListener('click', close);
+    box.addEventListener('click', (ev) => { if (ev.target === box) close(); });
+  });
+  return true;
 }
 // 試用的人寫到第 3 則：提醒一次註冊，紀錄才會保存在雲端
 function maybeShowSignupNudge() {
@@ -384,35 +433,74 @@ const MORE_ICON = '<b style="letter-spacing:1px">⋯</b>';
 // 現在是用什麼打開的：決定加到主畫面的教法
 function a2hsPlatform() {
   const ua = navigator.userAgent;
-  if (window.matchMedia('(display-mode: standalone)').matches || navigator.standalone === true) return 'standalone';
+  if (isStandalone()) return 'standalone';
   if (IN_APP) return /Line\//i.test(ua) ? 'line' : 'inapp';
   if (/iphone|ipad|ipod/i.test(ua) || (navigator.maxTouchPoints > 1 && /Macintosh/.test(ua))) return /CriOS|FxiOS|EdgiOS/i.test(ua) ? 'ios-other' : 'ios';
   if (/android/i.test(ua)) return 'android';
   return 'desktop';
 }
+// ---------- 教學小圖：畫手機畫面的一小塊，紅圈圈出要點的地方（自己畫的示意圖，不用截圖） ----------
+const A2P = (() => {
+  const frame = (inner) => `<svg class="a2p" viewBox="0 0 140 80" aria-hidden="true"><rect class="a2p-scr" x="1" y="1" width="138" height="78" rx="10"/>${inner}</svg>`;
+  const ring = (x, y, r = 11) => `<circle class="a2p-ring" cx="${x}" cy="${y}" r="${r}"/>`;
+  const share = (x, y) => `<g class="a2p-ico" transform="translate(${x - 7} ${y - 8}) scale(.6)"><path d="M12 3v12"/><path d="m8 7 4-4 4 4"/><path d="M6 11H5a1 1 0 0 0-1 1v8a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-8a1 1 0 0 0-1-1h-1"/></g>`;
+  const lines = (y) => `<rect class="a2p-line" x="14" y="${y}" width="84" height="5" rx="2.5"/><rect class="a2p-line" x="14" y="${y + 11}" width="60" height="5" rx="2.5"/>`;
+  const txt = (x, y, s, cls = 'a2p-t', anchor = 'start') => `<text class="${cls}" x="${x}" y="${y}" text-anchor="${anchor}">${s}</text>`;
+  const dots = (x, y, vertical) => (vertical ? [-5, 0, 5].map((d) => `<circle class="a2p-dot" cx="${x}" cy="${y + d}" r="1.6"/>`) : [-5, 0, 5].map((d) => `<circle class="a2p-dot" cx="${x + d}" cy="${y}" r="1.6"/>`)).join('');
+  // 一列選單，hi = 要點的那一列
+  const menu = (items, hiIdx) => items.map((s, i) => {
+    const y = 10 + i * 22;
+    return `<rect class="${i === hiIdx ? 'a2p-hi' : 'a2p-row'}" x="10" y="${y}" width="120" height="18" rx="5"/>${txt(18, y + 12.5, s, i === hiIdx ? 'a2p-t a2p-tb' : 'a2p-t')}${i === hiIdx ? `<rect class="a2p-ring-r" x="7" y="${y - 3}" width="126" height="24" rx="7"/>` : ''}`;
+  }).join('');
+  const topBar = (right) => `<rect class="a2p-bar" x="1" y="1" width="138" height="24" rx="10"/><rect class="a2p-pill" x="10" y="7" width="${right ? 98 : 120}" height="12" rx="6"/>${txt(16, 16, 'diary.jas-soul.com', 'a2p-s')}`;
+  return {
+    iosBar: frame(`${lines(12)}<rect class="a2p-bar" x="1" y="52" width="138" height="27" rx="10"/>
+      ${txt(14, 70, '‹', 'a2p-t a2p-big')}${txt(36, 70, '›', 'a2p-t a2p-big')}${share(70, 66)}
+      <rect class="a2p-ico-r" x="94" y="60" width="11" height="10" rx="2"/><rect class="a2p-ico-r" x="116" y="60" width="10" height="10" rx="2"/>${ring(70, 65)}`),
+    iosSheet: frame(menu(['拷貝', '加入書籤', '加入主畫面　⊞'], 2)),
+    iosAdd: frame(`<rect class="a2p-bar" x="1" y="1" width="138" height="24" rx="10"/>${txt(10, 16, '取消', 'a2p-s')}${txt(70, 16, '加入主畫面', 'a2p-t a2p-tb', 'middle')}${txt(128, 16, '新增', 'a2p-t a2p-acc', 'end')}${ring(119, 13, 12)}
+      <image href="icons/icon-192.png" x="14" y="36" width="30" height="30"/>${txt(52, 55, '啾啾日記', 'a2p-t')}`),
+    chromeIosBar: frame(`${topBar(true)}${share(124, 13)}${ring(124, 12)}${lines(36)}`),
+    androidBar: frame(`${topBar(true)}${dots(124, 13, true)}${ring(124, 13)}${lines(36)}`),
+    androidMenu: frame(menu(['新分頁', '書籤', '加到主畫面'], 2)),
+    androidInstall: frame(`<rect class="a2p-row" x="14" y="10" width="112" height="60" rx="8"/>${txt(70, 30, '安裝應用程式？', 'a2p-t a2p-tb', 'middle')}
+      ${txt(58, 56, '取消', 'a2p-s', 'middle')}${txt(100, 56, '安裝', 'a2p-t a2p-acc', 'middle')}${ring(100, 52, 13)}`),
+    inappBar: frame(`<rect class="a2p-bar" x="1" y="1" width="138" height="24" rx="10"/>${txt(10, 17, '✕', 'a2p-t')}${txt(70, 16, 'diary.jas-soul.com', 'a2p-s', 'middle')}${dots(124, 13, false)}${ring(124, 13)}${lines(36)}`),
+    inappMenu: frame(menu(['複製連結', '分享', '用瀏覽器開啟'], 2)),
+    done: frame(`${[18, 50, 82, 114].map((x, i) => (i === 1 ? `<image href="icons/icon-192.png" x="${x - 2}" y="14" width="30" height="30"/>${txt(x + 13, 58, '啾啾日記', 'a2p-s', 'middle')}` : `<rect class="a2p-row" x="${x}" y="16" width="26" height="26" rx="7"/>`)).join('')}${ring(63, 29, 19)}`),
+  };
+})();
+// 每一步 = [小圖, 說明]
 function a2hsSteps(pf = a2hsPlatform()) {
-  if (pf === 'line' || pf === 'inapp') return [
-    'LINE、IG 裡面沒辦法加到主畫面，要先換到瀏覽器',
-    `點右上角的 ${MORE_ICON}，選「用瀏覽器開啟」（或「在 Safari／Chrome 開啟」）`,
-    '在瀏覽器打開後，會再教你加到主畫面',
-  ];
+  if (pf === 'line' || pf === 'inapp') {
+    const where = inAppName() || 'LINE、IG';
+    return [
+      [A2P.inappBar, `${esc(where)} 裡面沒辦法加到主畫面，要先換到瀏覽器。點右上角的 ${MORE_ICON}`],
+      [A2P.inappMenu, '選「用瀏覽器開啟」（有的寫「在外部瀏覽器開啟」）'],
+      [A2P.done, '在瀏覽器打開後，會再教你加到主畫面'],
+    ];
+  }
   if (pf === 'ios') return [
-    `點 Safari 最下面的分享按鈕 ${SHARE_ICON}（沒看到的話，先點右下角的 ${MORE_ICON}，再點「分享」）`,
-    `往下滑，點「加入主畫面」${ADD_ICON}`,
-    '按右上角的「新增」，主畫面就會出現啾啾的圖示',
+    [A2P.iosBar, `點 Safari 最下面的分享按鈕 ${SHARE_ICON}（沒看到的話，先點右下角的 ${MORE_ICON}，再點「分享」）`],
+    [A2P.iosSheet, `往下滑，點「加入主畫面」${ADD_ICON}`],
+    [A2P.iosAdd, '按右上角的「新增」，主畫面就會出現啾啾的圖示'],
   ];
   if (pf === 'ios-other') return [
-    `點網址列旁邊的分享按鈕 ${SHARE_ICON}`,
-    `往下滑，點「加入主畫面」${ADD_ICON}（沒有的話請改用 Safari 打開）`,
-    '按右上角的「新增」，主畫面就會出現啾啾的圖示',
+    [A2P.chromeIosBar, `點網址列旁邊的分享按鈕 ${SHARE_ICON}`],
+    [A2P.iosSheet, `往下滑，點「加入主畫面」${ADD_ICON}（沒有的話請改用 Safari 打開）`],
+    [A2P.iosAdd, '按右上角的「新增」，主畫面就會出現啾啾的圖示'],
   ];
-  return [`點右上角的 ${MORE_ICON}（三個點）`, '選「加到主畫面」或「安裝應用程式」', '按「安裝」或「新增」，主畫面就會出現啾啾的圖示'];
+  return [
+    [A2P.androidBar, `點右上角的 ${MORE_ICON}（三個點）`],
+    [A2P.androidMenu, '選「加到主畫面」或「安裝應用程式」'],
+    [A2P.androidInstall, '按「安裝」或「新增」，主畫面就會出現啾啾的圖示'],
+  ];
 }
 // 在 LINE 裡打開：直接叫外部瀏覽器；Android 的其他 App：叫 Chrome；都不行就複製網址
 function openInBrowser() {
   const pf = a2hsPlatform();
   const url = location.origin + location.pathname;
-  track('a2hs_open_browser', { platform: pf });
+  track('a2hs_open_browser', { platform: pf, app: inAppName() });
   if (pf === 'line') { location.href = `${url}?openExternalBrowser=1${location.hash}`; return; }
   if (/android/i.test(navigator.userAgent)) { location.href = `intent://${location.host}${location.pathname}#Intent;scheme=https;package=com.android.chrome;end`; return; }
   copyLink(url);
@@ -420,7 +508,7 @@ function openInBrowser() {
 async function copyLink(url) {
   try { await navigator.clipboard.writeText(url); toast('網址複製好了，打開 Safari 貼上就可以'); } catch (e) { prompt('複製這個網址，貼到 Safari 或 Chrome', url); }
 }
-// where：after_save（存好紀錄後）、home（首頁提示卡）、settings（設定頁）
+// where：after_save（存好紀錄後）、home（首頁提示卡）、settings（我的）、partner_join（另一半剛加入）
 function showA2hs(where = 'after_save') {
   if (document.querySelector('.a2hs-dlg')) return;
   if (where === 'after_save') {
@@ -430,25 +518,37 @@ function showA2hs(where = 'after_save') {
     } catch (e) { /* 略過 */ }
   }
   const pf = a2hsPlatform();
-  track('a2hs_prompt', { where, platform: pf });
+  track('a2hs_prompt', { where, platform: pf, app: inAppName() });
   const inApp = pf === 'line' || pf === 'inapp';
+  // iPhone 在 IG、Threads 裡：沒辦法直接叫 Safari，畫面右上角指給他看
+  const iosInApp = pf === 'inapp' && IS_IOS;
   const oneTap = installEvt && !inApp;
   const box = document.createElement('div');
   box.className = 'celebrate a2hs-dlg';
   const steps = a2hsSteps(pf);
-  // 還沒登入的人：iPhone 主畫面和 Safari 的資料是分開的，先存上雲端再加，紀錄才不會像不見了
-  const guestFirst = isGuest() && (pf === 'ios' || pf === 'ios-other');
+  const ios = pf === 'ios' || pf === 'ios-other';
+  // iPhone 主畫面和 Safari 的資料是分開的：還沒登入的人先存上雲端；用分享碼加入的另一半先建立帳號，主畫面登入同一個帳號才看得到
+  const guestFirst = isGuest() && ios;
+  const partnerFirst = ios && isPartner() && CloudDB.isAnonymous();
+  const joined = where === 'partner_join';
+  const title = inApp ? (iosInApp ? '先換到 Safari，再放到主畫面' : '先換到瀏覽器，再放到主畫面')
+    : joined ? '加入成功！順便把啾啾帶回家' : '把啾啾日記放到主畫面';
+  const sub = joined ? `放到主畫面，以後不用翻 LINE 找連結，${esc(ownerName())}寫了什麼點開就看得到。`
+    : '下次想記的時候，點主畫面的啾啾就打開了，不用再找網址或翻聊天紀錄。';
+  const note = (t) => `<div class="small" style="background:var(--progress-bg);color:var(--progress-ink);border-radius:12px;padding:10px 12px;text-align:left">${t}</div>`;
   box.innerHTML = `<div class="celebrate-box" role="dialog" aria-modal="true" aria-label="加到主畫面">
+    ${iosInApp ? `<div class="a2hs-corner" aria-hidden="true">點右上角的 ⋯<span>↗</span></div>` : ''}
     <div class="a2hs-preview" aria-hidden="true">
       <div class="a2hs-app"><img src="icons/icon-192.png" alt=""><span>啾啾日記</span></div>
       <div class="a2hs-app ghost"></div><div class="a2hs-app ghost"></div><div class="a2hs-app ghost"></div>
     </div>
-    <h2 style="font-size:20px">${inApp ? '先換到瀏覽器，再放到主畫面' : '把啾啾日記放到主畫面'}</h2>
-    <div class="muted">下次想記的時候，點主畫面的啾啾就打開了，不用再找網址或翻聊天紀錄。</div>
-    ${guestFirst ? '<div class="small" style="background:var(--progress-bg);color:var(--progress-ink);border-radius:12px;padding:10px 12px;text-align:left">要先註冊或登入喔！iPhone 從主畫面打開時，看不到在 Safari 裡寫的紀錄。登入後紀錄會存到雲端，兩邊登入同一個帳號就都看得到。</div><a class="btn" href="#/login" id="a2hs-login">先註冊或登入</a>' : ''}
-    ${oneTap ? '<button class="btn" id="a2hs-install">一鍵加到主畫面</button>' : `<ol class="a2hs-steps">${steps.map((x) => `<li>${x}</li>`).join('')}</ol>`}
-    ${inApp ? `<button class="btn" id="a2hs-browser">${pf === 'line' ? '用瀏覽器打開' : /android/i.test(navigator.userAgent) ? '用 Chrome 打開' : '複製網址'}</button>` : ''}
-    <button class="btn ${oneTap || guestFirst || inApp ? 'secondary' : ''}" id="a2hs-ok">${oneTap || inApp ? '之後再說' : '知道了'}</button>
+    <h2 style="font-size:20px">${title}</h2>
+    <div class="muted">${sub}</div>
+    ${guestFirst ? `${note('要先註冊或登入喔！iPhone 從主畫面打開時，看不到在 Safari 裡寫的紀錄。登入後紀錄會存到雲端，兩邊登入同一個帳號就都看得到。')}<a class="btn" href="#/login" id="a2hs-login">先註冊或登入</a>` : ''}
+    ${partnerFirst ? `${note(`要先建立帳號喔！iPhone 從主畫面打開時，看不到在 Safari 裡加入的日記。建立帳號後，在主畫面登入同一個帳號就好，不用再輸入分享碼。`)}<a class="btn" href="#/bind" id="a2hs-login">先建立帳號</a>` : ''}
+    ${oneTap ? '<button class="btn" id="a2hs-install">一鍵加到主畫面</button>' : `<ol class="a2hs-steps">${steps.map(([pic, x], i) => `<li>${pic}<span><b class="a2hs-n">${i + 1}</b>${x}</span></li>`).join('')}</ol>`}
+    ${inApp ? `<button class="btn${iosInApp ? ' secondary' : ''}" id="a2hs-browser">${pf === 'line' ? '用瀏覽器打開' : /android/i.test(navigator.userAgent) ? '用 Chrome 打開' : '找不到的話，複製網址'}</button>` : ''}
+    <button class="btn ${oneTap || guestFirst || partnerFirst || (inApp && !iosInApp) ? 'secondary' : ''}" id="a2hs-ok">${iosInApp ? '我知道了，去右上角' : oneTap || inApp ? '之後再說' : '知道了'}</button>
     ${where === 'settings' ? '' : '<button class="btn secondary small" id="a2hs-never">不要再提醒</button>'}
   </div>`;
   document.body.appendChild(box);
@@ -468,6 +568,36 @@ function showA2hs(where = 'after_save') {
     try { ev.prompt(); await ev.userChoice; } catch (e) { /* 使用者取消 */ }
   });
 }
+// 電腦上：給一個 QR code，用手機掃了打開，再照手機的教學放到主畫面（QR 的程式用到才載入）
+function loadQrLib() {
+  if (window.qrcode) return Promise.resolve();
+  return new Promise((resolve, reject) => {
+    const s = document.createElement('script');
+    s.src = 'vendor/qrcode-generator-2.0.4.js';
+    s.onload = resolve; s.onerror = () => reject(new Error('QR code 載入失敗，請重新整理再試一次'));
+    document.head.appendChild(s);
+  });
+}
+async function showPhoneQr() {
+  if (document.querySelector('.a2hs-qr-dlg')) return;
+  const url = `${location.origin + location.pathname}?utm_source=desktop_qr`;
+  try { await loadQrLib(); } catch (e) { toast(e.message); return; }
+  const qr = qrcode(0, 'M'); qr.addData(url); qr.make();
+  track('a2hs_prompt', { where: 'settings', platform: 'desktop' });
+  const box = document.createElement('div');
+  box.className = 'celebrate a2hs-qr-dlg';
+  box.innerHTML = `<div class="celebrate-box" role="dialog" aria-modal="true" aria-label="在手機上用">
+    <h2 style="font-size:20px">在手機上用更方便</h2>
+    <div class="muted">用手機相機掃這個 QR code，打開後照著教學放到主畫面。</div>
+    <div class="a2hs-qr">${qr.createSvgTag({ cellSize: 5, margin: 2, scalable: true, alt: '啾啾日記網址的 QR code' })}</div>
+    <div class="small muted">${esc(location.host)}</div>
+    <button class="btn" id="a2hs-qr-ok">好</button>
+  </div>`;
+  document.body.appendChild(box);
+  const close = () => box.remove();
+  box.querySelector('#a2hs-qr-ok').addEventListener('click', close);
+  box.addEventListener('click', (ev) => { if (ev.target === box) close(); });
+}
 // 首頁的提示卡：手機上、還沒放到主畫面、有寫過紀錄；按叉叉 14 天後再出現，按「不要再提醒」就不出現
 const A2HS_CARD_SNOOZE_DAYS = 14;
 function a2hsCardEligible() {
@@ -485,7 +615,7 @@ function a2hsCardHtml() {
     <button class="card-x" id="a2hs-card-x" aria-label="先不要，過幾天再提醒" style="color:var(--happy-dark)">${ICON.x}</button>
     <div class="row" style="gap:10px"><img src="icons/icon-192.png" alt="" width="40" height="40" style="border-radius:10px;flex:none">
       <div><div class="bold" style="color:var(--happy-dark)">把啾啾放到手機主畫面</div>
-      <div class="small" style="color:var(--happy-dark)">${inApp ? '你現在在 LINE／IG 裡面，關掉就不好找了。' : '下次點圖示就打開，不用再找網址。'}</div></div></div>
+      <div class="small" style="color:var(--happy-dark)">${inApp ? `你現在在 ${esc(inAppName() || 'LINE／IG')} 裡面，關掉就不好找了。` : '下次點圖示就打開，不用再找網址。'}</div></div></div>
     <button class="btn small" id="a2hs-card-go" style="align-self:flex-start">教我怎麼放</button>
   </div>`;
 }
