@@ -18,7 +18,7 @@ function predictTheme(page, arg) {
   if ((page === 'list' || page === 'new') && TYPES[arg]) return TYPES[arg].theme;
   if (page === 'records') return TYPES[REC_TYPES.includes(arg) ? arg : currentRecType()].theme;
   if (page === 'fights') return 'theme-fight';
-  if (page === 'daily' || page === 'quiz' || page === 'capsules' || page === 'capsule') return 'theme-happy';
+  if (page === 'notes' || page === 'daily' || page === 'quiz' || page === 'capsules' || page === 'capsule') return 'theme-happy';
   if (['view', 'edit', 'task'].includes(page) && recordTheme.has(arg)) return recordTheme.get(arg);
   return '';
 }
@@ -112,12 +112,15 @@ async function renderRoute() {
       else if (page === 'notifications') { renderTabbar('me'); await viewNotifications(); }
       else if (page === 'quiz') { renderTabbar('together'); await viewQuiz(); }
       else if (page === 'daily') { renderTabbar('together'); await viewDaily(); }
+      else if (page === 'notes' && arg === 'new') { renderTabbar(null); await viewNoteNew(); }
+      else if (page === 'notes') { renderTabbar('together'); await viewNotes(); }
       else if (page === 'capsules') { renderTabbar('together'); await viewCapsules(); }
       else if (page === 'capsule') { renderTabbar(null); await viewCapsule(arg); }
       else go('#/');
       afterRender();
       // 剛被同意加入：提醒放到主畫面（一次）；第一次從主畫面打開：說放好了
       if (!page) maybeShowA2hs();
+      if (!page) maybeShowNotePop().catch(() => {});
       return;
     }
     if (!page) { renderTabbar('home'); await viewHome(); }
@@ -143,12 +146,15 @@ async function renderRoute() {
     else if (page === 'task' && usingCloud()) { renderTabbar(null); await viewPartnerTaskForm(arg); }
     else if (page === 'quiz' && usingCloud() && !CloudDB.isAnonymous()) { renderTabbar('together'); await viewQuiz(); }
     else if (page === 'daily') { renderTabbar('together'); await viewDaily(); }
+    else if (page === 'notes' && arg === 'new') { renderTabbar(null); await viewNoteNew(); }
+    else if (page === 'notes') { renderTabbar('together'); await viewNotes(); }
     else if (page === 'capsules') { renderTabbar('together'); await viewCapsules(); }
     else if (page === 'capsule') { renderTabbar(null); await viewCapsule(arg); }
     else go('#/');
     afterRender();
     if (!page || page === 'view') checkNewStamps().catch(() => {});
     if (!page || page === 'view') { if (!maybeShowSignupNudge()) maybeShowA2hs(); }
+    if (!page) maybeShowNotePop().catch(() => {});
   } catch (e) {
     console.error(e);
     app.innerHTML = `<div class="empty no-mascot">${esc(cloudErrorText(e))}<button class="btn small" id="reload">重新整理</button></div>`;
@@ -160,6 +166,7 @@ async function renderRoute() {
 function afterRender() {
   refreshBell().catch(() => {});
   refreshTabDots().catch(() => {});
+  refreshNoteDot().catch(() => {});
   bindNotifyCard().catch(() => {});
   bindAdminCard().catch(() => {});
 }

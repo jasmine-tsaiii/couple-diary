@@ -78,6 +78,7 @@ async function viewTogether() {
   const wishes = await loadWishesSafe();
   const wishDone = wishes ? wishes.filter((w) => w.done).length : 0;
   const daily = cloud ? await dailyStatus() : null;
+  const notes = cloud ? await noteStatus(true) : null;
   const caps = await loadCapsulesSafe();
   let taskSub = '上鎖紀錄的解鎖任務';
   let taskBadge = '';
@@ -98,9 +99,10 @@ async function viewTogether() {
     ? [
       navRow({ href: '#/wishes', icon: TILE_ICON.wish, title: '一起完成的事', sub: wishes && wishes.length ? `情侶待辦・${wishDone} / ${wishes.length}` : '情侶待辦清單' }),
       capsuleRowNav(caps),
-      navRow({ href: '#/signup', id: 'row-signup', icon: TILE_ICON.share, title: '註冊後可以和另一半一起玩', sub: '每天一題、重新認識你、解鎖任務' }),
+      navRow({ href: '#/signup', id: 'row-signup', icon: TILE_ICON.share, title: '註冊後可以和另一半一起玩', sub: '秘密留言板、每天一題、解鎖任務' }),
     ]
     : [
+      cloud && (!CloudDB.isAnonymous() || partner) ? noteRowHtml(notes) : '',
       cloud && (!CloudDB.isAnonymous() || partner) ? dailyRowHtml(daily) : '',
       navRow({ href: '#/wishes', icon: TILE_ICON.wish, title: '一起完成的事', sub: wishes && wishes.length ? `情侶待辦・${wishDone} / ${wishes.length}` : '情侶待辦清單' }),
       cloud ? navRow({ href: '#/tasks', icon: ICON.lock, title: '解鎖任務', sub: taskSub, badge: taskBadge }) : '',
@@ -117,7 +119,7 @@ async function viewTogether() {
   `;
   bindPreviewRows();
   const su = document.getElementById('row-signup');
-  if (su) su.addEventListener('click', (ev) => { ev.preventDefault(); track('signup_prompt', { where: 'together' }); showSignupSheet('註冊後就能和另一半一起玩', '每天一題、重新認識你、解鎖任務都要兩個人一起用。現在試用寫的紀錄，註冊後會自動搬上雲端。'); });
+  if (su) su.addEventListener('click', (ev) => { ev.preventDefault(); track('signup_prompt', { where: 'together' }); showSignupSheet('註冊後就能和另一半一起玩', '秘密留言板、每天一題、解鎖任務都要兩個人一起用。現在試用寫的紀錄，註冊後會自動搬上雲端。'); });
 }
 
 // 我的最上面：還沒放到主畫面就放一個入口；電腦上給 QR code 用手機掃

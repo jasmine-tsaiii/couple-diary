@@ -21,7 +21,7 @@ type Row = {
 };
 
 // 另一半做的事（信的大標題用「你不在的時候」）；其他是給自己的提醒
-const FROM_PARTNER = ['new_happy', 'new_task_record', 'task_submitted', 'task_approved', 'partner_request', 'partner_joined', 'quiz_partner_done', 'daily_partner_done', 'daily_revealed'];
+const FROM_PARTNER = ['new_happy', 'new_task_record', 'task_submitted', 'task_approved', 'partner_request', 'partner_joined', 'quiz_partner_done', 'daily_partner_done', 'daily_revealed', 'note_new'];
 
 function line(r: Row) {
   const who = r.actor_name || '對方';
@@ -39,6 +39,7 @@ function line(r: Row) {
     case 'quiz_revealed': return '「重新認識你」兩個人都交卷了，來看答案吧';
     case 'daily_partner_done': return `${who}寫好今天這一題了，換你囉`;
     case 'daily_revealed': return `${who}也寫好了，每天一題揭曉了`;
+    case 'note_new': return `${who}留了一張紙條給你`;
     default: return `${who}有新的動態`;
   }
 }

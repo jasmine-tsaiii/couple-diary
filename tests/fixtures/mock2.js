@@ -157,6 +157,34 @@
       const days = [...new Set(A.map((x) => x.day))].filter((day) => A.filter((x) => x.day === day).length === 2).sort().reverse().slice(0, a.p_limit || 20);
       return days.map((day) => ({ day, q_id: A.find((x) => x.day === day).q_id, answers: Object.fromEntries(A.filter((x) => x.day === day).map((x) => [x.user_id, x.body])) }));
     },
+    // 秘密留言板：簡化版的伺服器邏輯（共用每天一題的「這一對」）
+    note_state(S, u) {
+      const d = this._daily(S, u); if (!d) return { ok: false };
+      const nameOf = (m) => { const sh = S.t.shares.find((x) => x.owner === d.space); if (m === d.space) return (sh && sh.owner_name) || '對方'; const p = S.t.partners.find((x) => x.uid === m); return (p && p.name) || '對方'; };
+      const names = Object.fromEntries(d.members.map((m) => [m, nameOf(m)]));
+      if (!d.pair) return { ok: true, me: u.id, pair: null, names };
+      const N = (S.notes || []).filter((n) => n.pair === d.pair);
+      const last = (f) => { const x = N.filter(f).sort((a, b) => b.id - a.id)[0]; if (!x) return null; const { pair, recipient, ...r } = x; return r; };
+      return { ok: true, me: u.id, pair: d.pair, members: d.members, names, inbox: last((n) => n.recipient === u.id), sent: last((n) => n.author === u.id), unseen: N.filter((n) => n.recipient === u.id && !n.seen_at).length };
+    },
+    note_send(S, u, a) {
+      const d = this._daily(S, u); if (!d || !d.pair) throw new Error('另一半加入之後就能寫紙條給對方');
+      const body = String(a.p_body || '').trim();
+      if (a.p_kind === 'text' && (!body || body.length > 120)) throw new Error('紙條要 1 到 120 個字');
+      if (a.p_kind === 'draw' && !/^data:image\/png;base64,[A-Za-z0-9+/=]+$/.test(a.p_image || '')) throw new Error('手寫的圖存不進去，請再寫一次');
+      S.notes = S.notes || []; S.noteSeq = (S.noteSeq || 0) + 1;
+      S.notes.push({ id: S.noteSeq, pair: d.pair, author: u.id, recipient: d.other, kind: a.p_kind, body: a.p_kind === 'text' ? body : '', image: a.p_kind === 'draw' ? a.p_image : null, pen: ['ink', 'red', 'blue'].includes(a.p_pen) ? a.p_pen : 'ink', created_at: new Date().toISOString(), seen_at: null });
+      return { id: S.noteSeq };
+    },
+    note_seen(S, u, a) {
+      const d = this._daily(S, u); if (!d || !d.pair) return;
+      (S.notes || []).forEach((n) => { if (n.pair === d.pair && n.recipient === u.id && n.id <= a.p_id && !n.seen_at) n.seen_at = new Date().toISOString(); });
+    },
+    note_history(S, u, a) {
+      const d = this._daily(S, u); if (!d || !d.pair) return [];
+      return (S.notes || []).filter((n) => n.pair === d.pair && (a.p_before == null || n.id < a.p_before)).sort((x, y) => y.id - x.id).slice(0, a.p_limit || 12).map(({ pair, recipient, ...r }) => r);
+    },
+    note_delete(S, u, a) { S.notes = (S.notes || []).filter((n) => !(n.id === a.p_id && n.author === u.id)); },
     // 重新認識你：簡化版的伺服器邏輯（回味期 7 天、90 天一回、兩人都交卷才揭曉）
     quiz_state(S, u) {
       const Q = S.quiz || { rounds: [], answers: [] };

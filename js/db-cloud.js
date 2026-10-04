@@ -274,6 +274,16 @@ const CloudDB = CLOUD_ENABLED ? (() => {
       if (r.error && !netDown(r.error) && /daily_state|function|schema cache/i.test(r.error.message || '')) return { ok: false, missing: true };
       return check(r);
     },
+    // ---- 秘密留言板：資料表不能直接讀，全部透過函式 ----
+    async noteState() {
+      const r = await client.rpc('note_state');
+      if (r.error && !netDown(r.error) && /note_state|function|schema cache/i.test(r.error.message || '')) return { ok: false, missing: true };
+      return check(r);
+    },
+    async noteSend(kind, body, image, pen) { return check(await client.rpc('note_send', { p_kind: kind, p_body: body || '', p_image: image || null, p_pen: pen || 'ink' })); },
+    async noteSeen(id) { check(await client.rpc('note_seen', { p_id: id })); },
+    async noteHistory(before, limit) { return check(await client.rpc('note_history', { p_before: before, p_limit: limit })) || []; },
+    async noteDelete(id) { check(await client.rpc('note_delete', { p_id: id })); },
     async dailySave(day, qId, body) { return check(await client.rpc('daily_save', { p_day: day, p_q_id: qId, p_body: body })); },
     async dailyHistory(before, limit) { return check(await client.rpc('daily_history', { p_before: before, p_limit: limit })) || []; },
     async quizStart(questions) { return check(await client.rpc('quiz_start', { p_questions: questions })); },

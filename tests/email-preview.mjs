@@ -29,6 +29,7 @@ const CASES = [
   ['重新認識你：兩人都交卷，揭曉', [r('quiz_revealed')]],
   ['每天一題：對方寫好今天這一題', [r('daily_partner_done')]],
   ['每天一題：對方也寫好了，揭曉', [r('daily_revealed')]],
+  ['秘密留言板：對方留了一張紙條', [r('note_new')]],
 ];
 const unsub = 'https://diary.jas-soul.com/#/unsubscribe?u=…&t=…';
 const out = `<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>通知信預覽</title>

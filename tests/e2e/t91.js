@@ -32,7 +32,7 @@ const SHOT = (n) => (process.env.SHOT_DIR || '.') + '/' + n;
   // 一起分頁：每天一題在第一列，重新認識你不在這裡
   await open('#/together');
   const rows = await p.$$eval('.nav-row .nav-text .bold', (e) => e.map((x) => x.textContent));
-  log('together: daily first, no quiz row', rows[0] === '每天一題' && !rows.includes('重新認識你'), rows.join(','));
+  log('together: notes then daily, no quiz row', rows[0] === '秘密留言板' && rows[1] === '每天一題' && !rows.includes('重新認識你'), rows.join(','));
   log('together badge not written', (await p.textContent('#row-daily')).includes('還沒寫'));
   await p.screenshot({ path: SHOT('together.png') });
 

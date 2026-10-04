@@ -1856,7 +1856,7 @@ alter table public.notifications drop constraint if exists notifications_kind_ch
 alter table public.notifications add constraint notifications_kind_check check (kind in (
   'new_happy', 'new_task_record', 'task_submitted', 'task_approved',
   'partner_request', 'partner_joined', 'anniversary', 'cloud_reflect', 'write_nudge',
-  'quiz_partner_done', 'quiz_revealed', 'daily_partner_done', 'daily_revealed'));
+  'quiz_partner_done', 'quiz_revealed', 'daily_partner_done', 'daily_revealed', 'note_new'));
 -- Email 信裡「取消收信」連結用的暗號：每個人一組亂數，不用登入就能取消
 alter table public.notify_prefs add column if not exists unsub_token uuid not null default gen_random_uuid();
 
@@ -2058,7 +2058,7 @@ alter table public.notifications drop constraint if exists notifications_kind_ch
 alter table public.notifications add constraint notifications_kind_check check (kind in (
   'new_happy', 'new_task_record', 'task_submitted', 'task_approved',
   'partner_request', 'partner_joined', 'anniversary', 'cloud_reflect', 'write_nudge',
-  'quiz_partner_done', 'quiz_revealed', 'daily_partner_done', 'daily_revealed'));
+  'quiz_partner_done', 'quiz_revealed', 'daily_partner_done', 'daily_revealed', 'note_new'));
 
 -- 目前這一對：主人 + 已同意的另一半（排序好，方便比對）
 create or replace function public.quiz_members(p_space uuid) returns uuid[]
@@ -2579,3 +2579,131 @@ begin
 end $$;
 revoke all on function public.admin_feedback(int) from public, anon;
 grant execute on function public.admin_feedback(int) to authenticated;
+
+-- ============================================================
+-- 秘密留言板（2026-10-04）：寫一張紙條給另一半（手寫或打字），對方打開 App 會整張跳出來一次。
+-- 綁「目前這兩個人」（跟每天一題共用 daily_pairs），換了另一半就是新的留言板。
+-- 手寫存成一張小 PNG（data URL），打字存文字（最多 120 字）。舊紙條都留著，寫的人可以刪掉自己的。
+-- 表不開放直接讀寫，全部走下面的函式；只有這兩個人拿得到。
+-- ============================================================
+create table if not exists public.love_notes (
+  id         bigserial primary key,
+  pair_key   text not null references public.daily_pairs (pair_key) on delete cascade,
+  author     uuid not null,
+  recipient  uuid not null,
+  kind       text not null check (kind in ('draw', 'text')),
+  body       text not null default '' check (char_length(body) <= 120),
+  image      text check (image is null or (char_length(image) <= 400000 and image ~ '^data:image/png;base64,[A-Za-z0-9+/=]+$')),
+  pen        text not null default 'ink' check (pen in ('ink', 'red', 'blue')),
+  created_at timestamptz not null default now(),
+  seen_at    timestamptz,
+  check ((kind = 'text' and char_length(btrim(body)) >= 1 and image is null) or (kind = 'draw' and image is not null))
+);
+create index if not exists love_notes_pair_id on public.love_notes (pair_key, id desc);
+create index if not exists love_notes_recipient_unseen on public.love_notes (recipient) where seen_at is null;
+alter table public.love_notes enable row level security;
+revoke all on public.love_notes from anon, authenticated;
+
+create or replace function public.love_note_json(n public.love_notes) returns jsonb
+language sql immutable as $$
+  select case when n.id is null then null else jsonb_build_object('id', n.id, 'author', n.author, 'kind', n.kind, 'body', n.body,
+    'image', n.image, 'pen', n.pen, 'created_at', n.created_at, 'seen_at', n.seen_at) end
+$$;
+revoke all on function public.love_note_json(public.love_notes) from public, anon, authenticated;
+
+-- 讀狀態：對方最新寫給我的一張、我最新寫給對方的一張（看過了沒）、還沒看的張數
+create or replace function public.note_state() returns jsonb
+language plpgsql security definer set search_path = public as $$
+declare
+  p public.daily_pairs := public.daily_pair();
+  v_space uuid := public.quiz_space();
+  v_members uuid[];
+  v_in public.love_notes;
+  v_out public.love_notes;
+begin
+  if v_space is null or auth.uid() is null then return jsonb_build_object('ok', false); end if;
+  if p.pair_key is null then
+    v_members := public.quiz_members(v_space);
+    return jsonb_build_object('ok', true, 'me', auth.uid(), 'pair', null,
+      'names', (select jsonb_object_agg(m, public.space_member_name(v_space, m)) from unnest(v_members) m));
+  end if;
+  select * into v_in from public.love_notes where pair_key = p.pair_key and recipient = auth.uid() order by id desc limit 1;
+  select * into v_out from public.love_notes where pair_key = p.pair_key and author = auth.uid() order by id desc limit 1;
+  return jsonb_build_object('ok', true, 'me', auth.uid(), 'pair', p.pair_key, 'members', to_jsonb(p.members),
+    'names', (select jsonb_object_agg(m, public.space_member_name(p.space, m)) from unnest(p.members) m),
+    'inbox', public.love_note_json(v_in), 'sent', public.love_note_json(v_out),
+    'unseen', (select count(*) from public.love_notes where pair_key = p.pair_key and recipient = auth.uid() and seen_at is null));
+end $$;
+revoke all on function public.note_state() from public, anon;
+grant execute on function public.note_state() to authenticated;
+
+-- 寫一張紙條給對方。通知：對方還有沒讀的「新紙條」通知就不再多發一則
+create or replace function public.note_send(p_kind text, p_body text, p_image text, p_pen text) returns jsonb
+language plpgsql security definer set search_path = public as $$
+declare
+  p public.daily_pairs := public.daily_pair();
+  v_other uuid;
+  v_body text := btrim(coalesce(p_body, ''));
+  v_id bigint;
+begin
+  if p.pair_key is null then raise exception '另一半加入之後就能寫紙條給對方'; end if;
+  if p_kind not in ('draw', 'text') then raise exception '紙條的格式不對'; end if;
+  if p_kind = 'text' and char_length(v_body) not between 1 and 120 then raise exception '紙條要 1 到 120 個字'; end if;
+  if p_kind = 'draw' and (p_image is null or char_length(p_image) > 400000 or p_image !~ '^data:image/png;base64,[A-Za-z0-9+/=]+$') then
+    raise exception '手寫的圖存不進去，請再寫一次';
+  end if;
+  if (select count(*) from public.love_notes where author = auth.uid() and created_at > now() - interval '1 day') >= 50 then
+    raise exception '今天寫好多張了，明天再寫吧';
+  end if;
+  v_other := (select m from unnest(p.members) m where m <> auth.uid() limit 1);
+  insert into public.love_notes (pair_key, author, recipient, kind, body, image, pen)
+    values (p.pair_key, auth.uid(), v_other, p_kind, case when p_kind = 'text' then v_body else '' end,
+      case when p_kind = 'draw' then p_image end, case when p_pen in ('ink', 'red', 'blue') then p_pen else 'ink' end)
+    returning id into v_id;
+  if not exists (select 1 from public.notifications where recipient = v_other and kind = 'note_new' and actor = auth.uid() and read_at is null) then
+    insert into public.notifications (recipient, space_owner, actor, actor_name, kind)
+      values (v_other, p.space, auth.uid(), public.space_member_name(p.space, auth.uid()), 'note_new');
+  end if;
+  return jsonb_build_object('id', v_id);
+end $$;
+revoke all on function public.note_send(text, text, text, text) from public, anon;
+grant execute on function public.note_send(text, text, text, text) to authenticated;
+
+-- 看過了：這張（和更早的）都標成看過，「新紙條」通知也標已讀（晚上的 Email 就不會再提）
+create or replace function public.note_seen(p_id bigint) returns void
+language plpgsql security definer set search_path = public as $$
+declare
+  p public.daily_pairs := public.daily_pair();
+begin
+  if p.pair_key is null then return; end if;
+  update public.love_notes set seen_at = now() where pair_key = p.pair_key and recipient = auth.uid() and id <= p_id and seen_at is null;
+  update public.notifications set read_at = now() where recipient = auth.uid() and kind = 'note_new' and read_at is null;
+end $$;
+revoke all on function public.note_seen(bigint) from public, anon;
+grant execute on function public.note_seen(bigint) to authenticated;
+
+-- 以前的紙條：兩個人寫的都有，由新到舊
+create or replace function public.note_history(p_before bigint, p_limit int) returns jsonb
+language plpgsql security definer set search_path = public as $$
+declare
+  p public.daily_pairs := public.daily_pair();
+begin
+  if p.pair_key is null then return '[]'::jsonb; end if;
+  return (select coalesce(jsonb_agg(public.love_note_json(n) order by n.id desc), '[]'::jsonb)
+    from (select * from public.love_notes where pair_key = p.pair_key and (p_before is null or id < p_before)
+      order by id desc limit least(greatest(coalesce(p_limit, 12), 1), 30)) n);
+end $$;
+revoke all on function public.note_history(bigint, int) from public, anon;
+grant execute on function public.note_history(bigint, int) to authenticated;
+
+-- 刪掉自己寫的一張（寫錯了）
+create or replace function public.note_delete(p_id bigint) returns void
+language plpgsql security definer set search_path = public as $$
+declare
+  p public.daily_pairs := public.daily_pair();
+begin
+  if p.pair_key is null then raise exception '找不到這張紙條'; end if;
+  delete from public.love_notes where id = p_id and pair_key = p.pair_key and author = auth.uid();
+end $$;
+revoke all on function public.note_delete(bigint) from public, anon;
+grant execute on function public.note_delete(bigint) to authenticated;

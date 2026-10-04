@@ -885,7 +885,12 @@ async function refreshBell() {
   }
   // 還沒建立帳號的另一半，中間就是「任務」分頁；其他人的任務在「一起」裡
   const taskTab = tabbar.querySelector('a.tab[data-tab="tasks"]') || tabbar.querySelector('a.tab[data-tab="together"]');
-  if (taskTab) setTabDot(taskTab, unreadList.some((n) => n.kind === 'new_task_record' || n.kind === 'task_approved'));
+  if (taskTab) {
+    const taskOn = unreadList.some((n) => n.kind === 'new_task_record' || n.kind === 'task_approved');
+    taskTab.dataset.taskDot = taskOn ? '1' : '';
+    // 「一起」的紅點也要算秘密留言板的新紙條（notes.js）
+    setTabDot(taskTab, taskOn || (taskTab.dataset.tab === 'together' && noteDotOn));
+  }
 }
 function setTabDot(tab, on) {
   tab.classList.toggle('has-new', on);
@@ -921,6 +926,7 @@ function notifyText(n) {
     case 'quiz_revealed': return '「重新認識你」兩個人都交卷了，來看答案吧';
     case 'daily_partner_done': return `${who}寫好今天這一題了，換你囉`;
     case 'daily_revealed': return `${who}也寫好了，每天一題揭曉了`;
+    case 'note_new': return `${who}留了一張紙條給你`;
     default: return `${who}有新動態`;
   }
 }
@@ -966,6 +972,7 @@ function notifyHref(n) {
   if (n.kind === 'write_nudge') return '#/new/happy';
   if (n.kind === 'quiz_partner_done' || n.kind === 'quiz_revealed') return '#/quiz';
   if (n.kind === 'daily_partner_done' || n.kind === 'daily_revealed') return '#/daily';
+  if (n.kind === 'note_new') return '#/notes';
   if (!n.record_id) return '#/';
   if (n.kind === 'task_submitted') return '#/tasks';
   if (n.kind === 'new_task_record') return `#/task/${encodeURIComponent(n.record_id)}`;
