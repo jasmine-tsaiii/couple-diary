@@ -63,7 +63,12 @@ async function renderRoute() {
       if (page === 'login' || page === 'signup' || await hasAccountHere()) { renderTabbar(null); viewLogin(page === 'signup' ? 'signup' : 'signin'); return; }
     }
     // 已經送出加入要求、還在等主人同意
-    if (CLOUD_ENABLED && CloudDB.pendingJoin() && !isPartner()) { renderTabbar(null); viewWaitingApproval(); return; }
+    if (CLOUD_ENABLED && CloudDB.pendingJoin() && !isPartner()) {
+      renderTabbar(null);
+      // 等同意的時候也能先建立帳號；Email 確認好了就要先設密碼
+      if (page === 'bind' || CloudDB.needsPassword()) viewBind(); else viewWaitingApproval();
+      return;
+    }
     // 臨時帳號但不是（或已經不是）另一半：分享被停止、被移除，或加入沒成功
     if (CLOUD_ENABLED && CloudDB.isAnonymous() && !isPartner()) {
       renderTabbar(null);
@@ -463,6 +468,9 @@ if ('serviceWorker' in navigator && (location.protocol === 'https:' || localStor
       if (isPartner()) toast('歡迎回來！已經回到原本的帳號');
       else if (!CloudDB.pendingJoin()) { rejoinNotice = true; go('#/join'); }
     }
+    // 從確認信回來（重設密碼的等設好再說）
+    // 換不到登入狀態（例如 iPhone 主畫面的 App 和 Safari 是分開的）也照樣提示：Email 其實已經確認好了
+    if (CloudDB.takeFromEmailLink() && !CloudDB.isAnonymous() && location.hash !== '#/reset') showEmailLinkNotice('Email 確認好了');
     if (linking && CloudDB.isBoundPartner()) { bindError = ''; toast('帳號建立好了！'); }
     else if (linking && isPartner()) { bindError = googleBindErrorText(urlErr); go('#/bind'); }
     else if (linking && !urlErr && CloudDB.loginMethods().google) toast('Google 帳號連結好了，之後兩種方式都能登入');

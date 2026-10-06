@@ -10,6 +10,7 @@ const CloudDB = CLOUD_ENABLED ? (() => {
   const BUCKET = 'photos';
   let session = null;
   let urlError = null;
+  let fromEmailLink = false;
   let partner = null; // 用分享碼加入的另一半：{ owner, name, owner_name }
   let pendingJoin = null; // 用分享碼加入、還在等主人同意：{ owner, name, owner_name }
 
@@ -112,6 +113,10 @@ const CloudDB = CLOUD_ENABLED ? (() => {
         history.replaceState(null, '', location.pathname + '#/');
       }
       const code = params.get('code');
+      // 從信裡的連結回來（確認 Email）：Google 登入回來也帶 code，用 googlePending／linkPending 分開
+      let viaGoogle = false;
+      try { viaGoogle = !!(sessionStorage.getItem('googlePending') || sessionStorage.getItem('linkPending')); } catch (e) { viaGoogle = false; }
+      if (code && !viaGoogle) fromEmailLink = true;
       if (code) {
         try { await client.auth.exchangeCodeForSession(code); } catch (e) { /* 可能已經自動換過了 */ }
       }
@@ -152,7 +157,7 @@ const CloudDB = CLOUD_ENABLED ? (() => {
     // 用 Email 建立帳號的另一半還沒設登入密碼（有 Google 的可以用 Google 登入，不用提醒）
     needsPassword() {
       const u = session && session.user;
-      if (!u || u.is_anonymous || !partner) return false;
+      if (!u || u.is_anonymous || !(partner || pendingJoin)) return false;
       const m = this.loginMethods();
       return m.email && !m.google && !(u.user_metadata && u.user_metadata.has_password);
     },
@@ -168,6 +173,7 @@ const CloudDB = CLOUD_ENABLED ? (() => {
     },
     // 拿一次從網址帶回來的錯誤（拿過就清掉）
     takeUrlError: () => { const e = urlError; urlError = null; return e; },
+    takeFromEmailLink: () => { const v = fromEmailLink; fromEmailLink = false; return v; },
     isSignedIn: () => !!session,
     isAnonymous: () => !!(session && session.user.is_anonymous),
     isPartner: () => !!partner,

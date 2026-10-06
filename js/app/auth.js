@@ -130,8 +130,7 @@ function viewLogin(mode = 'signin') {
       if (isUp) {
         const session = await CloudDB.signUp(email, password);
         track('sign_up', { method: 'email' });
-        // 從「註冊」建立的新 Email 帳號就是日記主人，不用再問身分
-        try { localStorage.setItem('newOwnerEmail', email.toLowerCase()); } catch (e) { /* 略過 */ }
+        // 註冊後和 Google 一樣先問身分（另一半自己按了註冊，才不會變成另一本空日記）；試用時寫過紀錄的會直接當主人
         if (!session) {
           btn.disabled = false;
           viewLoginAfterSignup(email);

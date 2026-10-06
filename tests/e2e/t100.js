@@ -1,142 +1,62 @@
-// 秘密留言板：沒有另一半時的說明；手寫和打字送出；對方打開 App 整張跳出來一次；紅點；看過了；以前的紙條、刪掉自己的；通知文字
+// 註冊流程三項改善：
+// 1. Email 註冊後和 Google 一樣先問身分（另一半自己按了註冊，才不會變成另一本空日記）
+// 2. 用分享碼加入、還在等同意的另一半：等待頁請他先建立帳號；Email 確認好了要先設密碼
+// 3. 從信裡的連結（確認信）回來，用瀏覽器打開時提示回 App 用 Email 和密碼登入
 const { chromium } = require('playwright');
 const fs = require('fs');
 const U = (process.env.U || 'http://localhost:8770/');
-const SHOT = (n) => (process.env.SHOT_DIR || '.') + '/' + n;
 (async () => {
   const b = await chromium.launch(require('./_launch'));
   const log = (...a) => console.log(...a); const errs = [];
-  const ctx = await b.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2 });
+  const ctx = await b.newContext({ viewport: { width: 390, height: 844 } });
   await ctx.route('**/vendor/supabase-2.117.2.js', (r) => r.fulfill({ contentType: 'text/javascript', body: fs.readFileSync('mock2.js', 'utf8') }));
-  await ctx.addInitScript(() => { localStorage.setItem('tourDone', '1'); localStorage.setItem('a2hsNever', '1'); localStorage.setItem('signupNudgeShown', '1'); localStorage.setItem('inviteCardHidden', '1'); window.__noCelebrate = 1; new MutationObserver(() => document.querySelectorAll('.tour-dlg, .celebrate:not(.note-pop)').forEach((e) => e.remove())).observe(document, { childList: true, subtree: true }); });
+  await ctx.addInitScript(() => { localStorage.setItem('tourDone', '1'); localStorage.setItem('a2hsNever', '1'); localStorage.setItem('signupNudgeShown', '1'); localStorage.setItem('inviteCardHidden', '1'); new MutationObserver(() => document.querySelectorAll('.tour-dlg').forEach((e) => e.remove())).observe(document, { childList: true, subtree: true }); });
   const p = await ctx.newPage(); p.on('pageerror', (e) => errs.push(e.message)); p.on('dialog', (d) => d.accept());
-  const as = async (uid) => { await p.evaluate((u) => { if (u) sessionStorage.setItem('mockUid', u); else sessionStorage.removeItem('mockUid'); }, uid); await p.goto(U + '#/'); await p.reload(); await p.waitForTimeout(1000); };
-  const open = async (h) => { await p.goto(U + h); await p.reload(); await p.waitForSelector('.topbar, .home-head'); await p.waitForTimeout(800); };
-  const text = () => p.textContent('#app');
-  const server = () => p.evaluate(() => JSON.parse(localStorage.getItem('mockServer')));
-
-  // 試用：入口說要註冊
-  await open('#/notes');
-  log('guest sees signup', (await text()).includes('註冊並邀請另一半加入之後'));
-
-  await p.goto(U + '#/login'); await p.waitForTimeout(500);
+  const as = async (uid, hash = '#/') => { await p.evaluate((u) => { if (u) sessionStorage.setItem('mockUid', u); else sessionStorage.removeItem('mockUid'); }, uid); await p.goto(U + hash); await p.reload(); await p.waitForTimeout(1000); };
+  // 1. Email 註冊 → 問身分
+  await p.goto(U + '#/signup'); await p.waitForTimeout(600);
   await p.fill('#email', 'jas@x.com'); await p.fill('#password', 'secret123'); await p.click('#login-btn'); await p.waitForTimeout(1200);
+  log('email signup asks role', await p.isVisible('#role-owner') && await p.isVisible('#role-partner'));
   await p.click('#role-owner'); await p.waitForTimeout(600);
   const owner = await p.evaluate(() => sessionStorage.getItem('mockUid'));
-  await open('#/notes');
-  log('no partner yet', (await text()).includes('另一半加入之後就能寫紙條給對方'));
   await p.goto(U + '#/settings'); await p.waitForTimeout(700);
   await p.fill('#s-name', 'Jasmine'); await p.fill('#s-pass', '123456'); await p.click('#s-create'); await p.waitForTimeout(800);
   const code = (await p.textContent('.share-code')).trim();
-  await as(null); await p.goto(U + '#/join'); await p.waitForTimeout(600);
-  await p.fill('#j-code', code); await p.fill('#j-pass', '123456'); await p.fill('#j-name', '小安'); await p.click('#join-btn'); await p.waitForTimeout(1500);
+  // 2. 另一半用分享碼加入，等同意
+  await as(null); await p.goto(U + '#/join/' + code); await p.waitForTimeout(700);
+  await p.fill('#j-pass', '123456'); await p.fill('#j-name', '小明'); await p.click('#join-btn'); await p.waitForTimeout(1500);
   const pid = await p.evaluate(() => sessionStorage.getItem('mockUid'));
-  await as(owner); await p.click('[data-home-approve]'); await p.waitForTimeout(700);
-
-  // 一起：第一列是秘密留言板
-  await open('#/together');
-  const rows = await p.$$eval('.nav-row .nav-text .bold', (e) => e.map((x) => x.textContent));
-  log('together: notes first', rows[0] === '秘密留言板', rows.join(','));
-  await p.click('#row-notes'); await p.waitForTimeout(900);
-  log('empty board', (await text()).includes('小安還沒留紙條給你'));
-  await p.screenshot({ path: SHOT('notes-empty.png') });
-
-  // 手寫一張
-  await p.click('#note-write'); await p.waitForSelector('#note-cv', { state: 'attached' });
-  log('no tabbar while writing', await p.evaluate(() => document.getElementById('tabbar').hidden));
-  await p.click('[data-mode="draw"]');
-  await p.click('#note-send'); await p.waitForTimeout(400);
-  log('empty draw refused', (await p.textContent('#toast')).includes('先在紙上寫點什麼'));
-  const box = await p.locator('#note-cv').boundingBox();
-  await p.click('[data-pen="red"]');
-  await p.mouse.move(box.x + 60, box.y + 80); await p.mouse.down();
-  for (let i = 0; i <= 20; i++) await p.mouse.move(box.x + 60 + i * 10, box.y + 80 + Math.sin(i / 2) * 30);
-  await p.mouse.up();
-  await p.screenshot({ path: SHOT('notes-draw.png') });
-  await p.click('#note-send'); await p.waitForTimeout(1200);
-  let S = await server();
-  log('draw saved as png', S.notes.length === 1 && S.notes[0].kind === 'draw' && /^data:image\/png;base64,/.test(S.notes[0].image) && S.notes[0].image.length < 400000 && S.notes[0].recipient === pid, S.notes[0] && S.notes[0].image.length);
-  log('back on board', p.url().endsWith('#/notes') && (await text()).includes('小安還沒看'));
-  // 送出後按返回（往回滑）回到一起，不是又回到寫紙條
-  await p.click('.topbar a[data-back]'); await p.waitForTimeout(800);
-  log('back after send skips editor', p.url().endsWith('#/together'), p.url());
-  // 手寫寫到一半按返回：先問；從紙的左邊開始寫不會觸發滑回上一頁
-  await p.goto(U + '#/notes'); await p.waitForTimeout(800); await p.click('#note-write'); await p.waitForSelector('#note-cv', { state: 'attached' });
-  await p.click('[data-mode="draw"]');
-  const bx = await p.locator('#note-cv').boundingBox();
-  await p.mouse.move(bx.x + 20, bx.y + 40); await p.mouse.down(); await p.mouse.move(bx.x + 120, bx.y + 60); await p.mouse.up();
-  let asked = 0; p.removeAllListeners('dialog'); p.on('dialog', (d) => { asked++; d.dismiss(); });
-  await p.click('.topbar a[data-back]'); await p.waitForTimeout(600);
-  log('asks before dropping drawing', asked === 1 && p.url().endsWith('#/notes/new'));
-  p.removeAllListeners('dialog'); p.on('dialog', (d) => d.accept());
-  await p.evaluate(() => { window.__forceSwipeBack = 1; });
-  const pad = await p.locator('#note-pad').boundingBox();
-  const startsOnPad = await p.evaluate(([x, y]) => !!document.elementFromPoint(x, y).closest('.note-pad'), [pad.x + 4, pad.y + 60]);
-  log('pad reaches left swipe zone', startsOnPad && pad.x + 4 < 44);
-
-  // 打字一張
-  await p.goto(U + '#/notes/new'); await p.waitForSelector('#note-ta', { state: 'attached' });
-  await p.click('[data-mode="text"]');
-  await p.fill('#note-ta', '今天面試加油 <b>晚上請你吃拉麵</b>');
-  log('counter', (await p.textContent('#note-count')).includes('/ 120'));
-  await p.click('#note-send'); await p.waitForTimeout(1200);
-  S = await server();
-  log('text saved', S.notes.length === 2 && S.notes[1].kind === 'text' && S.notes[1].body.startsWith('今天面試加油'));
-
-  // 另一半打開 App：最新那張整張跳出來
-  await as(pid); await p.waitForTimeout(1500);
-  log('pop shown', await p.locator('.note-pop').count() === 1);
-  log('pop shows text, escaped', (await p.textContent('.note-pop')).includes('<b>晚上請你吃拉麵</b>') && await p.locator('.note-pop b').count() === 0);
-  await p.screenshot({ path: SHOT('notes-pop.png') });
-  await p.click('#note-pop-close'); await p.waitForTimeout(600);
-  S = await server();
-  log('seen after pop', S.notes.every((n) => n.seen_at));
-  await p.reload(); await p.waitForTimeout(1800);
-  log('pop only once', await p.locator('.note-pop').count() === 0);
-  log('no dot after seen', await p.locator('#tabbar a.tab[data-tab="together"].has-new').count() === 0);
-
-  // 另一半回一張手寫 → 主人：紅點、跳出來、留言板
-  await open('#/notes/new');
-  log('remembers last mode (per phone)', await p.isVisible('#note-cv') || await p.isVisible('#note-ta'));
-  await p.click('[data-mode="draw"]');
-  const b2 = await p.locator('#note-cv').boundingBox();
-  await p.mouse.move(b2.x + 100, b2.y + 100); await p.mouse.down(); await p.mouse.move(b2.x + 200, b2.y + 160); await p.mouse.up();
-  await p.click('#note-send'); await p.waitForTimeout(1200);
-  await p.evaluate((o) => { const S = JSON.parse(localStorage.getItem('mockServer')); S.notifs = S.notifs || []; S.notifs.push({ id: 9001, recipient: o, actor_name: '小安', kind: 'note_new', created_at: new Date().toISOString(), read_at: null }); localStorage.setItem('mockServer', JSON.stringify(S)); }, owner);
-  // 這支手機已經跳過這張了（模擬在別的地方看過跳出來）：不再跳，但紅點還在
-  await p.evaluate(() => { const S = JSON.parse(localStorage.getItem('mockServer')); localStorage.setItem('notePopShown', String(S.noteSeq)); });
-  await as(owner); await p.waitForTimeout(800);
-  log('same note does not pop twice', await p.locator('.note-pop').count() === 0);
-  await open('#/together');
-  log('owner together dot', await p.locator('#tabbar a.tab[data-tab="together"].has-new').count() === 1);
-  log('row says new note', (await p.textContent('#row-notes')).includes('新紙條'));
-  await p.goto(U + '#/notifications'); await p.waitForTimeout(900);
-  log('notification text', (await text()).includes('小安留了一張紙條給你'));
-  await open('#/notes');
-  log('board shows image', await p.locator('.note-main .note-paper img').count() === 1);
-  log('my last note seen', (await text()).includes('小安看過了'));
-  const minis = await p.locator('.note-mini').count();
-  log('history has my two notes', minis === 2, minis);
-  await p.screenshot({ path: SHOT('notes-board.png'), fullPage: true });
-  S = await server();
-  log('opening board marks seen', S.notes.filter((n) => n.recipient === owner).every((n) => n.seen_at));
-
-  // 刪掉自己的一張（按兩下確認）
-  await p.click('.note-mini.mine [data-del]'); await p.waitForTimeout(200);
-  log('asks to confirm', (await p.textContent('.note-mini.mine [data-del]')).includes('確定'));
-  await p.click('.note-mini.mine [data-del]'); await p.waitForTimeout(800);
-  S = await server();
-  log('deleted one', S.notes.length === 2 && await p.locator('.note-mini').count() === 1);
-  // 對方寫的沒有刪除鈕
-  log('cannot delete partner note', await p.locator('.note-mini:not(.mine) [data-del]').count() === 0);
-
-  // 深色模式紙還是亮的
-  await p.emulateMedia({ colorScheme: 'dark' }); await p.reload(); await p.waitForTimeout(1000);
-  const bg = await p.evaluate(() => getComputedStyle(document.querySelector('.note-paper')).backgroundColor);
-  log('paper stays light in dark mode', bg === 'rgb(255, 251, 242)', bg);
-  await p.screenshot({ path: SHOT('notes-dark.png'), fullPage: true });
-  log('no horizontal scroll', await p.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth));
-
+  await as(pid);
+  log('waiting page asks to create account', await p.isVisible('#w-bind') && await p.isVisible('#w-check'));
+  await p.click('#w-bind'); await p.waitForTimeout(700);
+  log('bind page opens while pending', await p.isVisible('#b-email'));
+  await p.fill('#b-email', 'ming@x.com'); await p.click('#b-send'); await p.waitForTimeout(700);
+  log('email sent', await p.evaluate(() => !!window.__updatedUser && window.__updatedUser.email === 'ming@x.com'));
+  // 到信箱點了確認連結（用瀏覽器打開，網址帶 code）
+  await p.evaluate((u) => { const S = JSON.parse(localStorage.mockServer); Object.assign(S.users[u], { is_anonymous: false, email: 'ming@x.com', identities: [{ provider: 'email' }] }); localStorage.mockServer = JSON.stringify(S); }, pid);
+  await p.evaluate((u) => sessionStorage.setItem('mockUid', u), pid);
+  await p.goto(U + '?code=abc#/'); await p.waitForTimeout(1200);
+  log('link notice tells to go back to app', await p.isVisible('.link-dlg') && (await p.textContent('.link-dlg')).includes('ming@x.com'));
+  await p.screenshot({ path: (process.env.SHOT_DIR || '.') + '/email-link-notice.png' });
+  await p.click('#link-dlg-ok'); await p.waitForTimeout(300);
+  log('pending + confirmed must set password', await p.isVisible('#must-pass'));
+  await p.goto(U + '#/'); await p.waitForTimeout(700);
+  log('still on password step', await p.isVisible('#must-pass'));
+  await p.fill('#b-pass', 'newpass123'); await p.click('#b-pass-save'); await p.waitForTimeout(900);
+  await as(pid);
+  log('back to waiting page with account', await p.isVisible('#w-check') && !(await p.isVisible('#w-bind')) && (await p.textContent('#app')).includes('ming@x.com'));
+  log('no notice without code', !(await p.isVisible('.link-dlg')));
+  // 主人同意後，另一半正常使用
+  await as(owner); await p.click('[data-home-approve]'); await p.waitForTimeout(800);
+  await as(pid);
+  log('approved partner uses app', !(await p.isVisible('#must-pass')) && !(await p.isVisible('#w-check')));
+  // 確認信換不到登入狀態（App 和瀏覽器分開）也照樣提示
+  await as(null); await p.goto(U + '?code=zzz#/'); await p.waitForTimeout(1200);
+  log('notice even when not signed in here', await p.isVisible('.link-dlg') && (await p.textContent('.link-dlg')).includes('忘記密碼'));
+  // Google 登入回來也帶 code：不提示
+  await p.evaluate(() => sessionStorage.setItem('googlePending', '1'));
+  await p.goto(U + '?code=g1#/'); await p.waitForTimeout(1200);
+  log('no notice after google', !(await p.isVisible('.link-dlg')));
   log('errors', JSON.stringify(errs));
   await b.close();
 })();

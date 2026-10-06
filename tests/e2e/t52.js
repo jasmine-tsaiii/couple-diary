@@ -30,6 +30,8 @@ const U = (process.env.U || 'http://localhost:8770/');
   // 有 ID
   ({ ctx, p, gtm } = await run('G-TEST12345'));
   await p.goto(U + '?utm_source=instagram&code=SECRETCODE#/'); await p.waitForTimeout(800);
+  // 網址帶 code 會被當成從確認信回來，先關掉提示
+  if (await p.isVisible('#link-dlg-ok')) await p.click('#link-dlg-ok');
   log('gtm loaded', gtm.length, gtm[0]);
   await p.click('.quick-btn.theme-happy'); await p.waitForTimeout(400);
   await p.fill('#f-title', 'SECRET_TITLE 小明'); await p.click('#save'); await p.waitForTimeout(1200);

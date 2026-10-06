@@ -163,9 +163,27 @@ function googleBindErrorText(err) {
   if (!err) { console.warn('Google 綁定沒完成：檢查 Supabase Redirect URLs'); return '從 Google 回來了，但帳號沒有建立完成。可以再試一次，或改用下面的 Email 建立。'; }
   console.warn('Google 綁定失敗', t); return '用 Google 建立帳號沒有成功。可以再試一次，或改用下面的 Email 建立。';
 }
+// 信裡的連結常會打開瀏覽器，不是主畫面的 App：說清楚回 App 怎麼登入，免得以為要重新註冊
+function showEmailLinkNotice(title) {
+  if (isStandalone()) { toast(title); return; }
+  if (document.querySelector('.link-dlg')) return;
+  const box = document.createElement('div');
+  box.className = 'celebrate link-dlg';
+  box.innerHTML = `<div class="celebrate-box" role="dialog" aria-modal="true" aria-label="${esc(title)}">
+    ${mascotHtml('celebrate', 110)}
+    <h2 style="font-size:20px">${esc(title)}</h2>
+    <div class="muted">信裡的連結會用瀏覽器打開。如果你平常是用手機主畫面上的啾啾日記，回到那裡重新打開就好，不用重新註冊；要登入的話用 <b>${esc(CloudDB.currentEmail() || '這個 Email')}</b> 和密碼，還沒設過密碼就在登入頁按「忘記密碼？」設一組。${CloudDB.isSignedIn() ? '也可以直接在這裡繼續用。' : ''}</div>
+    <button class="btn" id="link-dlg-ok">知道了</button>
+  </div>`;
+  document.body.appendChild(box);
+  box.querySelector('#link-dlg-ok').addEventListener('click', () => box.remove());
+}
+
 function viewBind(sentTo = '') {
   app.className = 'theme-fight';
-  const bound = CloudDB.isBoundPartner();
+  // 還在等對方同意的人也可以先建立帳號
+  const pendingOnly = !isPartner() && !!CloudDB.pendingJoin();
+  const bound = CloudDB.isBoundPartner() || (pendingOnly && CloudDB.isSignedIn() && !CloudDB.isAnonymous());
   const mustPass = bound && CloudDB.needsPassword();
   app.innerHTML = `
     <div class="topbar">
@@ -178,8 +196,8 @@ function viewBind(sentTo = '') {
     </div>` : ''}
     ${bound && !mustPass ? `<div class="card" style="gap:6px">
       <div class="bold">帳號建立好了：${esc(CloudDB.currentEmail() || '')}</div>
-      <div class="muted">現在可以寫自己的美好和烏雲，也能和${esc(ownerName())}一起寫吵架議題。換手機時用這個帳號登入就好，不用再輸入分享碼。</div>
-      <a class="btn small" href="#/" style="align-self:flex-start">回首頁開始寫</a>
+      <div class="muted">${pendingOnly ? `等${esc((CloudDB.pendingJoin() || {}).owner_name || '對方')}按「同意」後，就能寫自己的美好和烏雲，也能一起寫吵架議題。` : `現在可以寫自己的美好和烏雲，也能和${esc(ownerName())}一起寫吵架議題。`}換手機時用這個帳號登入就好，不用再輸入分享碼。</div>
+      <a class="btn small" href="#/" style="align-self:flex-start">${pendingOnly ? '回到等待頁' : '回首頁開始寫'}</a>
     </div>` : ''}
     ${bound ? `<form class="card" id="pw-form" style="gap:10px">
       <div class="bold">${mustPass ? '登入密碼' : '更改登入密碼'}</div>
@@ -272,7 +290,7 @@ function viewBind(sentTo = '') {
   const chk = document.getElementById('b-check');
   if (chk) chk.addEventListener('click', () => withBusy(chk, '確認中…', async () => {
     await CloudDB.refreshUser();
-    if (CloudDB.isBoundPartner()) { toast('帳號建立好了！'); viewBind(); } else toast('還沒收到確認，請到信箱點連結（也看看垃圾信件匣）');
+    if (!CloudDB.isAnonymous()) { toast('Email 確認好了，設一組登入密碼就完成'); if (pendingOnly) route(); else viewBind(); } else toast('還沒收到確認，請到信箱點連結（也看看垃圾信件匣）');
   }));
 }
 
@@ -568,6 +586,11 @@ function viewWaitingApproval() {
       <div class="small" style="color:var(--progress-ink)">這本日記已經有一位建立過帳號的「${esc(boundHint)}」。如果那就是你，請改用原本的 Google 或 Email 登入，之前寫的紀錄才接得回來。用現在這樣加入的話，對方同意後，原本的帳號就不能再寫了。</div>
       <button class="btn small" id="w-use-account">我是${esc(boundHint)}，改用原本的帳號登入</button>
     </div>` : ''}
+    ${CloudDB.isAnonymous() && !boundHint ? `<a class="card" href="#/bind" id="w-bind" style="background:var(--fight-bg);border-color:transparent;gap:4px">
+      <div class="bold" style="color:var(--fight-dark)">等的時候，先建立你的帳號</div>
+      <div class="small muted">現在你的身分只存在這個瀏覽器裡，換手機、清掉瀏覽器資料就要重新加入、再等對方同意一次。用 Email 或 Google 建立帳號，之後在哪裡都能登入，也能寫自己的紀錄 ›</div>
+    </a>` : ''}
+    ${!CloudDB.isAnonymous() ? `<div class="small muted" style="text-align:center">帳號：${esc(CloudDB.currentEmail() || '')}，對方同意後就能用這個帳號登入。</div>` : ''}
     <button class="btn${boundHint ? ' secondary' : ''}" id="w-check">對方同意了，重新看看</button>
     <button class="btn secondary small" id="w-leave">取消加入</button>
   `;
@@ -874,8 +897,8 @@ function viewResetPassword() {
     const btn = document.getElementById('reset-btn');
     withBusy(btn, '更新中…', async () => {
       await CloudDB.updatePassword(document.getElementById('new-pass').value);
-      toast('密碼已更新');
       go('#/');
+      showEmailLinkNotice('密碼已更新');
     });
   });
 }

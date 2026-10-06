@@ -8,10 +8,10 @@ const U = (process.env.U || 'http://localhost:8770/');
   await ctx.route('**/vendor/supabase-2.117.2.js', (r) => r.fulfill({ contentType: 'text/javascript', body: fs.readFileSync('mock2.js', 'utf8') }));
   await ctx.addInitScript(() => { localStorage.setItem('tourDone', '1'); localStorage.setItem('a2hsNever', '1'); localStorage.setItem('mockAutoApprove', '1'); new MutationObserver(() => document.querySelectorAll('.tour-dlg').forEach((e) => e.remove())).observe(document, { childList: true, subtree: true }); });
   const p = await ctx.newPage(); p.on('pageerror', (e) => errs.push(e.message)); let dialogs = 0; p.on('dialog', (d) => { dialogs++; d.accept(); });
-  // Email 註冊的新帳號：不問身分
+  // Email 註冊的新帳號：和 Google 一樣先問身分
   await p.goto(U + '#/signup'); await p.waitForTimeout(600);
   await p.fill('#email', 'new@x.com'); await p.fill('#password', 'secret123'); await p.click('#login-btn'); await p.waitForTimeout(1200);
-  log('signup no role choice', !(await p.isVisible('#role-owner')));
+  log('signup shows role choice', await p.isVisible('#role-owner'));
   // 登入（非註冊）的空帳號：問身分
   await p.goto(U + '#/settings'); await p.waitForTimeout(600);
   await p.evaluate(() => { localStorage.removeItem('newOwnerEmail'); sessionStorage.clear(); });

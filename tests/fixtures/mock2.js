@@ -563,7 +563,12 @@
           },
           async refreshSession() { return { data: { session: me() ? { user: me() } : null }, error: null }; },
           async linkIdentity() { if (localStorage.getItem('mockLinkErr')) return { data: {}, error: { message: 'Manual linking is disabled' } }; const S = load(); const u = me(); const wasAnon = S.users[u.id].is_anonymous; S.users[u.id].is_anonymous = false; if (wasAnon) S.users[u.id].email = 'google@x.com'; S.users[u.id].identities = [...(S.users[u.id].identities || []), { provider: 'google' }]; save(S); return { data: {}, error: null }; },
-          async signUp() { return { data: {}, error: { message: 'x' } }; },
+          async signUp({ email, options }) {
+            if (localStorage.getItem('mockSignUpErr')) return { data: {}, error: { message: 'x' } };
+            const S = load(); const id = 'owner-' + email.split('@')[0]; S.users[id] = { id, email, is_anonymous: false, identities: [{ provider: 'email' }], user_metadata: (options && options.data) || {} }; save(S);
+            if (localStorage.getItem('mockSignUpConfirm')) return { data: { session: null, user: S.users[id] }, error: null };
+            sessionStorage.setItem('mockUid', id); return { data: { session: { user: S.users[id] } }, error: null };
+          },
           async signOut() { sessionStorage.removeItem('mockUid'); return { error: null }; },
           async exchangeCodeForSession() { return { data: {}, error: null }; },
           async signInWithOAuth() { return { data: {}, error: null }; },
