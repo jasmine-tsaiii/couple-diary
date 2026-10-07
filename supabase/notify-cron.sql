@@ -15,3 +15,13 @@ $$);
 
 select cron.unschedule('notify-daily') where exists (select 1 from cron.job where jobname = 'notify-daily');
 select cron.schedule('notify-daily', '0 1 * * *', $$ select public.notify_daily() $$);
+
+-- 手機推播：晚上 11 點到早上 8 點不推，這段時間的通知在早上 8 點（台灣）一起推（send-push 要先部署）
+select cron.unschedule('send-push-morning') where exists (select 1 from cron.job where jobname = 'send-push-morning');
+select cron.schedule('send-push-morning', '1 0 * * *', $$
+  select net.http_post(
+    url := 'https://bihepkbxeqvufbbnokuw.supabase.co/functions/v1/send-push',
+    headers := '{"Content-Type": "application/json"}'::jsonb,
+    body := '{}'::jsonb
+  )
+$$);

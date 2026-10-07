@@ -2707,3 +2707,57 @@ begin
 end $$;
 revoke all on function public.note_delete(bigint) from public, anon;
 grant execute on function public.note_delete(bigint) to authenticated;
+
+-- ===== 手機推播（Web Push，2026-10-07）=====
+-- 只推「另一半做的事」：新紀錄、任務進度、加入、每天一題、紙條。紀念日、烏雲回顧、寫日記提醒不推（晚上的 Email 會講）。
+create extension if not exists pg_net;
+-- 每支手機（瀏覽器）一筆；同一個人可以有好幾支。推送失敗（手機取消了）會由 send-push 刪掉。
+create table if not exists public.push_subscriptions (
+  endpoint   text primary key check (char_length(endpoint) between 10 and 1000),
+  uid        uuid not null references auth.users(id) on delete cascade,
+  p256dh     text not null check (char_length(p256dh) <= 200),
+  auth       text not null check (char_length(auth) <= 100),
+  created_at timestamptz not null default now()
+);
+create index if not exists push_subscriptions_uid_idx on public.push_subscriptions (uid);
+alter table public.push_subscriptions enable row level security;
+revoke all on public.push_subscriptions from anon, authenticated;
+alter table public.notifications add column if not exists pushed_at timestamptz;
+
+create or replace function public.push_subscribe(p_endpoint text, p_p256dh text, p_auth text) returns void
+language plpgsql security definer set search_path = public as $$
+begin
+  if auth.uid() is null then raise exception '請先登入'; end if;
+  if p_endpoint !~ '^https://' then raise exception '推播網址不對'; end if;
+  insert into public.push_subscriptions (endpoint, uid, p256dh, auth) values (p_endpoint, auth.uid(), p_p256dh, p_auth)
+    on conflict (endpoint) do update set uid = excluded.uid, p256dh = excluded.p256dh, auth = excluded.auth, created_at = now();
+end $$;
+create or replace function public.push_unsubscribe(p_endpoint text) returns void
+language sql security definer set search_path = public as $$
+  delete from public.push_subscriptions where endpoint = p_endpoint and uid = auth.uid()
+$$;
+revoke all on function public.push_subscribe(text, text, text) from public, anon;
+revoke all on function public.push_unsubscribe(text) from public, anon;
+grant execute on function public.push_subscribe(text, text, text) to authenticated;
+grant execute on function public.push_unsubscribe(text) to authenticated;
+
+-- 有新通知、而且收件人有開推播：馬上叫 send-push（它自己會挑該推的、管勿擾時段，重複叫也不會重推）
+create or replace function public.notifications_push_kick() returns trigger
+language plpgsql security definer set search_path = public as $$
+begin
+  if new.kind in ('new_happy', 'new_task_record', 'task_submitted', 'task_approved', 'partner_request', 'partner_joined',
+                  'quiz_partner_done', 'daily_partner_done', 'daily_revealed', 'note_new')
+     and exists (select 1 from public.push_subscriptions where uid = new.recipient) then
+    begin
+      perform net.http_post(
+        url := 'https://bihepkbxeqvufbbnokuw.supabase.co/functions/v1/send-push',
+        headers := '{"Content-Type": "application/json"}'::jsonb,
+        body := '{}'::jsonb);
+    exception when others then null; -- 推播叫不到也不能讓原本的動作失敗
+    end;
+  end if;
+  return new;
+end $$;
+drop trigger if exists notifications_push_kick on public.notifications;
+create trigger notifications_push_kick after insert on public.notifications
+  for each row execute function public.notifications_push_kick();

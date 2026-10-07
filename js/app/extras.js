@@ -1048,23 +1048,87 @@ async function viewUnsubscribe() {
     track('email_unsubscribe', { ok });
   }));
 }
-// 設定頁的「通知」卡片（有 Email 的帳號才有 Email 開關）
+// 設定頁的「通知」卡片：手機通知（每個雲端帳號都有）＋ Email 開關（有 Email 的帳號才有）
 function notifyCardHtml() {
-  if (!usingCloud() || CloudDB.isAnonymous()) return '';
+  if (!usingCloud()) return '';
+  const anon = CloudDB.isAnonymous();
   // 一開始就畫出來（不是讀完設定才冒出來）：iPhone 的 LINE 裡，卡片晚一點才出現會讓下面的按鈕畫錯位置
   return `<div class="card" id="notify-card">
     <div class="bold">通知</div>
     <div class="small muted">另一半新增美好時刻、任務有進度、紀念日到了，打開啾啾日記會在右上角的小鈴鐺看到。</div>
-    <div class="setting-row"><div class="setting-text">收 Email 通知<div class="small muted">每天晚上 9 點最多一封，當天在 App 裡看過的不寄。不想收就按一下關掉</div></div>
-      <button class="btn small" id="notify-email" aria-pressed="true" disabled>…</button></div>
+    <div class="setting-row"><div class="setting-text">手機通知<div class="small muted" id="push-sub">另一半有新動態時，手機會跳通知。晚上 11 點到早上 8 點不吵你</div></div>
+      <button class="btn small secondary" id="notify-push" aria-pressed="false" disabled>…</button></div>
+    ${anon ? '' : `<div class="setting-row"><div class="setting-text">收 Email 通知<div class="small muted">每天晚上 9 點最多一封，當天在 App 裡看過的不寄。不想收就按一下關掉</div></div>
+      <button class="btn small" id="notify-email" aria-pressed="true" disabled>…</button></div>`}
   </div>`;
+}
+// 這支手機能不能收推播：unsupported（不支援）／need_home（iPhone 要先加到主畫面）／ok
+function pushSupport() {
+  const pf = a2hsPlatform();
+  const ios = /iphone|ipad|ipod/i.test(navigator.userAgent) || (navigator.maxTouchPoints > 1 && /Macintosh/.test(navigator.userAgent));
+  if (ios && pf !== 'standalone') return 'need_home';
+  if (!('serviceWorker' in navigator) || !('PushManager' in window) || !('Notification' in window) || !window.APP_CONFIG.VAPID_PUBLIC_KEY) return ios ? 'old_ios' : pf === 'line' || pf === 'inapp' ? 'need_home' : 'unsupported';
+  return 'ok';
+}
+function vapidKey() {
+  const b64 = window.APP_CONFIG.VAPID_PUBLIC_KEY.replace(/-/g, '+').replace(/_/g, '/');
+  const raw = atob(b64 + '='.repeat((4 - (b64.length % 4)) % 4));
+  return Uint8Array.from(raw, (c) => c.charCodeAt(0));
+}
+async function pushCurrent() {
+  const reg = await navigator.serviceWorker.getRegistration();
+  return reg ? reg.pushManager.getSubscription() : null;
+}
+async function bindPushRow() {
+  const b = document.getElementById('notify-push');
+  if (!b) return;
+  const sub = document.getElementById('push-sub');
+  const show = (on) => { b.setAttribute('aria-pressed', String(on)); b.textContent = on ? '開啟中' : '開啟'; b.classList.toggle('secondary', !on); };
+  const support = pushSupport();
+  if (support === 'unsupported' || support === 'old_ios') {
+    sub.textContent = support === 'old_ios' ? 'iPhone 要更新到 iOS 16.4 以上才收得到手機通知' : '這個瀏覽器收不到手機通知，換成手機的 Chrome 或 Safari 再試試看';
+    b.remove(); return;
+  }
+  if (support === 'need_home') {
+    sub.textContent = 'iPhone 要先把啾啾日記加到主畫面，從主畫面打開才能開手機通知';
+    b.disabled = false; b.textContent = '怎麼加'; b.classList.add('secondary');
+    b.addEventListener('click', () => showA2hs('push'));
+    return;
+  }
+  let on = false;
+  try { on = Notification.permission === 'granted' && !!(await pushCurrent()); } catch (e) { /* 略過 */ }
+  if (!document.body.contains(b)) return;
+  show(on);
+  if (Notification.permission === 'denied') sub.textContent = '手機的設定裡把啾啾日記的通知關掉了，要到手機的「設定 → 通知」打開';
+  b.disabled = false;
+  b.addEventListener('click', async () => {
+    const next = b.getAttribute('aria-pressed') !== 'true';
+    b.disabled = true;
+    try {
+      if (next) {
+        const perm = await Notification.requestPermission();
+        if (perm !== 'granted') { toast(perm === 'denied' ? '通知被擋掉了，要到手機的「設定 → 通知」打開' : '沒有開啟通知'); track('push_denied', { perm }); b.disabled = false; return; }
+        const reg = await navigator.serviceWorker.ready;
+        const s = (await reg.pushManager.getSubscription()) || await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: vapidKey() });
+        await CloudDB.pushSubscribe(s);
+        show(true); toast('開好了，另一半有新動態手機會跳通知'); track('push_on');
+      } else {
+        const s = await pushCurrent();
+        if (s) { await CloudDB.pushUnsubscribe(s.endpoint).catch(() => {}); await s.unsubscribe().catch(() => {}); }
+        show(false); toast('這支手機不跳通知了，小鈴鐺還是會有'); track('push_off');
+      }
+    } catch (e) { toast(e && e.message ? e.message : '開不起來，請稍後再試'); }
+    b.disabled = false;
+  });
 }
 async function bindNotifyCard() {
   const card = document.getElementById('notify-card');
   if (!card) return;
+  bindPushRow().catch(() => {});
+  const b = document.getElementById('notify-email');
+  if (!b) return;
   const prefs = await CloudDB.notifyPrefs().catch(() => null);
   if (!document.body.contains(card)) return;
-  const b = document.getElementById('notify-email');
   // 資料庫還沒更新：只留小鈴鐺的說明，拿掉 Email 開關
   if (!prefs) { b.closest('.setting-row').remove(); return; }
   b.disabled = false;

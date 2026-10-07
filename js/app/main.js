@@ -452,6 +452,10 @@ window.addEventListener('hashchange', updateOfflineBar);
 // 只在正式網站註冊（本機開發、測試時不註冊，才不會一直拿到快取的舊檔案）
 if ('serviceWorker' in navigator && (location.protocol === 'https:' || localStorage.getItem('swTest'))) {
   window.addEventListener('load', () => { navigator.serviceWorker.register('sw.js').catch(() => {}); });
+  // 點手機通知時 App 已經開著：切到通知要去的那一頁
+  navigator.serviceWorker.addEventListener('message', (ev) => {
+    if (ev.data && ev.data.type === 'go' && typeof ev.data.url === 'string' && ev.data.url.startsWith(location.origin)) location.href = ev.data.url;
+  });
 }
 (async () => {
   // 密碼鎖最先蓋上，紀錄內容才不會先閃出來

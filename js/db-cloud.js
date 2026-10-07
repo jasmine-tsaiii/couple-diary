@@ -527,6 +527,15 @@ const CloudDB = CLOUD_ENABLED ? (() => {
       const { data, error } = await client.rpc('notify_prefs_get');
       return error ? null : (data || { email_on: true });
     },
+    // 手機推播：這支手機開始／停止收通知
+    async pushSubscribe(sub) {
+      const j = sub.toJSON();
+      const { error } = await client.rpc('push_subscribe', { p_endpoint: j.endpoint, p_p256dh: j.keys.p256dh, p_auth: j.keys.auth });
+      if (error) throw new Error(/push_subscribe|function/i.test(error.message) ? '手機通知還在準備中，請稍後再試' : error.message);
+    },
+    async pushUnsubscribe(endpoint) {
+      await client.rpc('push_unsubscribe', { p_endpoint: endpoint });
+    },
     async setNotifyEmail(on) {
       const { error } = await client.rpc('notify_prefs_set', { p_email_on: !!on });
       if (error) throw new Error(/notify_prefs|function/i.test(error.message) ? '通知設定還沒開好，請稍後再試' : error.message);

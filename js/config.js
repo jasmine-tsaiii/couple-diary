@@ -10,5 +10,7 @@ window.APP_CONFIG = {
   GA_MEASUREMENT_ID: 'G-GNF8K7HB29',
   // Google 登入的「用戶端 ID」（xxxx.apps.googleusercontent.com，公開的值，不是密碼）。
   // 填了就用 Google 官方登入按鈕，Google 畫面會顯示我們的網址；留空就用原本跳去 Google 再回來的方式。
+  // 手機推播的公開金鑰（VAPID public key，公開的值）。對應的私鑰只放在 Supabase 的 Edge Function Secrets。
+  VAPID_PUBLIC_KEY: 'BJz3k58Mzs9q88-5O-gQ_uuaH1q1_La8NX2BxViVTucZ0n5P4iLJrdUTvnBQAK6CC5OUSHBgIIhx97bfzQWCtOs',
   GOOGLE_CLIENT_ID: '625276631279-so2ntvms2avugj2le1m5aea5rkr1tele.apps.googleusercontent.com',
 };

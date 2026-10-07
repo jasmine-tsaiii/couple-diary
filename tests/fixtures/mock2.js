@@ -108,6 +108,8 @@
     notifications_seen(S, u) { (S.notifs || []).forEach((n) => { if (n.recipient === u.id && !n.read_at) n.emailed_at = n.emailed_at || new Date().toISOString(); }); },
     email_unsubscribe(S, u, a) { const ok = (S.unsubTokens || {})[a.p_uid] === a.p_token; if (ok) { S.prefs = S.prefs || {}; S.prefs[a.p_uid] = { email_on: false }; } return ok; },
     notify_prefs_get(S, u) { return { email_on: ((S.prefs || {})[u.id] || { email_on: true }).email_on }; },
+    push_subscribe(S, u, a) { S.push = (S.push || []).filter((x) => x.endpoint !== a.p_endpoint); S.push.push({ uid: u.id, endpoint: a.p_endpoint, p256dh: a.p_p256dh, auth: a.p_auth }); },
+    push_unsubscribe(S, u, a) { S.push = (S.push || []).filter((x) => !(x.endpoint === a.p_endpoint && x.uid === u.id)); },
     notify_prefs_set(S, u, a) { S.prefs = S.prefs || {}; S.prefs[u.id] = { email_on: !!a.p_email_on }; },
     partner_info(S, u) {
       const p = S.t.partners.find((x) => x.uid === u.id); if (!p) return null;

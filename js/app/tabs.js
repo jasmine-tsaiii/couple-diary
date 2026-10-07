@@ -163,7 +163,7 @@ async function viewMe() {
       navRow({ href: '#/settings/us', icon: ICON.heart, title: '我們', sub: who || '名字、紀念日、吉祥物' }),
     ])}
     ${navGroup('設定', [
-      cloud && !CloudDB.isAnonymous() ? navRow({ href: '#/settings/notify', icon: ICON.bell, title: '通知', sub: '小鈴鐺、Email 通知' }) : '',
+      cloud ? navRow({ href: '#/settings/notify', icon: ICON.bell, title: '通知', sub: CloudDB.isAnonymous() ? '小鈴鐺、手機通知' : '小鈴鐺、手機通知、Email' }) : '',
       navRow({ href: '#/settings/records', icon: ICON.book, title: '整理紀錄', sub: '分類、標籤、最近刪除、重新編號' }),
       navRow({ href: '#/settings/backup', icon: TILE_ICON.backup, title: '備份與匯出', sub: '匯出備份、閱讀版' }),
       navRow({ href: '#/settings/account', icon: ICON.lock, title: '帳號與安全', sub: '登入方式、App 解鎖碼、結束這段關係' }),

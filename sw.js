@@ -79,3 +79,29 @@ self.addEventListener('fetch', (ev) => {
     }
   })());
 });
+
+// 手機推播：另一半有新動態時跳通知（內容由 supabase/functions/send-push 決定）
+self.addEventListener('push', (ev) => {
+  let d = {};
+  try { d = ev.data ? ev.data.json() : {}; } catch (e) { d = { body: ev.data ? ev.data.text() : '' }; }
+  ev.waitUntil(self.registration.showNotification(d.title || '啾啾日記', {
+    body: d.body || '另一半有新的動態',
+    icon: 'icons/icon-192.png',
+    badge: 'icons/icon-192.png',
+    tag: d.tag || 'jiujiu',
+    renotify: true,
+    data: { url: d.url || './' },
+  }));
+});
+
+// 點通知：App 已經開著就切過去那一頁，沒開就打開
+self.addEventListener('notificationclick', (ev) => {
+  ev.notification.close();
+  const url = new URL((ev.notification.data && ev.notification.data.url) || './', self.location.href).href;
+  ev.waitUntil((async () => {
+    const wins = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
+    const w = wins.find((c) => new URL(c.url).origin === self.location.origin);
+    if (w) { await w.focus(); try { await w.navigate(url); } catch (e) { w.postMessage({ type: 'go', url }); } return; }
+    await self.clients.openWindow(url);
+  })());
+});
