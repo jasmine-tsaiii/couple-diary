@@ -85,7 +85,7 @@ self.addEventListener('push', (ev) => {
   let d = {};
   try { d = ev.data ? ev.data.json() : {}; } catch (e) { d = { body: ev.data ? ev.data.text() : '' }; }
   ev.waitUntil(self.registration.showNotification(d.title || '啾啾日記', {
-    body: d.body || '另一半有新的動態',
+    body: typeof d.body === 'string' ? d.body : '另一半有新的動態',
     icon: 'icons/icon-192.png',
     badge: 'icons/icon-192.png',
     tag: d.tag || 'jiujiu',

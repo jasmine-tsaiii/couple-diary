@@ -14,7 +14,6 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.49.1';
 // ===== 推播的文字 BEGIN TEMPLATE =====
 const PUSH_KINDS = ['new_happy', 'new_task_record', 'task_submitted', 'task_approved', 'partner_request', 'partner_joined',
   'quiz_partner_done', 'daily_partner_done', 'daily_revealed', 'note_new'];
-const TITLE = '啾啾日記';
 
 type Row = { id: number; recipient: string; space_owner: string; actor: string | null; actor_name: string; kind: string; created_at: string };
 
@@ -34,11 +33,10 @@ function line(r: Row) {
     default: return `${who}有新的動態`;
   }
 }
-// 一次有好幾則：第一則 +「還有 N 則新消息」
-function body(rows: Row[]) {
-  const first = line(rows[rows.length - 1]);
-  return rows.length === 1 ? first : `${first}，還有 ${rows.length - 1} 則新消息`;
-}
+// iPhone 會在標題下面自己加「from 啾啾日記」，所以標題直接寫發生什麼事（最新的那一則）
+function title(rows: Row[]) { return line(rows[rows.length - 1]); }
+// 一次有好幾則：內文寫「還有 N 則新消息」；只有一則就不放內文
+function body(rows: Row[]) { return rows.length === 1 ? '' : `還有 ${rows.length - 1} 則新消息`; }
 // 點通知打開哪一頁
 function target(rows: Row[]) {
   if (rows.length > 1) return '#/notifications';
@@ -146,7 +144,7 @@ async function run() {
   for (const r of ((data || []) as Row[]).sort((a, b) => a.created_at.localeCompare(b.created_at))) byUser.set(r.recipient, [...(byUser.get(r.recipient) || []), r]);
   let sent = 0; const failed: string[] = [];
   for (const [uid, rows] of byUser) {
-    const payload = JSON.stringify({ title: TITLE, body: body(rows), url: SITE + target(rows), tag: 'jiujiu' });
+    const payload = JSON.stringify({ title: title(rows), body: body(rows), url: SITE + target(rows), tag: 'jiujiu' });
     for (const s of subsOf.get(uid) || []) {
       try {
         const r = await sendPush(s, payload, { pub, priv, subject: 'mailto:hello@jas-soul.com' });
