@@ -50,6 +50,32 @@ const fakePush = () => {
   await p.click('#notify-push'); await p.waitForTimeout(800);
   log('partner push on', await pushes() === 1);
   await ctx.close();
+  // 打開 App 主動問（還沒決定過通知權限）：按「開啟通知」就存好；按過就不再問
+  const and = await b.newContext({ viewport: { width: 390, height: 844 } });
+  await route(and); await and.addInitScript(init); await and.addInitScript(fakePush);
+  // 無頭瀏覽器的通知權限一開始是 denied；真的手機是 default（還沒問過）
+  await and.addInitScript(() => { let perm = localStorage.getItem('fakePerm') || 'default'; Object.defineProperty(Notification, 'permission', { get: () => perm }); Notification.requestPermission = async () => { perm = 'granted'; localStorage.setItem('fakePerm', perm); return perm; }; });
+  const r = await and.newPage(); r.on('pageerror', (e) => errs.push(e.message));
+  await r.goto(U + '#/signup'); await r.waitForTimeout(600);
+  await r.fill('#email', 'and@x.com'); await r.fill('#password', 'secret123'); await r.click('#login-btn'); await r.waitForTimeout(1200);
+  await r.click('#role-owner'); await r.waitForTimeout(600);
+  await r.goto(U + '#/'); await r.reload(); await r.waitForTimeout(2500);
+  log('no ask before partner joins', !(await r.isVisible('.push-ask')));
+  const ras = async (uid, hash = '#/') => { await r.evaluate((u) => { if (u) sessionStorage.setItem('mockUid', u); else sessionStorage.removeItem('mockUid'); }, uid); await r.goto(U + hash); await r.reload(); await r.waitForTimeout(1000); };
+  const ow = await r.evaluate(() => sessionStorage.getItem('mockUid'));
+  await ras(ow, '#/settings'); await r.fill('#s-name', 'Jasmine'); await r.fill('#s-pass', '123456'); await r.click('#s-create'); await r.waitForTimeout(800);
+  const code2 = (await r.textContent('.share-code')).trim();
+  await ras(null); await r.goto(U + '#/join/' + code2); await r.waitForTimeout(700);
+  await r.fill('#j-pass', '123456'); await r.fill('#j-name', '小明'); await r.click('#join-btn'); await r.waitForTimeout(1500);
+  await ras(ow); await r.click('[data-home-approve]'); await r.waitForTimeout(800);
+  await r.reload(); await r.waitForTimeout(2500);
+  log('asks on open', await r.isVisible('.push-ask') && (await r.textContent('.push-ask')).includes('晚上 11 點'));
+  await r.screenshot({ path: (process.env.SHOT_DIR || '.') + '/push-ask.png' });
+  await r.click('#push-ask-ok'); await r.waitForTimeout(800);
+  log('ask turns push on', !(await r.isVisible('.push-ask')) && await r.evaluate(() => (JSON.parse(localStorage.mockServer).push || []).length) >= 1);
+  await r.reload(); await r.waitForTimeout(2500);
+  log('not asked again', !(await r.isVisible('.push-ask')));
+  await and.close();
   // iPhone Safari（沒加到主畫面）
   const ios = await b.newContext({ viewport: { width: 390, height: 844 }, userAgent: 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Mobile/15E148 Safari/604.1', hasTouch: true });
   await route(ios); await ios.addInitScript(init);
@@ -58,6 +84,7 @@ const fakePush = () => {
   await q.fill('#email', 'ios@x.com'); await q.fill('#password', 'secret123'); await q.click('#login-btn'); await q.waitForTimeout(1200);
   await q.click('#role-owner'); await q.waitForTimeout(600);
   await q.goto(U + '#/settings/notify'); await q.reload(); await q.waitForTimeout(1000);
+  log('iphone not asked on open', !(await q.isVisible('.push-ask')));
   log('iphone asks to add to home', (await q.textContent('#notify-push')).trim() === '怎麼加' && (await q.textContent('#push-sub')).includes('主畫面'));
   await q.click('#notify-push'); await q.waitForTimeout(500);
   log('a2hs guide opens', await q.isVisible('.a2hs-dlg'));

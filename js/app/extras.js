@@ -341,6 +341,7 @@ function whenNoDialog(fn) {
   }, 500);
 }
 function maybeShowA2hs() {
+  maybeAskPush();
   if (maybeWelcomeHome()) return;
   let partnerJoin = false;
   try { partnerJoin = isPartner() && !!localStorage.getItem('a2hsPartnerJoin'); } catch (e) { partnerJoin = false; }
@@ -1079,6 +1080,49 @@ async function pushCurrent() {
   const reg = await navigator.serviceWorker.getRegistration();
   return reg ? reg.pushManager.getSubscription() : null;
 }
+// 開啟這支手機的推播（一定要在按鈕的 click 裡呼叫：iPhone 只在使用者按了之後才肯問權限）
+async function enablePush(where) {
+  const perm = await Notification.requestPermission();
+  if (perm !== 'granted') { toast(perm === 'denied' ? '通知被擋掉了，要到手機的「設定 → 通知」打開' : '沒有開啟通知'); track('push_denied', { perm, where }); return false; }
+  const reg = await navigator.serviceWorker.ready;
+  const s = (await reg.pushManager.getSubscription()) || await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: vapidKey() });
+  await CloudDB.pushSubscribe(s);
+  toast('開好了，另一半有新動態手機會跳通知'); track('push_on', { where });
+  return true;
+}
+// 打開 App 時主動問一次要不要開手機通知（用啾啾自己的話，按「開啟」才跳手機的權限視窗）
+// 雲端帳號、已經有另一半、這支手機收得到、還沒決定過才問；按「之後再說」7 天後再問，最多問 3 次
+function maybeAskPush() {
+  if (!usingCloud() || pushSupport() !== 'ok' || Notification.permission !== 'default') return false;
+  let st;
+  try { st = JSON.parse(localStorage.getItem('pushAsk') || '{"n":0,"at":0}'); } catch (e) { return false; }
+  if (st.n >= 3 || Date.now() - st.at < 7 * 86400000) return false;
+  whenNoDialog(async () => {
+    if (location.hash.replace(/^#\/?/, '') || !(await hasPartnerNow()) || await pushCurrent().catch(() => null)) return;
+    if (document.querySelector('.celebrate, .pin-lock')) return;
+    try { localStorage.setItem('pushAsk', JSON.stringify({ n: st.n + 1, at: Date.now() })); } catch (e) { /* 略過 */ }
+    track('push_ask', { n: st.n + 1 });
+    const who = isPartner() ? esc(ownerName()) : '另一半';
+    const box = document.createElement('div');
+    box.className = 'celebrate push-ask';
+    box.innerHTML = `<div class="celebrate-box" role="dialog" aria-modal="true" aria-label="開啟手機通知">
+      ${mascotHtml('happy', 120)}
+      <h2 style="font-size:20px">${who}寫了新東西，要第一時間知道嗎？</h2>
+      <div class="muted">開啟後，${who}新增美好時刻、留紙條給你時，手機會跳通知。晚上 11 點到早上 8 點不吵你。</div>
+      <button class="btn" id="push-ask-ok">開啟通知</button>
+      <button class="btn secondary" id="push-ask-later">之後再說</button>
+    </div>`;
+    document.body.appendChild(box);
+    const close = () => box.remove();
+    box.querySelector('#push-ask-later').addEventListener('click', () => { track('push_ask_later'); close(); });
+    box.querySelector('#push-ask-ok').addEventListener('click', async (ev) => {
+      ev.target.disabled = true;
+      try { await enablePush('ask'); } catch (e) { toast(e && e.message ? e.message : '開不起來，請稍後再試'); }
+      close();
+    });
+  });
+  return true;
+}
 async function bindPushRow() {
   const b = document.getElementById('notify-push');
   if (!b) return;
@@ -1106,12 +1150,7 @@ async function bindPushRow() {
     b.disabled = true;
     try {
       if (next) {
-        const perm = await Notification.requestPermission();
-        if (perm !== 'granted') { toast(perm === 'denied' ? '通知被擋掉了，要到手機的「設定 → 通知」打開' : '沒有開啟通知'); track('push_denied', { perm }); b.disabled = false; return; }
-        const reg = await navigator.serviceWorker.ready;
-        const s = (await reg.pushManager.getSubscription()) || await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: vapidKey() });
-        await CloudDB.pushSubscribe(s);
-        show(true); toast('開好了，另一半有新動態手機會跳通知'); track('push_on');
+        if (await enablePush('settings')) show(true);
       } else {
         const s = await pushCurrent();
         if (s) { await CloudDB.pushUnsubscribe(s.endpoint).catch(() => {}); await s.unsubscribe().catch(() => {}); }
