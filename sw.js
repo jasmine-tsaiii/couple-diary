@@ -27,6 +27,7 @@ const PRECACHE = [
   'js/app/quiz.js',
   'js/app/daily.js',
   'js/app/notes.js',
+  'js/app/topics.js',
   'js/app/plus.js',
   'js/app/tabs.js',
   'js/app/main.js',

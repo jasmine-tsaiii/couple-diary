@@ -2761,3 +2761,77 @@ end $$;
 drop trigger if exists notifications_push_kick on public.notifications;
 create trigger notifications_push_kick after insert on public.notifications
   for each row execute function public.notifications_push_kick();
+
+-- ============================================================
+-- 主題題庫（2026-10-08）：金錢、價值觀、未來、家人、回憶，每個主題先免費開前 5 題（Jasmine 10/8 決定）。
+-- 跟每天一題一樣：兩人各自寫，兩個人都寫了才看得到對方的答案，揭曉後不能改。題目在前端（js/app/topics.js）。
+-- 用每天一題的「這一對」（daily_pairs）：換了另一半就是新的紀錄。表不開放直接讀寫，全部走下面的函式。
+-- q_id：主題代號 + 兩位數題號（money01），id 固定不能改。第 6 題以後還沒開放，伺服器擋掉。
+-- ============================================================
+create table if not exists public.topic_answers (
+  id         bigserial primary key,
+  pair_key   text not null references public.daily_pairs (pair_key) on delete cascade,
+  q_id       text not null check (q_id ~ '^[a-z]{3,8}[0-9]{2}$'),
+  user_id    uuid not null,
+  body       text not null check (char_length(body) between 1 and 300),
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  unique (pair_key, q_id, user_id)
+);
+alter table public.topic_answers enable row level security;
+revoke all on public.topic_answers from anon, authenticated;
+
+-- 讀狀態：這一對每一題的進度；兩個人都寫了才給對方的答案
+create or replace function public.topic_state() returns jsonb
+language plpgsql security definer set search_path = public as $$
+declare
+  p public.daily_pairs := public.daily_pair();
+  v_space uuid := public.quiz_space();
+  v_members uuid[];
+  v_other uuid;
+begin
+  if v_space is null or auth.uid() is null then return jsonb_build_object('ok', false); end if;
+  v_members := public.quiz_members(v_space);
+  if p.pair_key is null then
+    return jsonb_build_object('ok', true, 'me', auth.uid(), 'members', to_jsonb(v_members),
+      'names', (select jsonb_object_agg(m, public.space_member_name(v_space, m)) from unnest(v_members) m));
+  end if;
+  v_other := (select m from unnest(p.members) m where m <> auth.uid() limit 1);
+  return jsonb_build_object('ok', true, 'me', auth.uid(), 'members', to_jsonb(p.members), 'pair', p.pair_key,
+    'names', (select jsonb_object_agg(m, public.space_member_name(p.space, m)) from unnest(p.members) m),
+    'answers', (select coalesce(jsonb_object_agg(q.q_id, jsonb_build_object(
+        'mine', mi.body,
+        'other_done', th.id is not null,
+        'other', case when mi.id is not null and th.id is not null then th.body end)), '{}'::jsonb)
+      from (select distinct q_id from public.topic_answers where pair_key = p.pair_key) q
+      left join public.topic_answers mi on mi.pair_key = p.pair_key and mi.q_id = q.q_id and mi.user_id = auth.uid()
+      left join public.topic_answers th on th.pair_key = p.pair_key and th.q_id = q.q_id and th.user_id = v_other));
+end $$;
+revoke all on function public.topic_state() from public, anon;
+grant execute on function public.topic_state() to authenticated;
+
+-- 寫／改自己的答案；兩人都寫了就不能改。只開放每個主題前 5 題。
+create or replace function public.topic_save(p_q_id text, p_body text) returns jsonb
+language plpgsql security definer set search_path = public as $$
+declare
+  p public.daily_pairs := public.daily_pair();
+  v_other uuid;
+  v_body text := btrim(coalesce(p_body, ''));
+  v_mine public.topic_answers;
+  v_theirs public.topic_answers;
+begin
+  if p.pair_key is null then raise exception '另一半加入之後就能一起寫'; end if;
+  if p_q_id is null or p_q_id !~ '^[a-z]{3,8}[0-9]{2}$' then raise exception '找不到這一題'; end if;
+  if right(p_q_id, 2)::int not between 1 and 5 then raise exception '這一題還沒開放'; end if;
+  if char_length(v_body) not between 1 and 300 then raise exception '答案要 1 到 300 個字'; end if;
+  v_other := (select m from unnest(p.members) m where m <> auth.uid() limit 1);
+  perform pg_advisory_xact_lock(hashtext('topic:' || p.pair_key || ':' || p_q_id));
+  select * into v_mine from public.topic_answers where pair_key = p.pair_key and q_id = p_q_id and user_id = auth.uid();
+  select * into v_theirs from public.topic_answers where pair_key = p.pair_key and q_id = p_q_id and user_id = v_other;
+  if v_mine.id is not null and v_theirs.id is not null then raise exception '已經揭曉了，不能改'; end if;
+  insert into public.topic_answers (pair_key, q_id, user_id, body) values (p.pair_key, p_q_id, auth.uid(), v_body)
+    on conflict (pair_key, q_id, user_id) do update set body = excluded.body, updated_at = now();
+  return jsonb_build_object('revealed', v_theirs.id is not null);
+end $$;
+revoke all on function public.topic_save(text, text) from public, anon;
+grant execute on function public.topic_save(text, text) to authenticated;

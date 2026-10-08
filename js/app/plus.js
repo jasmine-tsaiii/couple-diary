@@ -4,7 +4,8 @@
 // - paywall_view（看過付費說明）也是每人每功能只送一次
 // - 時光膠囊：免費同時 1 個還沒打開的；打開日期前，對方只拿得到「哪天打開」，內容在資料庫擋
 // - 主題背景：預設＋手帳紙免費，夜空、櫻花、聖誕可以預覽，按套用出現 Plus 說明
-// - 假門：任務範本（任務包）、臥底任務卡包、主題題庫（每日一問）
+// - 假門：任務範本（任務包）、臥底任務卡包
+// - 主題題庫（2026-10-08 起）每個主題免費開 5 題，在 js/app/topics.js；後面上鎖的題目還是用 daily_question 記「我有興趣」
 
 // ---------- 「我有興趣」：每人每功能一次 ----------
 const PLUS_FEATURES = ['photos', 'capsule', 'theme', 'theme_single', 'daily_question', 'task_pack', 'mission_pack', 'recap_premium', 'nest'];
@@ -521,56 +522,6 @@ function missionPackSheet() {
   });
 }
 
-// ---------- 假門：主題題庫（每日一問的付費題庫） ----------
-const QPACK = ['如果突然多了 10 萬元，你會怎麼用？', '你覺得兩個人的錢要分開，還是放一起？', '小時候家裡怎麼談錢？對現在的你有什麼影響？'];
-function questionPackSheet() {
-  if (document.querySelector('.qpack-dlg')) return;
-  notePaywallView('daily_question');
-  const box = document.createElement('div');
-  box.className = 'celebrate qpack-dlg';
-  box.innerHTML = `<div class="celebrate-box tpl-box" role="dialog" aria-modal="true" aria-label="主題題庫">
-    <button class="card-x" id="qp-x" aria-label="關閉">${ICON.x}</button>
-    <div class="plus-tag">啾啾 Plus・即將推出</div>
-    <h2 style="font-size:20px">主題題庫</h2>
-    <div class="small muted">每天一題之外，挑一個主題深聊：金錢觀、價值觀、未來規劃、家庭、親密關係…每包 30 題。這是「金錢觀」的 3 題範例，選一題試答看看。</div>
-    <div class="tpl-list">${QPACK.map((q, i) => `<button class="tpl-item" data-q="${i}"><span>${esc(q)}</span></button>`).join('')}</div>
-    <div id="qp-try"></div>
-    <button class="btn" id="qp-yes">我有興趣，推出時通知我</button>
-    <button class="btn secondary small" id="qp-no">先不用</button>
-  </div>`;
-  document.body.appendChild(box);
-  const close = () => box.remove();
-  const yes = box.querySelector('#qp-yes');
-  const markDone = () => { yes.disabled = true; yes.textContent = DONE_TEXT; };
-  hasInterest('daily_question').then((d) => { if (d) markDone(); });
-  const want = async () => {
-    if (yes.disabled) { toast('已經登記過了，推出時通知你'); return; }
-    yes.disabled = true;
-    const fresh = await registerInterest('daily_question');
-    markDone();
-    toast(fresh ? '謝謝！推出時會通知你' : '已經登記過了，推出時通知你');
-  };
-  yes.addEventListener('click', want);
-  box.querySelector('#qp-no').addEventListener('click', close);
-  box.querySelector('#qp-x').addEventListener('click', close);
-  box.addEventListener('click', (ev) => { if (ev.target === box) close(); });
-  box.querySelectorAll('[data-q]').forEach((b) => b.addEventListener('click', () => {
-    box.querySelectorAll('[data-q]').forEach((x) => x.classList.toggle('on', x === b));
-    const q = QPACK[Number(b.dataset.q)];
-    const t = box.querySelector('#qp-try');
-    setTimeout(() => t.scrollIntoView({ block: 'nearest', behavior: 'smooth' }), 0);
-    t.innerHTML = `<div class="pack-preview"><div class="bold">${esc(q)}</div>
-      <textarea class="textarea" id="qp-ans" rows="3" maxlength="300" placeholder="寫下你的答案（試玩，不會存起來）"></textarea>
-      <button class="btn small" id="qp-send">送出</button></div>`;
-    box.querySelector('#qp-send').addEventListener('click', () => {
-      if (!box.querySelector('#qp-ans').value.trim()) { toast('寫一點再送出'); return; }
-      t.innerHTML = `<div class="pack-preview" style="text-align:center"><div style="font-size:30px">🔒</div>
-        <div class="bold">兩個人都答了，才看得到對方的答案</div><div class="small muted">主題題庫即將推出。這題是試玩，答案沒有存起來。</div>
-        </div>`;
-      yes.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
-    });
-  }));
-}
 // ---------- 假門：啾啾的窩（兩個人一起做事掉羽毛，布置窩；免費功能，先看有沒有人想要） ----------
 const NEST_LEVELS = [['🪵', '樹枝'], ['🪺', '小窩'], ['🛖', '有屋頂'], ['🌳', '樹屋'], ['🏡', '森林小屋']];
 const NEST_FEATHERS = [['兩個人都答了每天一題', 3], ['完成對方出的任務', 3], ['烏雲按下「放晴」', 2], ['時光膠囊打開', 5]];
@@ -592,7 +543,6 @@ function previewRows() {
   return [
     navRow({ href: '#/together', id: 'row-nest', icon: '<span class="nav-emoji" aria-hidden="true">🪺</span>', title: '啾啾的窩', sub: '即將推出・一起做事掉羽毛，布置啾啾的家' }),
     navRow({ href: '#/together', id: 'row-mission', icon: '<span class="nav-emoji" aria-hidden="true">🕵️</span>', title: '臥底任務卡包', sub: '即將推出・偷偷完成任務，看對方會不會發現' }),
-    navRow({ href: '#/together', id: 'row-qpack', icon: '<span class="nav-emoji" aria-hidden="true">💬</span>', title: '主題題庫', sub: '即將推出・金錢觀、價值觀、未來…一起深聊' }),
   ];
 }
 function bindPreviewRows() {
@@ -600,6 +550,4 @@ function bindPreviewRows() {
   if (n) n.addEventListener('click', (ev) => { ev.preventDefault(); nestSheet(); });
   const m = document.getElementById('row-mission');
   if (m) m.addEventListener('click', (ev) => { ev.preventDefault(); missionPackSheet(); });
-  const q = document.getElementById('row-qpack');
-  if (q) q.addEventListener('click', (ev) => { ev.preventDefault(); questionPackSheet(); });
 }

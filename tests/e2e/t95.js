@@ -33,7 +33,7 @@ const U = (process.env.U || 'http://localhost:8770/');
   // 主人：一起分頁有時光膠囊，寫一個
   await as(oid, '#/together');
   log('together has capsule row', (await p.textContent('#app')).includes('時光膠囊'));
-  log('together has preview rows', await p.locator('#row-mission').count() === 1 && await p.locator('#row-qpack').count() === 1);
+  log('together has preview rows', await p.locator('#row-mission').count() === 1 && await p.locator('#row-topics').count() === 1);
   await p.screenshot({ path: SHOT('together.png'), fullPage: true });
   await p.click('a[href="#/capsules"]'); await p.waitForTimeout(800);
   await p.click('#cap-new'); await p.waitForTimeout(600);

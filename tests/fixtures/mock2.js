@@ -159,6 +159,25 @@
       const days = [...new Set(A.map((x) => x.day))].filter((day) => A.filter((x) => x.day === day).length === 2).sort().reverse().slice(0, a.p_limit || 20);
       return days.map((day) => ({ day, q_id: A.find((x) => x.day === day).q_id, answers: Object.fromEntries(A.filter((x) => x.day === day).map((x) => [x.user_id, x.body])) }));
     },
+    // 主題題庫：簡化版的伺服器邏輯（共用每天一題的「這一對」；每個主題只開前 5 題）
+    topic_state(S, u) {
+      const st = this.daily_state(S, u); if (!st.ok || !st.pair) return st.ok ? { ok: true, me: st.me, members: st.members, names: st.names } : st;
+      const d = this._daily(S, u); const A = (S.topics || []).filter((a) => a.pair === d.pair);
+      const answers = {};
+      for (const q of new Set(A.map((a) => a.q_id))) { const mi = A.find((a) => a.q_id === q && a.user_id === u.id); const th = A.find((a) => a.q_id === q && a.user_id === d.other); answers[q] = { mine: mi ? mi.body : null, other_done: !!th, other: mi && th ? th.body : null }; }
+      return { ok: true, me: u.id, members: d.members, names: st.names, pair: d.pair, answers };
+    },
+    topic_save(S, u, a) {
+      const d = this._daily(S, u); if (!d || !d.pair) throw new Error('另一半加入之後就能一起寫');
+      if (!/^[a-z]{3,8}[0-9]{2}$/.test(a.p_q_id || '')) throw new Error('找不到這一題');
+      const n = Number(a.p_q_id.slice(-2)); if (n < 1 || n > 5) throw new Error('這一題還沒開放');
+      const body = String(a.p_body || '').trim(); if (!body || body.length > 300) throw new Error('答案要 1 到 300 個字');
+      S.topics = S.topics || []; const A = S.topics;
+      const mine = A.find((x) => x.pair === d.pair && x.q_id === a.p_q_id && x.user_id === u.id); const th = A.find((x) => x.pair === d.pair && x.q_id === a.p_q_id && x.user_id === d.other);
+      if (mine && th) throw new Error('已經揭曉了，不能改');
+      if (mine) mine.body = body; else A.push({ pair: d.pair, q_id: a.p_q_id, user_id: u.id, body });
+      return { revealed: !!th };
+    },
     // 秘密留言板：簡化版的伺服器邏輯（共用每天一題的「這一對」）
     note_state(S, u) {
       const d = this._daily(S, u); if (!d) return { ok: false };

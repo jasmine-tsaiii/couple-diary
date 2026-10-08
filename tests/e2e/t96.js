@@ -39,19 +39,15 @@ const U = (process.env.U || 'http://localhost:8770/');
   await p.click('#plus-no'); await p.waitForTimeout(300);
   log('guest interest local', await p.evaluate(() => !!localStorage.getItem('interest:guest:mission_pack')));
 
-  // 主題題庫：試答一題
-  await p.click('#row-qpack'); await p.waitForTimeout(500);
-  await p.click('[data-q="0"]'); await p.waitForTimeout(300);
-  await p.fill('#qp-ans', '存起來一半，一半去旅行');
-  await p.click('#qp-send'); await p.waitForTimeout(300);
-  log('qpack locked message', (await p.textContent('.qpack-dlg')).includes('兩個人都答了，才看得到對方的答案'));
+  // 主題題庫：試用時可以看題目，後面上鎖的題目可以登記「我有興趣」
+  await p.click('#row-topics'); await p.waitForTimeout(600);
+  log('topics guest browse', (await p.locator('.topic-chips .chip').count()) === 5 && (await p.textContent('#app')).includes('你是存錢派還是花錢派') && await p.locator('[data-send]').count() === 0);
   await p.screenshot({ path: SHOT('question-pack.png') });
-  await p.click('#qp-yes'); await p.waitForTimeout(400);
-  log('qpack registered', (await p.textContent('#qp-yes')).includes('已登記') && await p.evaluate(() => !!localStorage.getItem('interest:guest:daily_question')));
-  await p.click('#qp-no'); await p.waitForTimeout(300);
-  await p.click('#row-qpack'); await p.waitForTimeout(500);
-  log('qpack remembers', await p.locator('#qp-yes').isDisabled());
-  await p.click('#qp-no'); await p.waitForTimeout(300);
+  await p.click('#tp-yes'); await p.waitForTimeout(400);
+  log('qpack registered', (await p.textContent('#tp-yes')).includes('已登記') && await p.evaluate(() => !!localStorage.getItem('interest:guest:daily_question')));
+  await p.click('[data-topic="future"]'); await p.waitForTimeout(500);
+  log('qpack remembers', await p.locator('#tp-yes').isDisabled() && (await p.textContent('#app')).includes('五年後的今天'));
+  await p.goto(U + '#/together'); await p.waitForTimeout(600);
 
   // 時光膠囊（存在這支手機）
   await p.goto(U + '#/capsules'); await p.waitForTimeout(800);

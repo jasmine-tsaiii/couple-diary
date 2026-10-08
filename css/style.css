@@ -886,7 +886,6 @@ body { background: var(--paper, none), var(--bg); background-attachment: fixed; 
 .mission-list { display: flex; flex-direction: column; gap: 6px; }
 .mission-box .mission-card { display: flex; gap: 8px; align-items: flex-start; font-size: 14px; line-height: 1.5; padding: 10px 12px; border-radius: 12px; background: var(--card); border: 1px solid var(--line); }
 .mission-no { flex: none; width: 20px; height: 20px; border-radius: 50%; background: var(--lock); color: var(--card); font-size: 12px; font-weight: 700; display: grid; place-items: center; margin-top: 2px; }
-.qpack-dlg .tpl-box .btn { width: 100%; }
 /* 加到主畫面的教學比較長：小手機上可以捲動 */
 .a2hs-dlg .celebrate-box { max-height: 100%; overflow-y: auto; }
 
@@ -918,3 +917,7 @@ body { background: var(--paper, none), var(--bg); background-attachment: fixed; 
 .note-meta { display: flex; justify-content: space-between; align-items: center; gap: 4px; min-height: 30px; }
 .note-pop-box { width: 100%; max-width: 400px; display: flex; flex-direction: column; gap: 12px; }
 .note-pop-hint { color: #fff; text-align: center; font-size: 15px; }
+/* 主題題庫 */
+.topic-chips .chip { flex: none; text-decoration: none; display: inline-flex; align-items: center; gap: 4px; }
+.topic-dot { display: inline-block; min-width: 18px; padding: 0 5px; border-radius: 9px; background: var(--accent); color: #fff; font-size: 12px; line-height: 18px; text-align: center; }
+.chip.on .topic-dot { background: #fff; color: var(--accent); }

@@ -301,6 +301,13 @@ const CloudDB = CLOUD_ENABLED ? (() => {
     async noteSeen(id) { check(await client.rpc('note_seen', { p_id: id })); },
     async noteHistory(before, limit) { return check(await client.rpc('note_history', { p_before: before, p_limit: limit })) || []; },
     async noteDelete(id) { check(await client.rpc('note_delete', { p_id: id })); },
+    // ---- 主題題庫：跟每天一題一樣，全部透過函式 ----
+    async topicState() {
+      const r = await client.rpc('topic_state');
+      if (r.error && !netDown(r.error) && /topic_state|function|schema cache/i.test(r.error.message || '')) return { ok: false, missing: true };
+      return check(r);
+    },
+    async topicSave(qId, body) { return check(await client.rpc('topic_save', { p_q_id: qId, p_body: body })); },
     async dailySave(day, qId, body) { return check(await client.rpc('daily_save', { p_day: day, p_q_id: qId, p_body: body })); },
     async dailyHistory(before, limit) { return check(await client.rpc('daily_history', { p_before: before, p_limit: limit })) || []; },
     async quizStart(questions) { return check(await client.rpc('quiz_start', { p_questions: questions })); },
