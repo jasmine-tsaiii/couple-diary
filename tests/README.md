@@ -25,3 +25,6 @@ KEEP=1 node run.js t64            # 保留截圖（路徑印在 out/t64.txt 附�
 - 改到邀請、加入、選身分、另一半相關的程式，一定要跑 `node run.js t97 t98`。
 - t98 是「配對情境表」：沒帳號、試用中、登出過、新帳號、已有日記、點到自己的連結、等同意中、已是另一半、被移除，每一種打開邀請連結都要有清楚的下一步。新增一種身分時，在這張表加一格。
 - 任何把人導走的地方（go('#/') 之類）都要說明原因，不要默默跳走。
+
+## 手機推播
+- `node --experimental-strip-types push-crypto.mjs`：測 send-push 自己寫的推播加密和 VAPID 簽章（要先 `npm install --no-save http_ece`）。
