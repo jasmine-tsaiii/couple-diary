@@ -2766,7 +2766,7 @@ create trigger notifications_push_kick after insert on public.notifications
 -- 主題題庫（2026-10-08）：金錢、價值觀、未來、家人、回憶，每個主題先免費開前 5 題（Jasmine 10/8 決定）。
 -- 跟每天一題一樣：兩人各自寫，兩個人都寫了才看得到對方的答案，揭曉後不能改。題目在前端（js/app/topics.js）。
 -- 用每天一題的「這一對」（daily_pairs）：換了另一半就是新的紀錄。表不開放直接讀寫，全部走下面的函式。
--- q_id：主題代號 + 兩位數題號（money01），id 固定不能改。第 6 題以後還沒開放，伺服器擋掉。
+-- q_id：主題代號 + 兩位數題號（money01），id 固定不能改。第 6 題以後還沒開放，伺服器擋掉；一次一題，前一題自己寫過才能寫下一題。
 -- ============================================================
 create table if not exists public.topic_answers (
   id         bigserial primary key,
@@ -2823,6 +2823,9 @@ begin
   if p.pair_key is null then raise exception '另一半加入之後就能一起寫'; end if;
   if p_q_id is null or p_q_id !~ '^[a-z]{3,8}[0-9]{2}$' then raise exception '找不到這一題'; end if;
   if right(p_q_id, 2)::int not between 1 and 5 then raise exception '這一題還沒開放'; end if;
+  -- 一次一題：前一題自己要先寫過
+  if right(p_q_id, 2)::int > 1 and not exists (select 1 from public.topic_answers where pair_key = p.pair_key and user_id = auth.uid()
+      and q_id = left(p_q_id, -2) || lpad((right(p_q_id, 2)::int - 1)::text, 2, '0')) then raise exception '先寫完上一題'; end if;
   if char_length(v_body) not between 1 and 300 then raise exception '答案要 1 到 300 個字'; end if;
   v_other := (select m from unnest(p.members) m where m <> auth.uid() limit 1);
   perform pg_advisory_xact_lock(hashtext('topic:' || p.pair_key || ':' || p_q_id));

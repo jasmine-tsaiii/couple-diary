@@ -1,6 +1,7 @@
 // 啾啾日記 js/app/topics.js：主題題庫（2026-10-08）
 // 挑一個主題深聊。每個主題先免費開前 5 題（Jasmine 10/8 決定），第 6 題以後上鎖，留「我有興趣」收集意願。
 // 跟每天一題一樣：兩人各自寫，兩個人都寫了才一起揭曉，揭曉前看不到對方寫什麼，揭曉後不能改。
+// 一次只出一題：自己寫完這一題，才出現下一題（Jasmine 10/8）。伺服器也擋跳題。
 // 題目 id（money01…）固定不能改，只能往後加；伺服器存 q_id。題目來自行銷題庫（marketing/排程/情侶題庫.md）。
 
 const TOPIC_FREE = 5;
@@ -108,6 +109,11 @@ async function viewTopics(arg) {
       <button class="btn small" data-send="${id}" style="align-self:flex-start">${a.mine ? '更新答案' : '送出'}</button>
     </div>`;
   };
+  // 自己寫到第幾題：已寫的都顯示，再加下一題；還沒配對時只給看第 1 題
+  const firstOpen = paired ? topic.qs.findIndex((q, i) => !(answers[topicQId(topic, i)] || {}).mine) : 0;
+  const shown = firstOpen === -1 ? topic.qs.length : firstOpen + 1;
+  const left = topic.qs.length - shown;
+  const nextHint = left ? `<div class="card topic-next" style="text-align:center"><div class="small muted">${paired ? '寫完這一題，就會出現下一題' : '一次一題，寫完才會出現下一題'}・還有 ${left} 題</div></div>` : '';
   const progress = paired ? `<div class="small muted" style="text-align:center">這個主題一起聊完 ${doneCount(topic)} / ${TOPIC_FREE} 題</div>` : '';
   const locked = `<div class="card topic-locked" style="gap:8px;text-align:center">
       <div style="font-size:26px" aria-hidden="true">🔒</div>
@@ -123,7 +129,8 @@ async function viewTopics(arg) {
     </div>
     ${chips}
     ${notice}
-    ${topic.qs.map(card).join('')}
+    ${topic.qs.slice(0, shown).map(card).join('')}
+    ${nextHint}
     ${progress}
     ${locked}`;
   track('topic_open', { topic: topic.key });

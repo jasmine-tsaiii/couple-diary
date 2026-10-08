@@ -19,7 +19,7 @@ const SHOT = (n) => (process.env.SHOT_DIR || '.') + '/' + n;
   const owner = await p.evaluate(() => sessionStorage.getItem('mockUid'));
   // 還沒有另一半：看得到題目，不能寫
   await open('#/topics');
-  log('no partner: browse only', (await text()).includes('另一半加入之後就能一起寫') && await p.locator('[data-send]').count() === 0 && (await text()).includes('你是存錢派還是花錢派'));
+  log('no partner: browse only', (await text()).includes('另一半加入之後就能一起寫') && await p.locator('[data-send]').count() === 0 && (await text()).includes('你是存錢派還是花錢派') && !(await text()).includes('約會的錢'));
   await p.goto(U + '#/settings'); await p.waitForTimeout(700);
   await p.fill('#s-name', 'Jasmine'); await p.fill('#s-pass', '123456'); await p.click('#s-create'); await p.waitForTimeout(800);
   const code = (await p.textContent('.share-code')).trim();
@@ -33,16 +33,19 @@ const SHOT = (n) => (process.env.SHOT_DIR || '.') + '/' + n;
   const rows = await p.$$eval('.nav-row .nav-text .bold', (e) => e.map((x) => x.textContent));
   log('together row after daily', rows.indexOf('主題題庫') === rows.indexOf('每天一題') + 1 && rows.filter((x) => x === '主題題庫').length === 1, rows.join(','));
   await p.click('#row-topics'); await p.waitForTimeout(800);
-  log('5 questions + locked card', await p.locator('[data-send]').count() === 5 && (await text()).includes('還有 25 題'));
+  log('one question at a time', await p.locator('[data-send]').count() === 1 && (await text()).includes('還有 4 題') && (await text()).includes('還有 25 題') && !(await text()).includes('約會的錢'));
   await p.screenshot({ path: SHOT('topics.png'), fullPage: true });
   await p.fill('#tq-money01', '存錢派，但旅行會大方'); await p.click('[data-send="money01"]'); await p.waitForTimeout(900);
   log('owner waiting', (await text()).includes('等小明寫完就一起揭曉') && await p.inputValue('#tq-money01') === '存錢派，但旅行會大方');
+  log('next question appears', await p.locator('#tq-money02').count() === 1 && await p.locator('#tq-money03').count() === 0 && (await text()).includes('還有 3 題'));
+  const skip = await p.evaluate(async () => { try { await CloudDB.topicSave('money04', 'x'); return false; } catch (e) { return /上一題/.test(e.message); } });
+  log('no skipping', skip);
   await p.fill('#tq-money01', '存錢派，旅行例外'); await p.click('[data-send="money01"]'); await p.waitForTimeout(900);
   log('can edit before reveal', await p.inputValue('#tq-money01') === '存錢派，旅行例外');
   // 換主題
   await p.click('[data-topic="memory"]'); await p.waitForTimeout(600);
   log('switch topic', p.url().endsWith('#/topics/memory') && (await text()).includes('你對我的第一印象是什麼'));
-  await p.fill('#tq-memory02', '你一直笑'); await p.click('[data-send="memory02"]'); await p.waitForTimeout(900);
+  await p.fill('#tq-memory01', '你一直笑'); await p.click('[data-send="memory01"]'); await p.waitForTimeout(900);
   // 第 6 題伺服器擋掉
   const blocked = await p.evaluate(async () => { try { await CloudDB.topicSave('money06', 'x'); return false; } catch (e) { return /還沒開放/.test(e.message); } });
   log('q6 blocked', blocked);

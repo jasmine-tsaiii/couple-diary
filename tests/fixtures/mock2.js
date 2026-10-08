@@ -171,6 +171,8 @@
       const d = this._daily(S, u); if (!d || !d.pair) throw new Error('另一半加入之後就能一起寫');
       if (!/^[a-z]{3,8}[0-9]{2}$/.test(a.p_q_id || '')) throw new Error('找不到這一題');
       const n = Number(a.p_q_id.slice(-2)); if (n < 1 || n > 5) throw new Error('這一題還沒開放');
+      const prev = a.p_q_id.slice(0, -2) + String(n - 1).padStart(2, '0');
+      if (n > 1 && !(S.topics || []).some((x) => x.pair === d.pair && x.q_id === prev && x.user_id === u.id)) throw new Error('先寫完上一題');
       const body = String(a.p_body || '').trim(); if (!body || body.length > 300) throw new Error('答案要 1 到 300 個字');
       S.topics = S.topics || []; const A = S.topics;
       const mine = A.find((x) => x.pair === d.pair && x.q_id === a.p_q_id && x.user_id === u.id); const th = A.find((x) => x.pair === d.pair && x.q_id === a.p_q_id && x.user_id === d.other);
