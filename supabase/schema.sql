@@ -2946,3 +2946,6 @@ revoke all on function public.countdown_delete(uuid) from public, anon;
 grant execute on function public.countdown_list() to authenticated;
 grant execute on function public.countdown_save(uuid, text, date, text, boolean) to authenticated;
 grant execute on function public.countdown_delete(uuid) to authenticated;
+
+-- 改完函式後請 API 重新讀一次（不然 App 可能還是說找不到新的函式）
+notify pgrst, 'reload schema';

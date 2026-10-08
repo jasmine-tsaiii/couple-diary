@@ -18,6 +18,9 @@ const CloudDB = CLOUD_ENABLED ? (() => {
   // 連不上網路時丟出的錯誤會帶 offline 標記，畫面顯示統一的提示
   const OFFLINE_MSG = '目前離線，連上網路後才能新增或修改';
   const netDown = (e) => !navigator.onLine || !!(e && e.offline) || /failed to fetch|networkerror|load failed|network request failed/i.test(String((e && e.message) || e || ''));
+  // 資料庫還沒有這個函式（schema.sql 還沒重跑）：說「還在準備中」，不要把英文錯誤丟給使用者
+  const cdMissing = (r, fn) => !!(r.error && !netDown(r.error) && new RegExp(`${fn}|could not find the function|schema cache`, 'i').test(r.error.message || ''));
+  const cdNotReady = () => { const e = new Error('倒數日還在準備中，過一陣子再試試'); e.notReady = true; return e; };
   function offlineError() { const e = new Error(OFFLINE_MSG); e.offline = true; return e; }
   // 最近讀到的資料存一份在手機裡（只存文字，不存照片），離線時拿來唯讀顯示
   const OFF_PREFIX = 'offline:';
@@ -383,11 +386,19 @@ const CloudDB = CLOUD_ENABLED ? (() => {
     // ---- 倒數日：兩個人共用，全部透過函式 ----
     async countdownList() {
       const r = await client.rpc('countdown_list');
-      if (r.error && !netDown(r.error) && /countdown_list|function|schema cache/i.test(r.error.message || '')) { const e = new Error('倒數日要等資料庫更新後才能用'); e.notReady = true; throw e; }
+      if (cdMissing(r, 'countdown_list')) throw cdNotReady();
       return check(r) || [];
     },
-    async countdownSave(c) { return check(await client.rpc('countdown_save', { p_id: c.id || null, p_title: c.title, p_on_date: c.on_date, p_kind: c.kind, p_yearly: !!c.yearly })); },
-    async countdownDelete(id) { check(await client.rpc('countdown_delete', { p_id: id })); },
+    async countdownSave(c) {
+      const r = await client.rpc('countdown_save', { p_id: c.id || null, p_title: c.title, p_on_date: c.on_date, p_kind: c.kind, p_yearly: !!c.yearly });
+      if (cdMissing(r, 'countdown_save')) throw cdNotReady();
+      return check(r);
+    },
+    async countdownDelete(id) {
+      const r = await client.rpc('countdown_delete', { p_id: id });
+      if (cdMissing(r, 'countdown_delete')) throw cdNotReady();
+      check(r);
+    },
     async capsuleList() {
       const r = await client.rpc('capsule_list');
       if (r.error && /capsule_list|function/i.test(r.error.message || '')) { const e = new Error('時光膠囊要等資料庫更新後才能用'); e.notReady = true; throw e; }

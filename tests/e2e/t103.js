@@ -119,7 +119,11 @@ const SHOT = (n) => (process.env.SHOT_DIR || '.') + '/' + n;
   // 資料庫還沒更新：列表說明、首頁不壞
   await p.evaluate(() => { const S = JSON.parse(localStorage.getItem('mockServer')); S.noCountdowns = true; localStorage.setItem('mockServer', JSON.stringify(S)); });
   await open('#/countdowns');
-  log('not ready message', (await text()).includes('資料庫更新'));
+  log('not ready message', (await text()).includes('還在準備中') && await p.locator('#cd-new').count() === 0);
+  await p.goto(U + '#/countdown/new'); await p.waitForTimeout(1200);
+  log('not ready: form sends back', p.url().endsWith('#/countdowns'));
+  const saveErr = await p.evaluate(async () => { try { await CloudDB.countdownSave({ title: 'x', on_date: today(), kind: 'custom' }); return ''; } catch (e) { return e.message; } });
+  log('not ready: friendly save error', saveErr === '倒數日還在準備中，過一陣子再試試', saveErr);
   await open('#/');
   log('home ok when not ready', (await p.textContent('.home-head')).includes('在一起第 523 天'));
   await p.screenshot({ path: SHOT('home.png') });

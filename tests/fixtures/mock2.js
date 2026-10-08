@@ -484,6 +484,7 @@
         .map((c) => ({ id: c.id, title: c.title, on_date: c.on_date, kind: c.kind, yearly: c.yearly, mine: c.author === u.id, author_name: nameOf(c.author), created_at: c.created_at }));
     },
     countdown_save(S, u, a) {
+      if (S.noCountdowns) throw new Error('Could not find the function public.countdown_save(p_id, p_kind, p_on_date, p_title, p_yearly) in the schema cache');
       const space = rpcs._capSpace(S, u); if (!space) throw new Error('要先登入才能新增倒數日');
       const today = new Date(Date.now() + 8 * 3600e3).toISOString().slice(0, 10);
       const title = String(a.p_title || '').trim(); if (!title || title.length > 20) throw new Error('名稱要 1 到 20 個字');

@@ -162,7 +162,7 @@ async function viewCountdowns() {
   const { upcoming, past } = cdItems(list);
   const hidden = cdHidden();
   const top = `<div class="topbar"><a class="icon-btn" href="#/together" aria-label="返回" data-back>${ICON.back}</a><h1>倒數日</h1>
-    <a class="btn small cd-add" href="#/countdown/new" id="cd-new">＋ 新增</a></div>`;
+    ${err && err.notReady ? '' : '<a class="btn small cd-add" href="#/countdown/new" id="cd-new">＋ 新增</a>'}</div>`;
   const hero = upcoming[0];
   const row = (c) => {
     const by = cdByline(c);
@@ -176,13 +176,13 @@ async function viewCountdowns() {
       <button class="link-btn cd-rec" data-rec="${esc(c.id)}">記成美好時刻 ›</button>
     </div>`;
   app.innerHTML = `${top}
-    ${err ? `<div class="card"><div class="small muted">${esc(err.notReady ? '倒數日要等資料庫更新後才能新增，先看看自動算的週年。' : cloudErrorText(err))}</div></div>` : ''}
+    ${err ? `<div class="card"><div class="small muted">${esc(err.notReady ? '倒數日還在準備中，暫時不能新增。先看看自動算的週年。' : cloudErrorText(err))}</div></div>` : ''}
     ${hero ? `<div class="card cd-hero">
       <div class="grow"><div class="small">${hero.days === 0 ? '就是今天' : '最近的大事件'}</div>
         <div class="cd-hero-title">${esc(hero.title)}</div>
         <div class="small">${longDate(hero.date)}${cdByline(hero) ? `・${cdByline(hero)}` : ''}</div></div>
       <div class="cd-hero-num">${hero.days === 0 ? `${CD_STAR.replace(/18/g, '40')}` : `<b>${hero.days}</b><div class="small">天後</div>`}</div>
-    </div>` : `<div class="empty">${mascotHtml('happy', 90)}<div>還沒有倒數日。<br>下一次旅行、生日、見面是哪天？</div><a class="btn small" href="#/countdown/new">新增第一個</a></div>`}
+    </div>` : `<div class="empty">${mascotHtml('happy', 90)}<div>還沒有倒數日。<br>下一次旅行、生日、見面是哪天？</div>${err && err.notReady ? '' : '<a class="btn small" href="#/countdown/new">新增第一個</a>'}</div>`}
     ${upcoming.length > 1 ? `<h2 class="section-title">接下來</h2><div class="card nav-list">${upcoming.slice(1).map(row).join('')}</div>` : ''}
     ${past.length ? `<h2 class="section-title">已經過了</h2><div class="card nav-list">${past.map(pastRow).join('')}</div>` : ''}
     <div class="small muted cd-foot">${cdCloud() ? '你們兩個都可以新增和修改。' : ''}週年和第 N00 天會自動出現${NAMES.since ? '，按一下可以隱藏' : '，到「我的 → 我們」填在一起的日期就有'}。
@@ -214,8 +214,10 @@ async function viewCountdowns() {
 async function viewCountdownForm(id) {
   app.className = 'theme-happy';
   let c = null;
+  const first = await cdLoad();
+  if (first.err && first.err.notReady) { toast(first.err.message); go('#/countdowns'); return; }
   if (id && id !== 'new') {
-    const { list } = await cdLoad();
+    const { list } = first;
     c = list.find((x) => x.id === id) || null;
     if (!c) { toast('找不到這個倒數日，可能已經被刪掉了'); go('#/countdowns'); return; }
   }
