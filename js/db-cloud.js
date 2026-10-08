@@ -380,6 +380,14 @@ const CloudDB = CLOUD_ENABLED ? (() => {
       return error ? [] : data || [];
     },
     // ---- 時光膠囊（打開日期前對方讀不到內容，資料庫函式擋） ----
+    // ---- 倒數日：兩個人共用，全部透過函式 ----
+    async countdownList() {
+      const r = await client.rpc('countdown_list');
+      if (r.error && !netDown(r.error) && /countdown_list|function|schema cache/i.test(r.error.message || '')) { const e = new Error('倒數日要等資料庫更新後才能用'); e.notReady = true; throw e; }
+      return check(r) || [];
+    },
+    async countdownSave(c) { return check(await client.rpc('countdown_save', { p_id: c.id || null, p_title: c.title, p_on_date: c.on_date, p_kind: c.kind, p_yearly: !!c.yearly })); },
+    async countdownDelete(id) { check(await client.rpc('countdown_delete', { p_id: id })); },
     async capsuleList() {
       const r = await client.rpc('capsule_list');
       if (r.error && /capsule_list|function/i.test(r.error.message || '')) { const e = new Error('時光膠囊要等資料庫更新後才能用'); e.notReady = true; throw e; }

@@ -471,6 +471,37 @@
       const c = (S.capsules || []).find((x) => x.id === a.p_id && x.author === u.id); if (!c) return null;
       S.capsules = S.capsules.filter((x) => x !== c); return c.photo_path || null;
     },
+    // 倒數日：簡化版的伺服器邏輯（兩個人共用，都能改；暫停分享時另一半看不到主人新增的）
+    _cdVisible(S, u, c, space) {
+      const members = [space, ...S.t.partners.filter((x) => x.owner === space && x.approved !== false).map((x) => x.uid)];
+      return c.space === space && members.includes(c.author) && !(c.author === space && u.id !== space && pausedSp(S, space));
+    },
+    countdown_list(S, u) {
+      if (S.noCountdowns) throw new Error('Could not find the function public.countdown_list');
+      const space = rpcs._capSpace(S, u); if (!space) return [];
+      const nameOf = (m) => { if (m === space) { const sh = S.t.shares.find((x) => x.owner === space); return (sh && sh.owner_name) || '對方'; } const p = S.t.partners.find((x) => x.uid === m); return (p && p.name) || '對方'; };
+      return (S.countdowns || []).filter((c) => rpcs._cdVisible(S, u, c, space)).sort((a, b) => (a.on_date < b.on_date ? -1 : 1))
+        .map((c) => ({ id: c.id, title: c.title, on_date: c.on_date, kind: c.kind, yearly: c.yearly, mine: c.author === u.id, author_name: nameOf(c.author), created_at: c.created_at }));
+    },
+    countdown_save(S, u, a) {
+      const space = rpcs._capSpace(S, u); if (!space) throw new Error('要先登入才能新增倒數日');
+      const today = new Date(Date.now() + 8 * 3600e3).toISOString().slice(0, 10);
+      const title = String(a.p_title || '').trim(); if (!title || title.length > 20) throw new Error('名稱要 1 到 20 個字');
+      if (!a.p_on_date) throw new Error('選一個日期');
+      if (!a.p_yearly && a.p_on_date < today) throw new Error('日期要選今天以後');
+      S.countdowns = S.countdowns || [];
+      if (a.p_id) {
+        const c = S.countdowns.find((x) => x.id === a.p_id); if (!c || !rpcs._cdVisible(S, u, c, space)) throw new Error('找不到這個倒數日');
+        Object.assign(c, { title, on_date: a.p_on_date, kind: a.p_kind, yearly: !!a.p_yearly }); return { id: c.id };
+      }
+      if (S.countdowns.filter((x) => x.space === space).length >= 50) throw new Error('倒數日最多 50 個，先刪掉一些過了的吧');
+      const c = { id: 'cd' + (++S.n), space, author: u.id, title, on_date: a.p_on_date, kind: a.p_kind, yearly: !!a.p_yearly, created_at: new Date().toISOString() };
+      S.countdowns.push(c); return { id: c.id };
+    },
+    countdown_delete(S, u, a) {
+      const space = rpcs._capSpace(S, u); const c = (S.countdowns || []).find((x) => x.id === a.p_id);
+      if (c && space && rpcs._cdVisible(S, u, c, space)) S.countdowns = S.countdowns.filter((x) => x !== c);
+    },
     partner_add_wish(S, u, a) {
       const p = S.t.partners.find((x) => x.uid === u.id && x.approved !== false); if (!p) throw new Error('你還沒有用分享碼加入');
       S.t.wishes = S.t.wishes || [];

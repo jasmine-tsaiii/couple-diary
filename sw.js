@@ -29,6 +29,7 @@ const PRECACHE = [
   'js/app/notes.js',
   'js/app/topics.js',
   'js/app/plus.js',
+  'js/app/countdown.js',
   'js/app/tabs.js',
   'js/app/main.js',
   'vendor/supabase-2.117.2.js',

@@ -928,6 +928,7 @@ function notifyText(n) {
     case 'daily_partner_done': return `${who}寫好今天這一題了，換你囉`;
     case 'daily_revealed': return `${who}也寫好了，每天一題揭曉了`;
     case 'note_new': return `${who}留了一張紙條給你`;
+    case 'countdown': return x.days ? `再 ${x.days} 天就是「${x.title || ''}」了` : `今天就是「${x.title || ''}」！`;
     default: return `${who}有新動態`;
   }
 }
@@ -974,6 +975,7 @@ function notifyHref(n) {
   if (n.kind === 'quiz_partner_done' || n.kind === 'quiz_revealed') return '#/quiz';
   if (n.kind === 'daily_partner_done' || n.kind === 'daily_revealed') return '#/daily';
   if (n.kind === 'note_new') return '#/notes';
+  if (n.kind === 'countdown') return '#/countdowns';
   if (!n.record_id) return '#/';
   if (n.kind === 'task_submitted') return '#/tasks';
   if (n.kind === 'new_task_record') return `#/task/${encodeURIComponent(n.record_id)}`;

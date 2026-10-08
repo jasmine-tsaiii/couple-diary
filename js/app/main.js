@@ -18,7 +18,7 @@ function predictTheme(page, arg) {
   if ((page === 'list' || page === 'new') && TYPES[arg]) return TYPES[arg].theme;
   if (page === 'records') return TYPES[REC_TYPES.includes(arg) ? arg : currentRecType()].theme;
   if (page === 'fights') return 'theme-fight';
-  if (page === 'notes' || page === 'daily' || page === 'topics' || page === 'quiz' || page === 'capsules' || page === 'capsule') return 'theme-happy';
+  if (page === 'notes' || page === 'daily' || page === 'topics' || page === 'countdowns' || page === 'countdown' || page === 'quiz' || page === 'capsules' || page === 'capsule') return 'theme-happy';
   if (['view', 'edit', 'task'].includes(page) && recordTheme.has(arg)) return recordTheme.get(arg);
   return '';
 }
@@ -123,6 +123,8 @@ async function renderRoute() {
       else if (page === 'notes' && arg === 'new') { renderTabbar(null); await viewNoteNew(); }
       else if (page === 'notes') { renderTabbar('together'); await viewNotes(); }
       else if (page === 'capsules') { renderTabbar('together'); await viewCapsules(); }
+      else if (page === 'countdowns') { renderTabbar('together'); await viewCountdowns(); }
+      else if (page === 'countdown') { renderTabbar(null); await viewCountdownForm(arg); }
       else if (page === 'capsule') { renderTabbar(null); await viewCapsule(arg); }
       else go('#/');
       afterRender();
@@ -158,6 +160,8 @@ async function renderRoute() {
     else if (page === 'notes' && arg === 'new') { renderTabbar(null); await viewNoteNew(); }
     else if (page === 'notes') { renderTabbar('together'); await viewNotes(); }
     else if (page === 'capsules') { renderTabbar('together'); await viewCapsules(); }
+    else if (page === 'countdowns') { renderTabbar('together'); await viewCountdowns(); }
+    else if (page === 'countdown') { renderTabbar(null); await viewCountdownForm(arg); }
     else if (page === 'capsule') { renderTabbar(null); await viewCapsule(arg); }
     else go('#/');
     afterRender();

@@ -921,3 +921,35 @@ body { background: var(--paper, none), var(--bg); background-attachment: fixed; 
 .topic-chips .chip { flex: none; text-decoration: none; display: inline-flex; align-items: center; gap: 4px; }
 .topic-dot { display: inline-block; min-width: 18px; padding: 0 5px; border-radius: 9px; background: var(--accent); color: #fff; font-size: 12px; line-height: 18px; text-align: center; }
 .chip.on .topic-dot { background: #fff; color: var(--accent); }
+
+/* 倒數日（2026-10-08）：首頁天數下面的小膠囊、列表、表單 */
+.home-head .home-cd { grid-column: 1 / -1; margin-top: 6px; }
+.cd-pill { display: inline-flex; align-items: center; gap: 8px; max-width: 100%; box-sizing: border-box; min-height: 40px; padding: 6px 14px 6px 10px; border-radius: 99px;
+  background: var(--happy-bg); color: var(--happy-dark); text-decoration: none; font-size: 14px; }
+.cd-pill svg { flex: none; }
+.cd-pill > span:not(.grow) { min-width: 0; overflow-wrap: anywhere; }
+.cd-pill b { font-size: 16px; }
+.cd-pill.today { background: var(--happy); color: #fff; font-weight: 700; }
+.cd-pill.ask { display: flex; padding: 4px 4px 4px 14px; gap: 4px; }
+.cd-ask-btn { flex: none; height: 34px; padding: 0 12px; border: 0; border-radius: 99px; background: var(--card); color: var(--happy-text); font: inherit; font-size: 14px; cursor: pointer; }
+.cd-ask-x { flex: none; width: 34px; height: 34px; border: 0; border-radius: 99px; background: transparent; color: var(--happy-dark); display: flex; align-items: center; justify-content: center; cursor: pointer; }
+.topbar .cd-add { margin-left: auto; flex: none; }
+.cd-hero { flex-direction: row; align-items: center; gap: 16px; background: var(--happy-bg); border-color: transparent; color: var(--happy-dark); }
+.cd-hero .grow { min-width: 0; display: flex; flex-direction: column; gap: 4px; }
+.cd-hero-title { font-family: "Noto Serif TC", serif; font-size: 22px; font-weight: 700; color: var(--ink); overflow-wrap: anywhere; }
+.cd-hero-num { flex: none; text-align: center; }
+.cd-hero-num b { display: block; font-family: "Noto Serif TC", serif; font-size: 48px; line-height: 1; }
+button.cd-row, .cd-row .cd-past-open { width: 100%; background: none; border: 0; font: inherit; color: inherit; text-align: left; cursor: pointer; }
+.cd-row .cd-past-open { padding: 0; display: flex; flex-direction: column; flex: 1 1 auto; min-width: 0; }
+.cd-row.past .bold { color: var(--muted); }
+.cd-row .cd-rec { flex: none; color: var(--happy-text); font-size: 14px; }
+.cd-num { flex: none; text-align: right; white-space: nowrap; }
+.cd-num b { font-size: 22px; color: var(--happy-text); }
+.cd-foot { padding: 4px 4px 0; line-height: 1.6; }
+.cd-foot .link-btn { display: block; font-size: 14px; color: var(--happy-text); }
+.cd-yearly { gap: 12px; align-items: center; min-height: 44px; cursor: pointer; }
+.cd-switch { appearance: none; -webkit-appearance: none; flex: none; width: 48px; height: 28px; margin: 0; border-radius: 99px; background: var(--field); position: relative; cursor: pointer; transition: background .15s; }
+.cd-switch::after { content: ""; position: absolute; left: 3px; top: 3px; width: 22px; height: 22px; border-radius: 50%; background: #fff; transition: transform .15s; }
+.cd-switch:checked { background: var(--happy); }
+.cd-switch:checked::after { transform: translateX(20px); }
+.cd-switch:focus-visible { outline: 2px solid var(--happy); outline-offset: 2px; }

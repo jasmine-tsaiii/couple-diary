@@ -1856,7 +1856,7 @@ alter table public.notifications drop constraint if exists notifications_kind_ch
 alter table public.notifications add constraint notifications_kind_check check (kind in (
   'new_happy', 'new_task_record', 'task_submitted', 'task_approved',
   'partner_request', 'partner_joined', 'anniversary', 'cloud_reflect', 'write_nudge',
-  'quiz_partner_done', 'quiz_revealed', 'daily_partner_done', 'daily_revealed', 'note_new'));
+  'quiz_partner_done', 'quiz_revealed', 'daily_partner_done', 'daily_revealed', 'note_new', 'countdown'));
 -- Email 信裡「取消收信」連結用的暗號：每個人一組亂數，不用登入就能取消
 alter table public.notify_prefs add column if not exists unsub_token uuid not null default gen_random_uuid();
 
@@ -1893,7 +1893,7 @@ create or replace function public.notify_daily() returns jsonb
 language plpgsql security definer set search_path = public as $$
 declare
   v_today date := (now() at time zone 'Asia/Taipei')::date;
-  n_ann int; n_cloud int; n_nudge int;
+  n_ann int; n_cloud int; n_nudge int; n_cd int := 0;
 begin
   with sp as (
     select owner, public.safe_date(value ->> 'since') as since from public.settings
@@ -1941,7 +1941,27 @@ begin
     returning 1
   ) select count(*) into n_nudge from ins;
 
-  return jsonb_build_object('anniversary', n_ann, 'cloud_reflect', n_cloud, 'write_nudge', n_nudge);
+  -- 倒數日（2026-10-08）：前 3 天和當天，兩個人的小鈴鐺各一則。只放小鈴鐺，不寄 Email（emailed_at 先填上）
+  if to_regclass('public.countdowns') is not null then
+    with hit as (
+      select c.id, c.space, c.author, c.title, d.n
+      from public.countdowns c cross join (values (0), (3)) d(n)
+      where (not c.yearly and c.on_date = v_today + d.n)
+         or (c.yearly and c.on_date <= v_today + d.n and to_char(c.on_date, 'MM-DD') = to_char(v_today + d.n, 'MM-DD'))
+    ), who as (
+      select h.*, m as recipient from hit h cross join lateral unnest(public.quiz_members(h.space)) m
+      where h.author = any(public.quiz_members(h.space))
+        and not (m <> h.space and h.author = h.space and public.space_paused(h.space))
+    ), ins as (
+      insert into public.notifications (recipient, space_owner, kind, extra, emailed_at)
+      select w.recipient, w.space, 'countdown', jsonb_build_object('id', w.id, 'title', w.title, 'days', w.n), now() from who w
+      where not exists (select 1 from public.notifications n where n.recipient = w.recipient and n.kind = 'countdown'
+                          and n.extra ->> 'id' = w.id::text and n.created_at >= now() - interval '20 hours')
+      returning 1
+    ) select count(*) into n_cd from ins;
+  end if;
+
+  return jsonb_build_object('anniversary', n_ann, 'cloud_reflect', n_cloud, 'write_nudge', n_nudge, 'countdown', n_cd);
 end $$;
 revoke all on function public.notify_daily() from public, anon, authenticated;
 
@@ -2058,7 +2078,7 @@ alter table public.notifications drop constraint if exists notifications_kind_ch
 alter table public.notifications add constraint notifications_kind_check check (kind in (
   'new_happy', 'new_task_record', 'task_submitted', 'task_approved',
   'partner_request', 'partner_joined', 'anniversary', 'cloud_reflect', 'write_nudge',
-  'quiz_partner_done', 'quiz_revealed', 'daily_partner_done', 'daily_revealed', 'note_new'));
+  'quiz_partner_done', 'quiz_revealed', 'daily_partner_done', 'daily_revealed', 'note_new', 'countdown'));
 
 -- 目前這一對：主人 + 已同意的另一半（排序好，方便比對）
 create or replace function public.quiz_members(p_space uuid) returns uuid[]
@@ -2838,3 +2858,91 @@ begin
 end $$;
 revoke all on function public.topic_save(text, text) from public, anon;
 grant execute on function public.topic_save(text, text) to authenticated;
+
+-- ============================================================
+-- 倒數日（2026-10-08）：去旅行、生日、見面這些大事件還有幾天。兩個人共用一份清單，都能新增、修改、刪除（Jasmine 10/8 決定）。
+-- 週年、第 N00 天由前端用「在一起的日期」算，不存在這裡。生日、紀念日可以設「每年重複」。
+-- 表不開放直接讀寫，全部走下面的函式；主人暫停分享時，另一半看不到主人新增的。
+-- ============================================================
+create table if not exists public.countdowns (
+  id          uuid primary key default gen_random_uuid(),
+  space       uuid not null references auth.users (id) on delete cascade,
+  author      uuid not null references auth.users (id) on delete cascade,
+  title       text not null check (char_length(title) between 1 and 20),
+  on_date     date not null,
+  kind        text not null default 'custom' check (kind in ('trip', 'birthday', 'date', 'meet', 'move', 'custom')),
+  yearly      boolean not null default false,
+  created_at  timestamptz not null default now(),
+  updated_at  timestamptz not null default now()
+);
+create index if not exists countdowns_space on public.countdowns (space, on_date);
+alter table public.countdowns enable row level security;
+revoke all on public.countdowns from anon, authenticated;
+
+-- 看得到的：這本日記現在的兩個人新增的（換了另一半，前一位新增的就不顯示）
+create or replace function public.countdown_visible(c public.countdowns, p_space uuid) returns boolean
+language sql stable security definer set search_path = public as $$
+  select c.space = p_space and c.author = any(public.quiz_members(p_space))
+    and not (c.author = p_space and auth.uid() <> p_space and public.space_paused(p_space))
+$$;
+revoke all on function public.countdown_visible(public.countdowns, uuid) from public, anon, authenticated;
+
+create or replace function public.countdown_list() returns jsonb
+language plpgsql security definer set search_path = public as $$
+declare v_space uuid := public.quiz_space();
+begin
+  if v_space is null or auth.uid() is null then return '[]'::jsonb; end if;
+  return (select coalesce(jsonb_agg(jsonb_build_object(
+      'id', c.id, 'title', c.title, 'on_date', c.on_date, 'kind', c.kind, 'yearly', c.yearly,
+      'mine', c.author = auth.uid(), 'author_name', public.space_member_name(v_space, c.author),
+      'created_at', c.created_at) order by c.on_date, c.created_at), '[]'::jsonb)
+    from public.countdowns c where public.countdown_visible(c, v_space));
+end $$;
+
+-- p_id 空的是新增；有的是修改（兩個人都能改）
+create or replace function public.countdown_save(p_id uuid, p_title text, p_on_date date, p_kind text, p_yearly boolean)
+returns jsonb
+language plpgsql security definer set search_path = public as $$
+declare
+  v_space uuid := public.quiz_space();
+  v_today date := (now() at time zone 'Asia/Taipei')::date;
+  v_title text := btrim(coalesce(p_title, ''));
+  c public.countdowns;
+begin
+  if v_space is null or auth.uid() is null then raise exception '要先登入才能新增倒數日'; end if;
+  if char_length(v_title) not between 1 and 20 then raise exception '名稱要 1 到 20 個字'; end if;
+  if p_on_date is null then raise exception '選一個日期'; end if;
+  if coalesce(p_kind, '') not in ('trip', 'birthday', 'date', 'meet', 'move', 'custom') then raise exception '不認得這個種類'; end if;
+  if not coalesce(p_yearly, false) and p_on_date < v_today then raise exception '日期要選今天以後'; end if;
+  if p_on_date > v_today + 3660 or p_on_date < date '1900-01-01' then raise exception '日期不對，請重新選一次'; end if;
+  if p_id is not null then
+    select * into c from public.countdowns where id = p_id for update;
+    if c.id is null or not public.countdown_visible(c, v_space) then raise exception '找不到這個倒數日'; end if;
+    update public.countdowns set title = v_title, on_date = p_on_date, kind = p_kind, yearly = coalesce(p_yearly, false), updated_at = now()
+      where id = p_id;
+    return jsonb_build_object('id', p_id);
+  end if;
+  perform pg_advisory_xact_lock(hashtext('countdown:' || v_space::text));
+  if (select count(*) from public.countdowns where space = v_space) >= 50 then raise exception '倒數日最多 50 個，先刪掉一些過了的吧'; end if;
+  insert into public.countdowns (space, author, title, on_date, kind, yearly)
+    values (v_space, auth.uid(), v_title, p_on_date, p_kind, coalesce(p_yearly, false))
+    returning * into c;
+  return jsonb_build_object('id', c.id);
+end $$;
+
+create or replace function public.countdown_delete(p_id uuid) returns void
+language plpgsql security definer set search_path = public as $$
+declare
+  v_space uuid := public.quiz_space();
+  c public.countdowns;
+begin
+  select * into c from public.countdowns where id = p_id;
+  if c.id is null or v_space is null or not public.countdown_visible(c, v_space) then return; end if;
+  delete from public.countdowns where id = p_id;
+end $$;
+revoke all on function public.countdown_list() from public, anon;
+revoke all on function public.countdown_save(uuid, text, date, text, boolean) from public, anon;
+revoke all on function public.countdown_delete(uuid) from public, anon;
+grant execute on function public.countdown_list() to authenticated;
+grant execute on function public.countdown_save(uuid, text, date, text, boolean) to authenticated;
+grant execute on function public.countdown_delete(uuid) to authenticated;
