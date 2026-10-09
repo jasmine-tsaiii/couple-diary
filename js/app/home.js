@@ -164,7 +164,7 @@ async function viewHome() {
 
   app.innerHTML = `
     <div class="home-head${cd.tile ? ' has-cd' : ''}">
-      <div class="hello">${NAMES.me ? `嗨，${esc(NAMES.me)}・` : ''}今天是 <span class="nowrap">${longDate(today())}</span></div>
+      <div class="hello">${NAMES.me ? `嗨，${esc(NAMES.me)}・` : ''}${cd.tile ? `<span class="nowrap">${longDate(today()).replace(/^\d+ 年 /, '')}</span>` : `今天是 <span class="nowrap">${longDate(today())}</span>`}</div>
       <h1 class="title-xl">${esc(diaryTitle())}</h1>
       ${togetherDays() ? `<div class="small muted home-days">在一起第 ${togetherDays()} 天</div>` : ''}
       ${cd.tile}
