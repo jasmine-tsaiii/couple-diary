@@ -5,7 +5,7 @@
 // - 只推另一半做的事（PUSH_KINDS）；紀念日、烏雲回顧、寫日記提醒不推
 // - 晚上 11 點到早上 8 點（台灣）不推，早上 8 點把這段時間的合成一則推出去
 // - 已經在 App 裡看過（已讀）的不推；超過 12 小時的舊通知不推
-// - 通知裡不放紀錄的標題和內容，只說誰做了什麼（文字在下面 TEMPLATE 那一段）
+// - 通知裡不放紀錄的標題和內容，只說誰做了什麼＋一句提示（文字在下面 TEMPLATE 那一段）
 // 需要的密鑰（Supabase → Edge Functions → Secrets）：VAPID_PUBLIC_KEY、VAPID_PRIVATE_KEY
 // 推播的加密和簽章自己用 Web Crypto 做（下面 WEBPUSH 那段），不用 npm 套件，整個函式只有這一個檔案。
 // 部署時要關掉 Verify JWT（跟 notify-email 一樣）。
@@ -17,26 +17,29 @@ const PUSH_KINDS = ['new_happy', 'new_task_record', 'task_submitted', 'task_appr
 
 type Row = { id: number; recipient: string; space_owner: string; actor: string | null; actor_name: string; kind: string; created_at: string };
 
-function line(r: Row) {
-  const who = r.actor_name || '對方';
+// 名字後面接中文：名字是 emoji 或英文時中間空一格（「🥔 新增了」「Jasmine 新增了」）
+const nameSp = (w: string) => (/\p{Script=Han}$/u.test(w) ? w : `${w} `);
+// 手機通知分兩行：第一行說誰做了什麼，第二行放一句提示（不放紀錄的標題和內容，鎖定畫面旁人也看得到；Jasmine 10/9 決定）
+// 第二行有字時，iPhone 自己加的「from 啾啾日記」會退到最下面
+function pair(r: Row): [string, string] {
+  const who = nameSp(r.actor_name || '對方');
   switch (r.kind) {
-    case 'new_happy': return `${who}新增了一則美好時刻`;
-    case 'new_task_record': return `${who}新增了一則美好時刻，完成任務就能看`;
-    case 'task_submitted': return `${who}完成了任務，等你確認`;
-    case 'task_approved': return `${who}確認了你的任務，紀錄解鎖了`;
-    case 'partner_request': return `${who}想加入你們的日記，等你按同意`;
-    case 'partner_joined': return `${who}同意了，你們的日記連起來了`;
-    case 'quiz_partner_done': return `${who}寫好「重新認識你」了，換你囉`;
-    case 'daily_partner_done': return `${who}寫好今天這一題了，換你囉`;
-    case 'daily_revealed': return `${who}也寫好了，每天一題揭曉了`;
-    case 'note_new': return `${who}留了一張紙條給你`;
-    default: return `${who}有新的動態`;
+    case 'new_happy': return [`${who}新增了一則美好時刻`, '點開看看是什麼開心的事'];
+    case 'new_task_record': return [`${who}新增了一則美好時刻`, '完成任務就能看'];
+    case 'task_submitted': return [`${who}完成了任務`, '點開確認一下吧'];
+    case 'task_approved': return [`${who}確認了你的任務`, '紀錄解鎖了，點開看看'];
+    case 'partner_request': return [`${who}想加入你們的日記`, '點開按同意'];
+    case 'partner_joined': return [`${who}同意了`, '你們的日記連起來了'];
+    case 'quiz_partner_done': return [`${who}寫好「重新認識你」了`, '換你作答囉'];
+    case 'daily_partner_done': return [`${who}寫好今天這一題了`, '換你寫，寫完就能看到彼此的答案'];
+    case 'daily_revealed': return [`${who}也寫好今天的題目了`, '來看看彼此的答案'];
+    case 'note_new': return [`${who}留了一張紙條給你`, '點開看看寫了什麼'];
+    default: return [`${who}有新的動態`, '點開看看'];
   }
 }
-// iPhone 會在標題下面自己加「from 啾啾日記」，所以標題直接寫發生什麼事（最新的那一則）
-function title(rows: Row[]) { return line(rows[rows.length - 1]); }
-// 一次有好幾則：內文寫「還有 N 則新消息」；只有一則就不放內文
-function body(rows: Row[]) { return rows.length === 1 ? '' : `還有 ${rows.length - 1} 則新消息`; }
+// 標題寫最新的那一則；一次有好幾則，第二行改成「還有 N 則新消息」
+function title(rows: Row[]) { return pair(rows[rows.length - 1])[0]; }
+function body(rows: Row[]) { return rows.length === 1 ? pair(rows[0])[1] : `還有 ${rows.length - 1} 則新消息`; }
 // 點通知打開哪一頁
 function target(rows: Row[]) {
   if (rows.length > 1) return '#/notifications';

@@ -23,8 +23,10 @@ type Row = {
 // 另一半做的事（信的大標題用「你不在的時候」）；其他是給自己的提醒
 const FROM_PARTNER = ['new_happy', 'new_task_record', 'task_submitted', 'task_approved', 'partner_request', 'partner_joined', 'quiz_partner_done', 'daily_partner_done', 'daily_revealed', 'note_new'];
 
+// 名字後面接中文：名字是 emoji 或英文時中間空一格（「🥔 新增了」「Jasmine 新增了」）
+const nameSp = (w: string) => (/\p{Script=Han}$/u.test(w) ? w : `${w} `);
 function line(r: Row) {
-  const who = r.actor_name || '對方';
+  const who = nameSp(r.actor_name || '對方');
   switch (r.kind) {
     case 'new_happy': return `${who}新增了一則美好時刻`;
     case 'new_task_record': return `${who}新增了一則美好時刻，完成任務就能看`;
@@ -38,7 +40,7 @@ function line(r: Row) {
     case 'quiz_partner_done': return `${who}寫好「重新認識你」了，換你囉`;
     case 'quiz_revealed': return '「重新認識你」兩個人都交卷了，來看答案吧';
     case 'daily_partner_done': return `${who}寫好今天這一題了，換你囉`;
-    case 'daily_revealed': return `${who}也寫好了，每天一題揭曉了`;
+    case 'daily_revealed': return `${who}也寫好今天的題目了，來看看彼此的答案`;
     case 'note_new': return `${who}留了一張紙條給你`;
     default: return `${who}有新的動態`;
   }
@@ -48,7 +50,7 @@ function line(r: Row) {
 const GROUP_OF: Record<string, string> = { new_happy: 'happy', new_task_record: 'happy', task_submitted: 'task_submitted', task_approved: 'task_approved', cloud_reflect: 'cloud_reflect', daily_partner_done: 'daily', daily_revealed: 'daily' };
 function groupLine(g: Row[]) {
   const r = g[0];
-  const who = r.actor_name || '對方';
+  const who = nameSp(r.actor_name || '對方');
   const n = g.length;
   if (n === 1) return line(r);
   switch (GROUP_OF[r.kind]) {

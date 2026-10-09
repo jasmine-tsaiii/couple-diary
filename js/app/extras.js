@@ -911,7 +911,7 @@ async function refreshTabDots() {
   app.querySelectorAll('[data-rec-seg]').forEach((a) => a.classList.toggle('has-new', fresh.has(a.dataset.recSeg)));
 }
 function notifyText(n) {
-  const who = n.actor_name || '對方';
+  const who = notifyWho(n.actor_name);
   const x = n.extra || {};
   switch (n.kind) {
     case 'new_happy': return `${who}新增了一則美好時刻`;
@@ -926,7 +926,7 @@ function notifyText(n) {
     case 'quiz_partner_done': return `${who}寫好「重新認識你」了，換你囉`;
     case 'quiz_revealed': return '「重新認識你」兩個人都交卷了，來看答案吧';
     case 'daily_partner_done': return `${who}寫好今天這一題了，換你囉`;
-    case 'daily_revealed': return `${who}也寫好了，每天一題揭曉了`;
+    case 'daily_revealed': return `${who}也寫好今天的題目了，來看看彼此的答案`;
     case 'note_new': return `${who}留了一張紙條給你`;
     case 'countdown': return x.days ? `再 ${x.days} 天就是「${x.title || ''}」了` : `今天就是「${x.title || ''}」！`;
     default: return `${who}有新動態`;
@@ -943,10 +943,12 @@ function groupNotifications(list) {
   }
   return [...groups.values()];
 }
+// 名字後面接中文：名字是 emoji 或英文時中間空一格（「🥔 新增了」「Jasmine 新增了」）
+function notifyWho(name) { const w = name || '對方'; return /\p{Script=Han}$/u.test(w) ? w : `${w} `; }
 function notifyGroupText(g) {
   const n = g.length;
   if (n === 1) return notifyText(g[0]);
-  const who = g[0].actor_name || '對方';
+  const who = notifyWho(g[0].actor_name);
   switch (NOTIFY_GROUP[g[0].kind]) {
     case 'happy': {
       const t = g.filter((x) => x.kind === 'new_task_record').length;
