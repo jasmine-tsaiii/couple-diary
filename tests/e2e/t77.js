@@ -1,11 +1,11 @@
-// 首頁標題列在 iPhone 寬度：問候那行不會把「（二）」擠到第二行、標題和通知/設定按鈕同一行對齊；備份提醒可以按叉叉關掉，7 天內不再出現
+// 首頁標題列在 iPhone 寬度：問候那行不會把「（二）」擠到第二行、標題和通知/設定按鈕同一行對齊；備份提醒可以按叉叉關掉，7 天內不再出現（沒有倒數日時；有小日曆的排法在 t103）
 const { chromium } = require('playwright');
 const fs = require('fs');
 const U = process.env.U || 'http://localhost:8770/';
 (async () => {
   const b = await chromium.launch(require('./_launch'));
   const ctx = await b.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 3, colorScheme: 'dark' });
-  await ctx.addInitScript(() => { localStorage.setItem('tourDone', '1'); localStorage.setItem('guestStarted', '1'); localStorage.setItem('a2hsNever', '1'); localStorage.setItem('signupNudgeShown', '1'); localStorage.setItem('inviteCardHidden', '1'); window.__noCelebrate = 1; new MutationObserver(() => document.querySelectorAll('.tour-dlg, .celebrate').forEach((e) => e.remove())).observe(document, { childList: true, subtree: true }); });
+  await ctx.addInitScript(() => { localStorage.setItem('tourDone', '1'); localStorage.setItem('cdHideAuto', '["ann","days"]'); localStorage.setItem('guestStarted', '1'); localStorage.setItem('a2hsNever', '1'); localStorage.setItem('signupNudgeShown', '1'); localStorage.setItem('inviteCardHidden', '1'); window.__noCelebrate = 1; new MutationObserver(() => document.querySelectorAll('.tour-dlg, .celebrate').forEach((e) => e.remove())).observe(document, { childList: true, subtree: true }); });
   await ctx.route('**/vendor/supabase-2.117.2.js', (r) => r.fulfill({ contentType: 'text/javascript', body: fs.readFileSync('mock2.js', 'utf8') }));
   const p = await ctx.newPage();
   const errs = []; p.on('pageerror', (e) => errs.push(e.message)); p.on('dialog', (d) => d.accept());

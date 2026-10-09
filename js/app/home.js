@@ -159,15 +159,16 @@ async function viewHome() {
     dailyTipHtml(dailyQ),
   ];
   const tipHtml = tips.find((t) => t && t.trim()) || '';
-  // 倒數日：首頁不加卡片，只在天數下面放一顆小膠囊
-  const cdPill = typeof countdownPillHtml === 'function' ? await countdownPillHtml() : '';
+  // 倒數日：首頁不加卡片，標題右邊放一張小日曆（最近的那一個）
+  const cd = typeof countdownHome === 'function' ? await countdownHome() : { tile: '', ask: '' };
 
   app.innerHTML = `
-    <div class="home-head">
+    <div class="home-head${cd.tile ? ' has-cd' : ''}">
       <div class="hello">${NAMES.me ? `嗨，${esc(NAMES.me)}・` : ''}今天是 <span class="nowrap">${longDate(today())}</span></div>
       <h1 class="title-xl">${esc(diaryTitle())}</h1>
       ${togetherDays() ? `<div class="small muted home-days">在一起第 ${togetherDays()} 天</div>` : ''}
-      ${cdPill ? `<div class="home-cd">${cdPill}</div>` : ''}
+      ${cd.tile}
+      ${cd.ask ? `<div class="home-cd">${cd.ask}</div>` : ''}
       <div class="row home-actions" style="gap:8px">
         ${isGuest() ? '<a class="btn small secondary" href="#/login" id="home-login">登入</a>' : ''}
         ${bellBtnHtml()}
@@ -195,7 +196,7 @@ async function viewHome() {
   bindA2hsCard();
   bindQuizTip();
   bindDailyTip(dailyQ);
-  if (cdPill) bindCountdownPill();
+  if (cd.ask) bindCountdownPill();
   const bs = document.getElementById('backup-snooze');
   if (bs) bs.addEventListener('click', async (e) => {
     e.preventDefault(); e.stopPropagation();

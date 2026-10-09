@@ -1,7 +1,7 @@
 // 啾啾日記 js/app/countdown.js：倒數日（2026-10-08）
 // 去旅行、生日、見面這些大事件還有幾天。兩個人共用一份清單，都能新增、修改、刪除（Jasmine 10/8 決定）。
 // 週年、第 N00 天用「在一起的日期」自動算出來，不存起來；不想看可以隱藏（存在這支手機）。
-// 首頁不加卡片，只在「在一起第 N 天」下面放一顆小膠囊：當天 >「昨天的要不要記下來」> 最近的一個。
+// 首頁不加卡片，標題右邊放一張小日曆（10/9 改）：當天的 > 釘在首頁的 > 最近的一個；昨天的會在下面問要不要記下來。
 // 雲端（正式帳號或另一半）存在資料庫 countdowns；試用、單機版存在這支手機。小鈴鐺提醒在 notify_daily()。
 
 const CD_TITLE_MAX = 20;
@@ -19,9 +19,15 @@ const Countdowns = {
     const list = await LocalDB.getSetting('countdowns', []);
     const old = c.id ? list.find((x) => x.id === c.id) : null;
     if (!old && list.length >= CD_MAX) throw new Error(`倒數日最多 ${CD_MAX} 個，先刪掉一些過了的吧`);
-    const rec = { id: (old && old.id) || LocalDB.uid(), title: c.title, on_date: c.on_date, kind: c.kind, yearly: !!c.yearly, created_at: (old && old.created_at) || new Date().toISOString() };
+    const rec = { id: (old && old.id) || LocalDB.uid(), title: c.title, on_date: c.on_date, kind: c.kind, yearly: !!c.yearly, pinned: !!(old && old.pinned), created_at: (old && old.created_at) || new Date().toISOString() };
     await LocalDB.setSetting('countdowns', [...list.filter((x) => x.id !== rec.id), rec]);
     return rec.id;
+  },
+  // 放在首頁：一次只能一個（Jasmine 10/9 決定），兩個人看到的一樣
+  async pin(id, on) {
+    if (cdCloud()) { await CloudDB.countdownPin(id, on); return; }
+    const list = await LocalDB.getSetting('countdowns', []);
+    await LocalDB.setSetting('countdowns', list.map((x) => ({ ...x, pinned: on ? x.id === id : (x.id === id ? false : !!x.pinned) })));
   },
   async remove(id) {
     if (cdCloud()) { await CloudDB.countdownDelete(id); return; }
@@ -84,6 +90,10 @@ function cdItems(list) {
     past: own.filter((c) => c.days < 0).sort((a, b) => b.date.localeCompare(a.date)),
   };
 }
+// 首頁小日曆顯示哪一個：當天的 > 釘在首頁的（還沒過）> 最近的
+function cdHomePick(upcoming) {
+  return upcoming.find((c) => c.days === 0) || upcoming.find((c) => c.pinned) || upcoming[0] || null;
+}
 async function cdLoad() {
   try { return { list: await Countdowns.list(), err: null }; } catch (e) { return { list: [], err: e }; }
 }
@@ -104,23 +114,28 @@ function cdRecord(c) {
   go('#/new/happy');
 }
 
-// ---------- 首頁的小膠囊 ----------
+// ---------- 首頁的小日曆（2026-10-09 換成 C）：標題右邊一張撕頁日曆，只放最近的那一個 ----------
 const CD_ICON = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="3"/><path d="M3 10h18M8 3v4M16 3v4"/></svg>';
 const CD_STAR = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l2.6 5.6 6.1.7-4.5 4.2 1.2 6L12 16.6 6.6 19.5l1.2-6L3.3 9.3l6.1-.7z"/></svg>';
 let cdHomeCache = null;
-async function countdownPillHtml() {
+async function countdownHome() {
   const { list } = await cdLoad();
   cdHomeCache = list;
-  const { upcoming } = cdItems(list);
-  const todayOne = upcoming.find((c) => c.days === 0);
-  if (todayOne) return `<a class="cd-pill today" href="#/countdowns" id="cd-pill">${CD_STAR}<span>今天就是「${esc(todayOne.title)}」！</span></a>`;
+  const next = cdHomePick(cdItems(list).upcoming);
+  let tile = '';
+  if (next) {
+    const isToday = next.days === 0;
+    const label = isToday ? `今天就是「${next.title}」` : `距離「${next.title}」還有 ${next.days} 天`;
+    tile = `<a class="cd-cal${isToday ? ' today' : ''}" href="#/countdowns" id="cd-pill" aria-label="${esc(label)}">
+      <span class="cd-cal-top">${esc(next.auto === 'days' ? next.title.replace('在一起', '') : next.auto === 'ann' ? next.title.replace('在一起', '') : next.title)}</span>
+      <span class="cd-cal-num${isToday ? ' word' : ''}">${isToday ? '今天' : next.days}</span>
+      <span class="cd-cal-unit">${isToday ? '就是今天' : '天後'}</span></a>`;
+  }
   const y = cdYesterday(list);
-  if (y) return `<div class="cd-pill ask" id="cd-pill"><span class="grow">「${esc(y.title)}」${y.kind === 'trip' || y.kind === 'date' ? '好玩嗎？' : '還好嗎？'}</span>
+  const ask = y ? `<div class="cd-pill ask" id="cd-ask-row"><span class="grow">「${esc(y.title)}」${y.kind === 'trip' || y.kind === 'date' ? '好玩嗎？' : '還好嗎？'}</span>
     <button class="cd-ask-btn" id="cd-ask" data-id="${esc(y.id)}">記成美好時刻</button>
-    <button class="cd-ask-x" id="cd-ask-x" aria-label="不用了">${ICON.x}</button></div>`;
-  const next = upcoming[0];
-  if (!next) return '';
-  return `<a class="cd-pill" href="#/countdowns" id="cd-pill">${CD_ICON}<span>距離「${esc(next.title)}」還有 <b>${next.days}</b> 天</span><span aria-hidden="true">›</span></a>`;
+    <button class="cd-ask-x" id="cd-ask-x" aria-label="不用了">${ICON.x}</button></div>` : '';
+  return { tile, ask };
 }
 function bindCountdownPill() {
   const ask = document.getElementById('cd-ask');
@@ -130,8 +145,8 @@ function bindCountdownPill() {
   ask.addEventListener('click', () => cdRecord(y));
   document.getElementById('cd-ask-x').addEventListener('click', () => {
     cdMarkAsked(y, y.date);
-    const pill = document.getElementById('cd-pill');
-    if (pill) pill.remove();
+    const row = document.getElementById('cd-ask-row');
+    if (row) row.parentElement.remove();
   });
 }
 
@@ -153,6 +168,7 @@ function cdByline(c) {
   if (c.auto) return '自動';
   const parts = [];
   if (c.yearly) parts.push('每年');
+  if (c.pinned) parts.push('放在首頁');
   if (cdCloud() && c.author_name) parts.push(`${c.mine ? '你' : esc(c.author_name)}新增`);
   return parts.join('・');
 }
@@ -222,13 +238,16 @@ async function viewCountdownForm(id) {
     if (!c) { toast('找不到這個倒數日，可能已經被刪掉了'); go('#/countdowns'); return; }
   }
   const editing = !!c;
-  const st = { title: c ? c.title : '', on_date: c ? c.on_date : '', kind: c ? c.kind : 'custom', yearly: c ? !!c.yearly : false };
+  const st = { title: c ? c.title : '', on_date: c ? c.on_date : '', kind: c ? c.kind : 'custom', yearly: c ? !!c.yearly : false, pinned: c ? !!c.pinned : false };
+  const otherPinned = first.list.find((x) => x.pinned && (!c || x.id !== c.id));
   let dirty = false;
   formGuard = { dirty: () => dirty, leave: () => { dirty = false; } };
   const collect = () => {
     const t = document.getElementById('cd-title');
     const d = document.getElementById('cd-date');
     const y = document.getElementById('cd-yearly');
+    const pn = document.getElementById('cd-pin');
+    if (pn) st.pinned = pn.checked;
     if (t) st.title = t.value;
     if (d) st.on_date = d.value;
     if (y) st.yearly = y.checked;
@@ -257,6 +276,8 @@ async function viewCountdownForm(id) {
         </div>
         <label class="row cd-yearly" for="cd-yearly"><span class="grow"><span class="bold" style="display:block">每年都重複</span><span class="small muted">生日、紀念日這類每年都有的</span></span>
           <input type="checkbox" id="cd-yearly" class="cd-switch" ${st.yearly ? 'checked' : ''}></label>
+        <label class="row cd-yearly" for="cd-pin"><span class="grow"><span class="bold" style="display:block">放在首頁</span><span class="small muted">${otherPinned ? `會取代「${esc(otherPinned.title)}」。` : ''}首頁的小日曆固定顯示這個，過了就換回最近的</span></span>
+          <input type="checkbox" id="cd-pin" class="cd-switch" ${st.pinned ? 'checked' : ''}></label>
       </div>
       ${cdCloud() ? '<div class="small muted">前 3 天和當天，你們兩個的小鈴鐺都會提醒。</div>' : ''}
       <button class="btn" id="cd-save">${editing ? '儲存' : '存起來'}</button>
@@ -277,6 +298,7 @@ async function viewCountdownForm(id) {
     }));
     document.getElementById('cd-date').addEventListener('change', () => { collect(); dirty = true; document.getElementById('cd-left').innerHTML = left(); });
     document.getElementById('cd-yearly').addEventListener('change', () => { collect(); dirty = true; render(); });
+    document.getElementById('cd-pin').addEventListener('change', () => { collect(); dirty = true; });
     const save = document.getElementById('cd-save');
     save.addEventListener('click', () => {
       collect();
@@ -285,12 +307,16 @@ async function viewCountdownForm(id) {
       if (!DATE_RE.test(st.on_date)) { toast('選一個日期'); return; }
       if (!st.yearly && st.on_date < today()) { toast('日期要選今天以後'); return; }
       withBusy(save, '儲存中…', async () => {
-        await Countdowns.save({ id: c && c.id, title, on_date: st.on_date, kind: st.kind, yearly: st.yearly });
+        const savedId = await Countdowns.save({ id: c && c.id, title, on_date: st.on_date, kind: st.kind, yearly: st.yearly });
+        let pinNote = '';
+        if (st.pinned !== !!(c && c.pinned) && (savedId || (c && c.id))) {
+          try { await Countdowns.pin(savedId || c.id, st.pinned); if (st.pinned) track('countdown_pin'); } catch (e) { pinNote = e.notReady ? '，「放在首頁」要等一下才能用' : '，但「放在首頁」沒設定成功'; }
+        }
         dirty = false;
         formGuard = null;
         if (!editing) track('countdown_create', { kind: st.kind, yearly: st.yearly ? 1 : 0 });
         const n = cdDays(st.yearly ? cdNext(st.on_date, today()) : st.on_date);
-        toast(editing ? '改好了' : n === 0 ? '存好了，就是今天！' : `存好了，還有 ${n} 天`);
+        toast((editing ? '改好了' : n === 0 ? '存好了，就是今天！' : `存好了，還有 ${n} 天`) + pinNote);
         go('#/countdowns');
       });
     });

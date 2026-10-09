@@ -2876,6 +2876,8 @@ create table if not exists public.countdowns (
   updated_at  timestamptz not null default now()
 );
 create index if not exists countdowns_space on public.countdowns (space, on_date);
+-- 放在首頁（2026-10-09）：一本日記一次只釘一個，兩個人看到的一樣
+alter table public.countdowns add column if not exists pinned boolean not null default false;
 alter table public.countdowns enable row level security;
 revoke all on public.countdowns from anon, authenticated;
 
@@ -2893,7 +2895,7 @@ declare v_space uuid := public.quiz_space();
 begin
   if v_space is null or auth.uid() is null then return '[]'::jsonb; end if;
   return (select coalesce(jsonb_agg(jsonb_build_object(
-      'id', c.id, 'title', c.title, 'on_date', c.on_date, 'kind', c.kind, 'yearly', c.yearly,
+      'id', c.id, 'title', c.title, 'on_date', c.on_date, 'kind', c.kind, 'yearly', c.yearly, 'pinned', c.pinned,
       'mine', c.author = auth.uid(), 'author_name', public.space_member_name(v_space, c.author),
       'created_at', c.created_at) order by c.on_date, c.created_at), '[]'::jsonb)
     from public.countdowns c where public.countdown_visible(c, v_space));
@@ -2940,6 +2942,24 @@ begin
   if c.id is null or v_space is null or not public.countdown_visible(c, v_space) then return; end if;
   delete from public.countdowns where id = p_id;
 end $$;
+-- 放在首頁：釘一個會取消同一本日記其他釘著的；p_pinned false 是取消
+create or replace function public.countdown_pin(p_id uuid, p_pinned boolean) returns void
+language plpgsql security definer set search_path = public as $$
+declare
+  v_space uuid := public.quiz_space();
+  c public.countdowns;
+begin
+  if v_space is null or auth.uid() is null then raise exception '要先登入才能設定'; end if;
+  perform pg_advisory_xact_lock(hashtext('countdown:' || v_space::text));
+  select * into c from public.countdowns where id = p_id;
+  if c.id is null or not public.countdown_visible(c, v_space) then raise exception '找不到這個倒數日'; end if;
+  if coalesce(p_pinned, false) then
+    update public.countdowns set pinned = false where space = v_space and pinned and id <> p_id;
+  end if;
+  update public.countdowns set pinned = coalesce(p_pinned, false) where id = p_id;
+end $$;
+revoke all on function public.countdown_pin(uuid, boolean) from public, anon;
+grant execute on function public.countdown_pin(uuid, boolean) to authenticated;
 revoke all on function public.countdown_list() from public, anon;
 revoke all on function public.countdown_save(uuid, text, date, text, boolean) from public, anon;
 revoke all on function public.countdown_delete(uuid) from public, anon;

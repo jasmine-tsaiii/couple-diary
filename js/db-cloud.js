@@ -394,6 +394,11 @@ const CloudDB = CLOUD_ENABLED ? (() => {
       if (cdMissing(r, 'countdown_save')) throw cdNotReady();
       return check(r);
     },
+    async countdownPin(id, on) {
+      const r = await client.rpc('countdown_pin', { p_id: id, p_pinned: !!on });
+      if (cdMissing(r, 'countdown_pin')) throw cdNotReady();
+      check(r);
+    },
     async countdownDelete(id) {
       const r = await client.rpc('countdown_delete', { p_id: id });
       if (cdMissing(r, 'countdown_delete')) throw cdNotReady();

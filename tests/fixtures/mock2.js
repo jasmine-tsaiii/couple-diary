@@ -481,7 +481,7 @@
       const space = rpcs._capSpace(S, u); if (!space) return [];
       const nameOf = (m) => { if (m === space) { const sh = S.t.shares.find((x) => x.owner === space); return (sh && sh.owner_name) || '對方'; } const p = S.t.partners.find((x) => x.uid === m); return (p && p.name) || '對方'; };
       return (S.countdowns || []).filter((c) => rpcs._cdVisible(S, u, c, space)).sort((a, b) => (a.on_date < b.on_date ? -1 : 1))
-        .map((c) => ({ id: c.id, title: c.title, on_date: c.on_date, kind: c.kind, yearly: c.yearly, mine: c.author === u.id, author_name: nameOf(c.author), created_at: c.created_at }));
+        .map((c) => ({ id: c.id, title: c.title, on_date: c.on_date, kind: c.kind, yearly: c.yearly, pinned: !!c.pinned, mine: c.author === u.id, author_name: nameOf(c.author), created_at: c.created_at }));
     },
     countdown_save(S, u, a) {
       if (S.noCountdowns) throw new Error('Could not find the function public.countdown_save(p_id, p_kind, p_on_date, p_title, p_yearly) in the schema cache');
@@ -498,6 +498,13 @@
       if (S.countdowns.filter((x) => x.space === space).length >= 50) throw new Error('倒數日最多 50 個，先刪掉一些過了的吧');
       const c = { id: 'cd' + (++S.n), space, author: u.id, title, on_date: a.p_on_date, kind: a.p_kind, yearly: !!a.p_yearly, created_at: new Date().toISOString() };
       S.countdowns.push(c); return { id: c.id };
+    },
+    countdown_pin(S, u, a) {
+      if (S.noCountdowns || S.noCountdownPin) throw new Error('Could not find the function public.countdown_pin(p_id, p_pinned) in the schema cache');
+      const space = rpcs._capSpace(S, u); const c = (S.countdowns || []).find((x) => x.id === a.p_id);
+      if (!c || !space || !rpcs._cdVisible(S, u, c, space)) throw new Error('找不到這個倒數日');
+      S.countdowns.forEach((x) => { if (x.space === space && a.p_pinned) x.pinned = false; });
+      c.pinned = !!a.p_pinned;
     },
     countdown_delete(S, u, a) {
       const space = rpcs._capSpace(S, u); const c = (S.countdowns || []).find((x) => x.id === a.p_id);

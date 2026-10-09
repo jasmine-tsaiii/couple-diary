@@ -1,4 +1,4 @@
-// 倒數日：新增、列表、首頁小膠囊（最近的／當天／隔天問要不要記下來）、每年重複、自動週年可以隱藏、另一半也能改、小鈴鐺文字、試用版存在手機
+// 倒數日：新增、列表、首頁小日曆（最近的／釘在首頁的／當天／隔天問要不要記下來）、每年重複、自動週年可以隱藏、另一半也能改、小鈴鐺文字、試用版存在手機
 const { chromium } = require('playwright');
 const fs = require('fs');
 const U = (process.env.U || 'http://localhost:8770/');
@@ -13,12 +13,16 @@ const SHOT = (n) => (process.env.SHOT_DIR || '.') + '/' + n;
   const as = async (uid) => { await p.evaluate((u) => { if (u) sessionStorage.setItem('mockUid', u); else sessionStorage.removeItem('mockUid'); }, uid); await p.goto(U + '#/'); await p.reload(); await p.waitForTimeout(1000); };
   const open = async (h) => { await p.goto(U + h); await p.reload(); await p.waitForSelector('.topbar, .home-head'); await p.waitForTimeout(800); };
   const text = () => p.textContent('#app');
+  const tile = () => p.evaluate(() => { const e = document.getElementById('cd-pill'); return e ? `${e.getAttribute('aria-label')}|${e.textContent.replace(/\s+/g, '')}` : ''; });
+  const askRow = () => p.evaluate(() => { const e = document.getElementById('cd-ask-row'); return e ? e.textContent : ''; });
+  const pinnedTitles = () => p.evaluate(() => JSON.parse(localStorage.getItem('mockServer')).countdowns.filter((c) => c.pinned).map((c) => c.title).join(','));
   const day = (n) => p.evaluate((k) => cdShift(today(), k), n);
   const add = async (title, date, opts = {}) => {
     await open('#/countdown/new');
     if (opts.kind) { await p.click(`[data-kind="${opts.kind}"]`); await p.waitForTimeout(200); }
     if (title !== null) await p.fill('#cd-title', title);
     if (opts.yearly && !(await p.isChecked('#cd-yearly'))) { await p.check('#cd-yearly'); await p.waitForTimeout(200); }
+    if (opts.pin !== undefined && (await p.isChecked('#cd-pin')) !== opts.pin) await p.click('label[for="cd-pin"]');
     await p.fill('#cd-date', date); await p.dispatchEvent('#cd-date', 'change');
     await p.click('#cd-save'); await p.waitForTimeout(900);
   };
@@ -28,7 +32,7 @@ const SHOT = (n) => (process.env.SHOT_DIR || '.') + '/' + n;
   await add('去京都', await day(12));
   log('guest: saved locally', p.url().endsWith('#/countdowns') && (await text()).includes('去京都') && (await p.textContent('.cd-hero-num')).includes('12'));
   await open('#/');
-  log('guest: home pill', ((await p.textContent('#cd-pill')) || '').replace(/\s+/g, '').includes('距離「去京都」還有12天'));
+  log('guest: home tile', (await tile()).includes('距離「去京都」還有 12 天|去京都12天後'), await tile());
 
   await p.goto(U + '#/login'); await p.waitForTimeout(500);
   await p.fill('#email', 'jas@x.com'); await p.fill('#password', 'secret123'); await p.click('#login-btn'); await p.waitForTimeout(1200);
@@ -68,11 +72,34 @@ const SHOT = (n) => (process.env.SHOT_DIR || '.') + '/' + n;
   log('auto back', (await text()).includes('在一起第 600 天'));
   await p.screenshot({ path: SHOT('countdowns.png'), fullPage: true });
 
-  // 首頁：天數下面一顆膠囊，顯示最近的
+  // 首頁：標題右邊一張小日曆，顯示最近的；鈴鐺在它上面
   await open('#/');
-  log('home pill nearest', ((await p.textContent('#cd-pill')) || '').replace(/\s+/g, '').includes('距離「去京都」還有12天') && (await p.textContent('.home-head')).includes('在一起第 523 天'));
+  log('home tile nearest', (await tile()).includes('去京都12天後') && (await p.textContent('.home-head')).includes('在一起第 523 天') && await p.locator('.home-head.has-cd .bell-btn').count() === 1);
+  const box = async (sel) => p.$eval(sel, (e) => { const r = e.getBoundingClientRect(); return { x: r.x, y: r.y, r: r.right, b: r.bottom }; });
+  const [tb, bb, hb] = [await box('#cd-pill'), await box('.home-head .bell-btn'), await box('.home-head .title-xl')];
+  log('greeting one line with tile', await p.$eval('.home-head .hello', (e) => Math.round(e.getBoundingClientRect().height / (parseFloat(getComputedStyle(e).lineHeight) || 21)) === 1));
+  log('tile right of title, bell above', tb.x >= hb.r && bb.b <= tb.y + 2 && tb.r <= 390, JSON.stringify({ tb, bb, hb }));
+  await p.screenshot({ path: SHOT('home-tile.png') });
   await p.click('#cd-pill'); await p.waitForTimeout(700);
-  log('pill opens list', p.url().endsWith('#/countdowns'));
+  log('tile opens list', p.url().endsWith('#/countdowns'));
+
+  // 放在首頁：釘了就固定顯示那一個；一次只能一個；取消就回到最近的
+  await add('搬新家', await day(30), { kind: 'move', pin: true });
+  await open('#/');
+  log('pinned shows on home', (await tile()).includes('搬新家30天後'), await tile());
+  await open('#/countdowns');
+  log('list marks pinned', (await text()).includes('放在首頁'));
+  const bday = await p.evaluate(() => JSON.parse(localStorage.getItem('mockServer')).countdowns.find((c) => c.title === '生日').id);
+  await open(`#/countdown/${bday}`);
+  log('form says it replaces', (await text()).includes('會取代「搬新家」'));
+  await p.click('label[for="cd-pin"]'); await p.click('#cd-save'); await p.waitForTimeout(900);
+  log('only one pinned', (await pinnedTitles()) === '生日', await pinnedTitles());
+  await open(`#/countdown/${bday}`);
+  await p.click('label[for="cd-pin"]'); await p.click('#cd-save'); await p.waitForTimeout(900);
+  await open('#/');
+  log('unpinned back to nearest', (await pinnedTitles()) === '' && (await tile()).includes('去京都12天後'));
+  const move = await p.evaluate(() => JSON.parse(localStorage.getItem('mockServer')).countdowns.find((c) => c.title === '搬新家').id);
+  await open(`#/countdown/${move}`); await p.click('#cd-del'); await p.waitForTimeout(900);
 
   // 另一半加入：看得到、也能改
   await p.goto(U + '#/settings'); await p.waitForTimeout(700);
@@ -83,7 +110,7 @@ const SHOT = (n) => (process.env.SHOT_DIR || '.') + '/' + n;
   const pid = await p.evaluate(() => sessionStorage.getItem('mockUid'));
   await as(owner); await p.click('[data-home-approve]'); await p.waitForTimeout(700);
   await as(pid);
-  log('partner home pill', ((await p.textContent('#cd-pill')) || '').includes('去京都'));
+  log('partner home tile', (await tile()).includes('去京都') && await p.locator('.home-head.has-cd').count() === 1);
   await open('#/countdowns');
   log('partner sees who added', (await text()).includes('Jasmine新增'));
   const kyoto = await p.evaluate(() => JSON.parse(localStorage.getItem('mockServer')).countdowns.find((c) => c.title === '去京都').id);
@@ -92,7 +119,7 @@ const SHOT = (n) => (process.env.SHOT_DIR || '.') + '/' + n;
   await p.fill('#cd-title', '去京都五天'); await p.click('#cd-save'); await p.waitForTimeout(900);
   await add('見面', await day(0), { kind: 'meet' });
   await as(owner);
-  log('owner sees partner edit + today pill', ((await p.textContent('#cd-pill')) || '').includes('今天就是「見面」') && await p.locator('#cd-pill.today').count() === 1);
+  log('owner sees partner edit + today tile', (await tile()).includes('今天就是「見面」|見面今天就是今天') && await p.locator('#cd-pill.today').count() === 1, await tile());
   await open('#/countdowns');
   log('owner sees partner item', (await text()).includes('小明新增') && (await text()).includes('去京都五天'));
 
@@ -102,11 +129,16 @@ const SHOT = (n) => (process.env.SHOT_DIR || '.') + '/' + n;
   log('deleted', !(await text()).includes('見面'));
   await add('第一次露營', '2020-' + (await day(-1)).slice(5), { yearly: true });
   await open('#/');
-  log('yesterday ask', (await p.textContent('#cd-pill')).includes('「第一次露營」') && await p.locator('#cd-ask').count() === 1);
+  log('yesterday ask', (await askRow()).includes('「第一次露營」') && await p.locator('#cd-ask').count() === 1 && (await tile()).includes('去京都五天'));
   await p.click('#cd-ask'); await p.waitForTimeout(900);
   log('record prefilled', p.url().includes('#/new/happy') && await p.inputValue('#f-title').catch(() => '') === '第一次露營');
   await open('#/');
-  log('ask only once', ((await p.textContent('#cd-pill')) || '').includes('去京都五天'));
+  log('ask only once', (await askRow()) === '' && (await tile()).includes('去京都五天'));
+  await p.evaluate(() => { const S = JSON.parse(localStorage.getItem('mockServer')); S.noCountdownPin = true; localStorage.setItem('mockServer', JSON.stringify(S)); });
+  await open('#/countdown/new');
+  await p.fill('#cd-title', '舊資料庫'); await p.fill('#cd-date', await day(5)); await p.dispatchEvent('#cd-date', 'change');
+  await p.click('label[for="cd-pin"]'); await p.click('#cd-save'); await p.waitForTimeout(300);
+  log('pin not ready: still saved', ((await p.textContent('#toast').catch(() => '')) || '').includes('要等一下') && (await pinnedTitles()) === '' && (await p.evaluate(() => JSON.parse(localStorage.getItem('mockServer')).countdowns.some((c) => c.title === '舊資料庫'))));
 
   // 小鈴鐺：倒數日通知的文字和連結
   await p.evaluate((uid) => { const S = JSON.parse(localStorage.getItem('mockServer')); S.notifs = [

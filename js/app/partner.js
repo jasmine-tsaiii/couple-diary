@@ -45,14 +45,15 @@ async function viewPartnerHome() {
     dailyTipHtml(dailyQ),
   ];
   const tipHtml = tips.find((t) => t && t.trim()) || '';
-  const cdPill = typeof countdownPillHtml === 'function' ? await countdownPillHtml() : '';
+  const cd = typeof countdownHome === 'function' ? await countdownHome() : { tile: '', ask: '' };
 
   app.innerHTML = `
-    <div class="home-head">
+    <div class="home-head${cd.tile ? ' has-cd' : ''}">
       <div class="hello">嗨，${esc(info.name)}</div>
       <h1 class="title-xl">${bound ? `${esc(ownerName())}和${esc(info.name)}的紀錄` : `${esc(ownerName())}的紀錄`}</h1>
       <div class="row home-actions" style="gap:8px">${bellBtnHtml()}</div>
-      ${cdPill ? `<div class="home-cd">${cdPill}</div>` : ''}
+      ${cd.tile}
+      ${cd.ask ? `<div class="home-cd">${cd.ask}</div>` : ''}
     </div>
     ${bound ? quickRecord('今天想記下什麼？') : `<div class="mascot-hello">${mascotHtml('happy', 110)}<div class="small muted">看看${esc(ownerName())}分享了什麼</div></div>`}
     ${tipHtml}
@@ -61,7 +62,7 @@ async function viewPartnerHome() {
   `;
   bindQuizTip();
   bindDailyTip(dailyQ);
-  if (cdPill) bindCountdownPill();
+  if (cd.ask) bindCountdownPill();
   const box = document.getElementById('recent');
   for (const r of recent) box.appendChild(await listItem(r));
   if (!tourDone('partner')) showTour('partner');
