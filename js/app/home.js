@@ -28,6 +28,7 @@ const TILE_ICON = {
 };
 async function viewHome() {
   const all = await liveRecords();
+  await syncSeen();
   // 另一半上鎖的紀錄你看不到內容，但數量要算進去（100 個目標是兩個人一起的）
   const lockedOthers = usingCloud() ? [...await CloudDB.othersLocked(), ...await othersTaskRecords()] : [];
   const count = (t) => all.filter((r) => r.type === t).length + lockedOthers.filter((x) => x.type === t).length;
@@ -221,36 +222,105 @@ async function viewHome() {
   if (ewOk) ewOk.addEventListener('click', () => { try { localStorage.removeItem(`endedWith:${CloudDB.myId()}`); } catch (e) { /* 略過 */ } document.getElementById('ended-with').remove(); });
   const box = document.getElementById('recent');
   for (const r of recent) box.appendChild(await listItem(r));
+  bindNewFromOther(all);
   if (!all.length && !tourDone('owner')) showTour('owner');
 }
 
 // 對方新寫的紀錄：記在這支手機上「看過了沒」，列表加小點、首頁提示。
-// 第一次用這個功能時，現有的都當作看過，免得一次冒出一大堆
+// 第一次用這個功能時，現有的都當作看過，免得一次冒出一大堆。
+// 有自己帳號的人另外存一份到雲端（seenOthers：at＝這個時間點以前的都看過、ids＝之後一則一則點開過的），
+// 手機看過、電腦打開也會跟著消失
 let seenCache = null;
 let seenFor = null;
+let seenCloud = null;
 const seenKey = () => `seenOthers:${CloudDB.myId()}`;
+const seenAtKey = () => `seenOthersAt:${CloudDB.myId()}`;
+const seenSyncs = () => usingCloud() && !CloudDB.isAnonymous();
 function seenSet() {
-  if (seenFor !== seenKey()) { seenCache = null; seenFor = seenKey(); }
+  if (seenFor !== seenKey()) { seenCache = null; seenCloud = null; seenFor = seenKey(); }
   if (seenCache) return seenCache;
   try { const raw = localStorage.getItem(seenKey()); seenCache = raw ? new Set(JSON.parse(raw)) : null; } catch (e) { seenCache = null; }
   return seenCache;
 }
+function seenAt() { try { return Number(localStorage.getItem(seenAtKey())) || 0; } catch (e) { return 0; } }
 function saveSeen() { try { localStorage.setItem(seenKey(), JSON.stringify([...seenCache].slice(-3000))); } catch (e) { /* 略過 */ } }
+function saveSeenCloud() {
+  if (!seenSyncs() || !seenCloud) return;
+  DB.setSetting('seenOthers', { at: seenCloud.at, ids: seenCloud.ids.slice(-300) }).catch(() => {});
+}
+// 首頁畫之前先拿雲端的已讀，合進這支手機
+async function syncSeen() {
+  if (!seenSyncs()) return;
+  seenSet();
+  let v = null;
+  try { v = await DB.getSetting('seenOthers', null); } catch (e) { return; }
+  seenCloud = { at: Number(v && v.at) || 0, ids: Array.isArray(v && v.ids) ? v.ids : [] };
+  if (!seenCache) return;
+  if (seenCloud.at > seenAt()) { try { localStorage.setItem(seenAtKey(), String(seenCloud.at)); } catch (e) { /* 略過 */ } }
+  let changed = false;
+  for (const id of seenCloud.ids) if (!seenCache.has(id)) { seenCache.add(id); changed = true; }
+  if (changed) saveSeen();
+}
 function initSeen(all) {
   if (!usingCloud() || seenSet()) return;
+  // 這支手機第一次用，但雲端已經有已讀紀錄：照雲端的來
+  if (seenCloud && (seenCloud.at || seenCloud.ids.length)) {
+    seenCache = new Set(seenCloud.ids);
+    saveSeen();
+    try { localStorage.setItem(seenAtKey(), String(seenCloud.at)); } catch (e) { /* 略過 */ }
+    return;
+  }
   seenCache = new Set(all.filter((r) => !isMine(r)).map((r) => r.id));
   saveSeen();
+  // 雲端還沒有紀錄（第一次用）：把現在這些都記成看過
+  if (seenSyncs() && seenCloud && !seenCloud.at && !seenCloud.ids.length) {
+    seenCloud.at = Math.max(0, ...all.filter((r) => !isMine(r)).map((r) => r.createdAt || 0));
+    saveSeenCloud();
+  }
 }
-const isNewFromOther = (r) => usingCloud() && !isMine(r) && !!seenSet() && !seenSet().has(r.id);
-function markSeen(r) { if (!usingCloud() || isMine(r) || !seenSet() || seenCache.has(r.id)) return; seenCache.add(r.id); saveSeen(); }
+const isNewFromOther = (r) => usingCloud() && !isMine(r) && !!seenSet() && !seenSet().has(r.id) && !((r.createdAt || 0) && (r.createdAt || 0) <= seenAt());
+function markSeen(r) {
+  if (!usingCloud() || isMine(r) || !seenSet() || seenCache.has(r.id)) return;
+  seenCache.add(r.id); saveSeen();
+  if (seenCloud && !seenCloud.ids.includes(r.id)) { seenCloud.ids.push(r.id); saveSeenCloud(); }
+}
+// 按叉叉：現在這些新的全部當作看過（兩邊裝置都會消失）
+function dismissNewFromOther(all) {
+  const fresh = all.filter(isNewFromOther);
+  for (const r of fresh) seenCache.add(r.id);
+  saveSeen();
+  const at = Math.max(seenAt(), ...fresh.map((r) => r.createdAt || 0));
+  try { localStorage.setItem(seenAtKey(), String(at)); } catch (e) { /* 略過 */ }
+  if (seenCloud) {
+    const gone = new Set(fresh.map((r) => r.id));
+    seenCloud.at = Math.max(seenCloud.at, at);
+    // at 之前的已經算看過，ids 只留比 at 新的那些
+    const byId = new Map(all.map((r) => [r.id, r]));
+    seenCloud.ids = seenCloud.ids.filter((id) => !gone.has(id) && !((byId.get(id) || {}).createdAt <= seenCloud.at));
+    saveSeenCloud();
+  }
+}
 function newFromOtherCard(all) {
   initSeen(all);
   const fresh = all.filter(isNewFromOther).sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
   if (!fresh.length) return '';
-  return `<a class="card" id="new-from-other" href="#/view/${esc(fresh[0].id)}" style="gap:4px">
-    <div class="row" style="gap:8px"><span class="new-dot" aria-hidden="true"></span><span class="bold">${esc(otherName())}最近寫了 ${fresh.length} 則新的</span></div>
-    <div class="small muted">${fresh.slice(0, 3).map((r) => `${TYPES[r.type].short}「${esc(r.title)}」`).join('、')}${fresh.length > 3 ? '…' : ''}，點這裡從最新的開始看 ›</div>
-  </a>`;
+  return `<div class="card" id="new-from-other" style="gap:4px;position:relative;padding-right:40px">
+    <a href="#/view/${esc(fresh[0].id)}" style="display:flex;flex-direction:column;gap:4px;color:inherit;text-decoration:none">
+      <div class="row" style="gap:8px"><span class="new-dot" aria-hidden="true"></span><span class="bold">${esc(otherName())}最近寫了 ${fresh.length} 則新的</span></div>
+      <div class="small muted">${fresh.slice(0, 3).map((r) => `${TYPES[r.type].short}「${esc(r.title)}」`).join('、')}${fresh.length > 3 ? '…' : ''}，點這裡從最新的開始看 ›</div>
+    </a>
+    <button type="button" id="new-from-other-x" aria-label="看過了，關掉" title="看過了，關掉" style="position:absolute;top:6px;right:6px;width:32px;height:32px;padding:0;background:none;border:0;color:var(--muted);font-size:18px;line-height:32px;cursor:pointer">✕</button>
+  </div>`;
+}
+function bindNewFromOther(all) {
+  const x = document.getElementById('new-from-other-x');
+  if (!x) return;
+  x.addEventListener('click', (e) => {
+    e.preventDefault(); e.stopPropagation();
+    dismissNewFromOther(all);
+    document.getElementById('new-from-other').remove();
+    document.querySelectorAll('.new-dot').forEach((d) => d.remove());
+  });
 }
 
 // ---------- 新帳號的範例紀錄：還沒寫過任何一則時顯示，寫下第一則後就不再出現 ----------

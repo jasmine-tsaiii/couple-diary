@@ -5,6 +5,7 @@
 async function viewPartnerHome() {
   const info = CloudDB.partnerInfo();
   const all = await liveRecords();
+  await syncSeen();
   const count = (t) => all.filter((r) => r.type === t).length;
   const fights = all.filter((r) => r.type === 'fight');
   const recent = all.slice().sort(byDateDesc).slice(0, 5);
@@ -65,6 +66,7 @@ async function viewPartnerHome() {
   if (cd.ask) bindCountdownPill();
   const box = document.getElementById('recent');
   for (const r of recent) box.appendChild(await listItem(r));
+  bindNewFromOther(all);
   if (!tourDone('partner')) showTour('partner');
 }
 
