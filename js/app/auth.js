@@ -142,7 +142,7 @@ function viewLogin(mode = 'signin') {
       }
       rememberLogin('email');
       await afterOwnerLogin();
-      go('#/');
+      go(takeReturn() || '#/');
       route();
     } catch (e) {
       btn.disabled = false;

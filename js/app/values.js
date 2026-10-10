@@ -222,8 +222,10 @@ function renderValuesWait(top, mine, oname, otherDone) {
     <div class="card" style="text-align:center;gap:6px">
       <div style="font-size:34px" aria-hidden="true">🐤</div>
       <div class="muted">${otherDone ? '對方也做完了，重新整理看看' : `${esc(oname)}還沒做完，可以跟對方說一聲`}</div>
+      ${otherDone ? '' : nudgeBtnHtml('values', '#/values', oname)}
     </div>
     <button class="btn secondary" id="vm-edit">回頭改答案</button>`;
+  bindNudgeBtns();
   document.getElementById('vm-edit').addEventListener('click', () => renderValuesQuestion(top, mine.slice(), 0, oname));
 }
 

@@ -237,6 +237,7 @@ async function viewDaily() {
         <textarea class="textarea" id="d-today" maxlength="300" rows="4" placeholder="照你現在想的寫就好">${esc(st.mine || draft)}</textarea>
         <div class="small daily-state">${st.mine ? `你寫好了，等${esc(oname)}寫完就一起揭曉。揭曉前你還可以改。` : st.other_done ? `${esc(oname)}寫好了，換你。你寫完就一起揭曉。` : `兩人都寫完才會一起揭曉，揭曉前看不到${esc(oname)}寫什麼。`}</div>
         <button class="btn" id="d-send" data-day="${esc(st.today)}" data-q="${esc(qId)}">${st.mine ? '更新答案' : '送出'}</button>
+        ${st.mine && !st.other_done ? nudgeBtnHtml('daily', '#/daily', oname, `邀請${oname}來寫`) : ''}
       </div>`;
   const pend = st.pending || [];
   const pendHtml = pend.length ? `<div class="section-title">等你寫</div>
@@ -254,6 +255,7 @@ async function viewDaily() {
     <div class="small muted" style="text-align:center">這個月一起寫了 ${st.month_days || 0} 天</div>
     <div id="d-history"></div>
     ${await quizRow()}`;
+  bindNudgeBtns();
 
   const save = async (btn, day, q, el, late) => {
     const body = el.value.trim();

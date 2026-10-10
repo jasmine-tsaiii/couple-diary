@@ -136,9 +136,11 @@ async function viewQuiz() {
           <div style="font-size:36px">📮</div>
           <div class="bold">你交卷了</div>
           <div class="small muted">等${esc(otherName)}交卷後，就會一起揭曉。${esc(otherName)}那邊只看得到「你寫好了」，看不到內容。</div>
+          ${otherDone ? '' : nudgeBtnHtml('quiz', '#/quiz', otherName)}
         </div>
         <div class="section-title">你這次的答案</div>
         ${r.questions.map((q, i) => `<div class="card" style="gap:4px"><div class="small muted">${i + 1}. ${esc(q.text)}</div><div>${esc((mine.answers || {})[q.id] || '')}</div></div>`).join('')}`;
+      bindNudgeBtns();
       return;
     }
     // 改版前開的回合是 14 題：還沒人交卷的話，縮成現在的 8 題（5 固定＋3 變動，留原本就有的題目）

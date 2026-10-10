@@ -104,6 +104,41 @@ function toast(msg) {
   toast.timer = setTimeout(() => t.classList.remove('show'), 1800);
 }
 function go(hash) { location.hash = hash; }
+// ---------- 提醒對方來做（價值觀地圖、每天一題、主題題庫、默契問答的等待畫面）----------
+// 分享一個直接打開那一頁的連結；對方在平常用的瀏覽器或 App 已經登入，點了就直接到那一頁，不用重新登入
+const NUDGE_PAGES = /^#\/(values|daily|quiz|topics(\/[\w-]+)?)$/;
+function nudgeBtnHtml(kind, hash, oname, label) {
+  return `<button class="btn small secondary nudge-btn" data-nudge="${esc(kind)}" data-hash="${esc(hash)}" data-oname="${esc(oname)}" style="align-self:center">${esc(label || `邀請${oname}來做`)}</button>`;
+}
+const NUDGE_TEXT = {
+  values: '我做完「價值觀地圖」了，換你做！24 題點一點就好，兩個人都做完才會一起揭曉，看看我們哪裡像、哪裡不一樣',
+  daily: '我寫好今天的「每天一題」了，換你寫！兩個人都寫完才會一起揭曉',
+  topics: '我在「主題題庫」寫好一題了，換你寫！兩個人都寫完才會一起揭曉',
+  quiz: '我交卷了，換你做「默契問答」！兩個人都交卷才會一起揭曉',
+};
+function bindNudgeBtns(root = app) {
+  root.querySelectorAll('[data-nudge]').forEach((b) => b.addEventListener('click', async () => {
+    const kind = b.dataset.nudge;
+    const url = `${location.origin + location.pathname}?utm_source=nudge&utm_medium=share&utm_campaign=${kind}${b.dataset.hash}`;
+    const text = `${NUDGE_TEXT[kind] || '換你了！'}\n${url}`;
+    // 要在按下的當下馬上叫出分享畫面，先做別的事 iPhone 會擋掉；不支援或失敗時改成複製
+    if (navigator.share) {
+      try { await navigator.share({ title: '啾啾日記', text }); track('nudge_share', { kind, how: 'share' }); return; } catch (e) { if (e && e.name === 'AbortError') return; }
+    }
+    track('nudge_share', { kind, how: 'copy' });
+    try { await navigator.clipboard.writeText(text); toast(`已複製，貼給${b.dataset.oname || '對方'}就可以了`); } catch (e) { prompt('複製下面這段文字', text); }
+  }));
+}
+// 沒登入時點到上面的連結：先登入，登入後回到那一頁（Google 登入會整頁跳走再回來，所以記在 sessionStorage）
+function rememberReturn(hash) {
+  if (!NUDGE_PAGES.test(hash)) return;
+  try { sessionStorage.setItem('afterLogin', hash); } catch (e) { /* 略過 */ }
+}
+function takeReturn() {
+  let h = '';
+  try { h = sessionStorage.getItem('afterLogin') || ''; sessionStorage.removeItem('afterLogin'); } catch (e) { /* 略過 */ }
+  return NUDGE_PAGES.test(h) ? h : '';
+}
 // ---------- 返回 ----------
 // 記住這次打開後走過的頁面。按左上角返回、「完成」、從左邊滑：有上一頁就真的退回上一頁（跟手機返回手勢一致，
 // 不會多疊一層、退回剛剛那一步）；沒有上一頁（例如從通知信直接打開）才去預設的頁面

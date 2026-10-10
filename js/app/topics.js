@@ -107,6 +107,7 @@ async function viewTopics(arg) {
       <textarea class="textarea" id="tq-${id}" maxlength="300" rows="3" placeholder="照你現在想的寫就好">${esc(a.mine || '')}</textarea>
       <div class="small daily-state">${state}</div>
       <button class="btn small" data-send="${id}" style="align-self:flex-start">${a.mine ? '更新答案' : '送出'}</button>
+      ${a.mine ? nudgeBtnHtml('topics', `#/topics/${topic.key}`, oname, `邀請${oname}來寫`) : ''}
     </div>`;
   };
   // 自己寫到第幾題：已寫的都顯示，再加下一題；還沒配對時只給看第 1 題
@@ -134,6 +135,7 @@ async function viewTopics(arg) {
     ${progress}
     ${locked}`;
   track('topic_open', { topic: topic.key });
+  bindNudgeBtns();
 
   const yes = document.getElementById('tp-yes');
   const markDone = () => { yes.disabled = true; yes.textContent = DONE_TEXT; };

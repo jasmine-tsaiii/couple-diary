@@ -60,7 +60,7 @@ async function renderRoute() {
     if (isGuest()) {
       if (page === 'join') { renderTabbar(null); viewJoin('', arg); return; }
       // 登入過的手機登出後回到登入畫面；新使用者可以直接試用（資料先存在手機）
-      if (page === 'login' || page === 'signup' || await hasAccountHere()) { renderTabbar(null); viewLogin(page === 'signup' ? 'signup' : 'signin'); return; }
+      if (page === 'login' || page === 'signup' || await hasAccountHere()) { rememberReturn(location.hash); renderTabbar(null); viewLogin(page === 'signup' ? 'signup' : 'signin'); return; }
     }
     // 已經送出加入要求、還在等主人同意
     if (CLOUD_ENABLED && CloudDB.pendingJoin() && !isPartner()) {
@@ -479,6 +479,11 @@ if ('serviceWorker' in navigator && (location.protocol === 'https:' || localStor
     if (rejoin && CloudDB.isSignedIn() && !CloudDB.isAnonymous()) {
       if (isPartner()) toast('歡迎回來！已經回到原本的帳號');
       else if (!CloudDB.pendingJoin()) { rejoinNotice = true; go('#/join'); }
+    }
+    // 從 Google 登入回來：沒登入時點到「換你做」的連結，登入後回到那一頁
+    if (CloudDB.isSignedIn() && !CloudDB.isAnonymous()) {
+      const back = takeReturn();
+      if (back && (!location.hash || location.hash === '#' || location.hash === '#/')) history.replaceState(null, '', location.pathname + location.search + back);
     }
     // 從確認信回來（重設密碼的等設好再說）
     // 換不到登入狀態（例如 iPhone 主畫面的 App 和 Safari 是分開的）也照樣提示：Email 其實已經確認好了
