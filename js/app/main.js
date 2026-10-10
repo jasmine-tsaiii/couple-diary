@@ -18,7 +18,7 @@ function predictTheme(page, arg) {
   if ((page === 'list' || page === 'new') && TYPES[arg]) return TYPES[arg].theme;
   if (page === 'records') return TYPES[REC_TYPES.includes(arg) ? arg : currentRecType()].theme;
   if (page === 'fights') return 'theme-fight';
-  if (page === 'notes' || page === 'daily' || page === 'topics' || page === 'countdowns' || page === 'countdown' || page === 'quiz' || page === 'capsules' || page === 'capsule') return 'theme-happy';
+  if (page === 'notes' || page === 'daily' || page === 'topics' || page === 'values' || page === 'countdowns' || page === 'countdown' || page === 'quiz' || page === 'capsules' || page === 'capsule') return 'theme-happy';
   if (['view', 'edit', 'task'].includes(page) && recordTheme.has(arg)) return recordTheme.get(arg);
   return '';
 }
@@ -120,6 +120,7 @@ async function renderRoute() {
       else if (page === 'quiz') { renderTabbar('together'); await viewQuiz(); }
       else if (page === 'daily') { renderTabbar('together'); await viewDaily(); }
       else if (page === 'topics') { renderTabbar('together'); await viewTopics(arg); }
+      else if (page === 'values') { renderTabbar('together'); await viewValues(); }
       else if (page === 'notes' && arg === 'new') { renderTabbar(null); await viewNoteNew(); }
       else if (page === 'notes') { renderTabbar('together'); await viewNotes(); }
       else if (page === 'capsules') { renderTabbar('together'); await viewCapsules(); }
@@ -157,6 +158,7 @@ async function renderRoute() {
     else if (page === 'quiz' && usingCloud() && !CloudDB.isAnonymous()) { renderTabbar('together'); await viewQuiz(); }
     else if (page === 'daily') { renderTabbar('together'); await viewDaily(); }
     else if (page === 'topics') { renderTabbar('together'); await viewTopics(arg); }
+    else if (page === 'values') { renderTabbar('together'); await viewValues(); }
     else if (page === 'notes' && arg === 'new') { renderTabbar(null); await viewNoteNew(); }
     else if (page === 'notes') { renderTabbar('together'); await viewNotes(); }
     else if (page === 'capsules') { renderTabbar('together'); await viewCapsules(); }

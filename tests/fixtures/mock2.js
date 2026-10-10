@@ -180,6 +180,25 @@
       if (mine) mine.body = body; else A.push({ pair: d.pair, q_id: a.p_q_id, user_id: u.id, body });
       return { revealed: !!th };
     },
+    // 價值觀地圖：一人一份 24 格答案（0 = 還沒答），兩人都做完才給對方的
+    values_state(S, u) {
+      const st = this.daily_state(S, u); if (!st.ok || !st.pair) return st.ok ? { ok: true, me: st.me, members: st.members, names: st.names } : st;
+      const d = this._daily(S, u); const V = S.values || {};
+      const mi = V[d.pair + '|' + u.id]; const th = V[d.pair + '|' + d.other];
+      return { ok: true, me: u.id, members: d.members, names: st.names, pair: d.pair, mine: mi ? mi.answers : null,
+        mine_done: !!(mi && mi.done), other_done: !!(th && th.done), other: mi && mi.done && th && th.done ? th.answers : null };
+    },
+    values_save(S, u, a) {
+      const d = this._daily(S, u); if (!d || !d.pair) throw new Error('另一半加入之後就能一起做');
+      const A = a.p_answers; if (!Array.isArray(A) || A.length !== 24 || A.some((x) => !Number.isInteger(x) || x < 0 || x > 5)) throw new Error('答案格式不對');
+      S.values = S.values || {}; const V = S.values;
+      const mi = V[d.pair + '|' + u.id]; const th = V[d.pair + '|' + d.other];
+      if (mi && mi.done && th && th.done) throw new Error('已經揭曉了，不能改');
+      const done = !A.includes(0);
+      if (done && !(mi && mi.done)) { S.notifs = S.notifs || []; S.notifs.push({ id: Date.now(), recipient: d.other, actor: u.id, actor_name: (this.daily_state(S, u).names || {})[u.id] || '對方', kind: th && th.done ? 'values_revealed' : 'values_partner_done', created_at: new Date().toISOString(), emailed_at: new Date().toISOString() }); }
+      V[d.pair + '|' + u.id] = { answers: A.slice(), done };
+      return { done, revealed: done && !!(th && th.done) };
+    },
     // 秘密留言板：簡化版的伺服器邏輯（共用每天一題的「這一對」）
     note_state(S, u) {
       const d = this._daily(S, u); if (!d) return { ok: false };

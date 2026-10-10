@@ -969,3 +969,36 @@ button.cd-row, .cd-row .cd-past-open { width: 100%; background: none; border: 0;
 .cd-switch:checked { background: var(--happy); }
 .cd-switch:checked::after { transform: translateX(20px); }
 .cd-switch:focus-visible { outline: 2px solid var(--happy); outline-offset: 2px; }
+
+/* 價值觀地圖（2026-10-10） */
+.vm-progress { height: 6px; border-radius: 3px; background: var(--seg); overflow: hidden; }
+.vm-progress i { display: block; height: 100%; background: var(--accent); border-radius: 3px; transition: width .2s; }
+.vm-q { font-size: 18px; font-weight: 700; line-height: 1.5; }
+.vm-picks { display: flex; justify-content: space-between; padding: 0 2px; }
+.vm-pick { width: 44px; height: 44px; border-radius: 50%; border: 2px solid var(--dash); background: var(--card); padding: 0; cursor: pointer; }
+.vm-pick.on { background: var(--accent); border-color: var(--accent); }
+.vm-ends { display: flex; justify-content: space-between; gap: 12px; }
+.vm-ends span:last-child { text-align: right; }
+.vm-dim { display: flex; flex-direction: column; gap: 6px; }
+.vm-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+.vm-tag { font-size: 12px; padding: 2px 8px; border-radius: 10px; white-space: nowrap; }
+.vm-same { background: var(--resolved-bg); color: var(--resolved-ink); }
+.vm-bit { background: var(--progress-bg); color: var(--progress-ink); }
+.vm-far { background: var(--open-bg); color: var(--open-ink); }
+.vm-track { position: relative; height: 8px; border-radius: 4px; background: var(--seg); margin: 8px 9px 2px; }
+.vm-track.sm { height: 6px; margin: 6px 8px 0; }
+.vm-dot { display: inline-block; width: 18px; height: 18px; border-radius: 50%; border: 2px solid var(--card); box-shadow: 0 1px 3px rgba(0,0,0,.2); }
+.vm-track .vm-dot { position: absolute; top: 50%; transform: translate(-50%, -50%); }
+.vm-dot.me { background: var(--accent); }
+.vm-dot.you { background: var(--fight); }
+.vm-legend { display: flex; align-items: center; gap: 6px; }
+.vm-legend .vm-dot { width: 12px; height: 12px; border-width: 0; box-shadow: none; }
+.vm-legend .vm-dot.you { margin-left: 10px; }
+.vm-bird { background: var(--cloud-bg); color: var(--cloud-dark); border-radius: 14px; padding: 12px; font-size: 14px; line-height: 1.6; }
+.vm-talk { align-self: flex-start; text-decoration: none; }
+.vm-talkbox summary { list-style: none; display: inline-flex; align-items: center; }
+.vm-talkbox summary::-webkit-details-marker { display: none; }
+.vm-talkbox ol { margin: 10px 0 0; padding-left: 20px; line-height: 1.7; }
+.vm-detail { gap: 14px; }
+.vm-detail summary { cursor: pointer; }
+.vm-qrow { display: flex; flex-direction: column; gap: 4px; padding-top: 12px; border-top: 1px solid var(--line); }

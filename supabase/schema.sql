@@ -1856,7 +1856,8 @@ alter table public.notifications drop constraint if exists notifications_kind_ch
 alter table public.notifications add constraint notifications_kind_check check (kind in (
   'new_happy', 'new_task_record', 'task_submitted', 'task_approved',
   'partner_request', 'partner_joined', 'anniversary', 'cloud_reflect', 'write_nudge',
-  'quiz_partner_done', 'quiz_revealed', 'daily_partner_done', 'daily_revealed', 'note_new', 'countdown'));
+  'quiz_partner_done', 'quiz_revealed', 'daily_partner_done', 'daily_revealed', 'note_new', 'countdown',
+  'values_partner_done', 'values_revealed'));
 -- Email 信裡「取消收信」連結用的暗號：每個人一組亂數，不用登入就能取消
 alter table public.notify_prefs add column if not exists unsub_token uuid not null default gen_random_uuid();
 
@@ -2078,7 +2079,8 @@ alter table public.notifications drop constraint if exists notifications_kind_ch
 alter table public.notifications add constraint notifications_kind_check check (kind in (
   'new_happy', 'new_task_record', 'task_submitted', 'task_approved',
   'partner_request', 'partner_joined', 'anniversary', 'cloud_reflect', 'write_nudge',
-  'quiz_partner_done', 'quiz_revealed', 'daily_partner_done', 'daily_revealed', 'note_new', 'countdown'));
+  'quiz_partner_done', 'quiz_revealed', 'daily_partner_done', 'daily_revealed', 'note_new', 'countdown',
+  'values_partner_done', 'values_revealed'));
 
 -- 目前這一對：主人 + 已同意的另一半（排序好，方便比對）
 create or replace function public.quiz_members(p_space uuid) returns uuid[]
@@ -2858,6 +2860,84 @@ begin
 end $$;
 revoke all on function public.topic_save(text, text) from public, anon;
 grant execute on function public.topic_save(text, text) to authenticated;
+
+-- ============================================================
+-- 價值觀地圖（2026-10-10）：兩人各自做 24 題五格量表（金錢、工作與生活、家人、相處距離、吵架方式、未來規劃各 4 題），
+-- 兩個人都做完才看得到對方的答案，揭曉後不能改。題目和分析在前端（js/app/values.js），這裡只存答案。
+-- answers：第 i 格就是第 i 題，1～5，0 = 還沒答。全部答完才算做完（done_at）。用每天一題的「這一對」（daily_pairs）。
+-- ============================================================
+create table if not exists public.values_answers (
+  pair_key   text not null references public.daily_pairs (pair_key) on delete cascade,
+  user_id    uuid not null,
+  answers    smallint[] not null check (cardinality(answers) between 1 and 100 and answers <@ array[0, 1, 2, 3, 4, 5]::smallint[]),
+  done_at    timestamptz,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  primary key (pair_key, user_id)
+);
+alter table public.values_answers enable row level security;
+revoke all on public.values_answers from anon, authenticated;
+
+create or replace function public.values_state() returns jsonb
+language plpgsql security definer set search_path = public as $$
+declare
+  p public.daily_pairs := public.daily_pair();
+  v_space uuid := public.quiz_space();
+  v_members uuid[];
+  v_other uuid;
+  v_mine public.values_answers;
+  v_theirs public.values_answers;
+begin
+  if v_space is null or auth.uid() is null then return jsonb_build_object('ok', false); end if;
+  v_members := public.quiz_members(v_space);
+  if p.pair_key is null then
+    return jsonb_build_object('ok', true, 'me', auth.uid(), 'members', to_jsonb(v_members),
+      'names', (select jsonb_object_agg(m, public.space_member_name(v_space, m)) from unnest(v_members) m));
+  end if;
+  v_other := (select m from unnest(p.members) m where m <> auth.uid() limit 1);
+  select * into v_mine from public.values_answers where pair_key = p.pair_key and user_id = auth.uid();
+  select * into v_theirs from public.values_answers where pair_key = p.pair_key and user_id = v_other;
+  return jsonb_build_object('ok', true, 'me', auth.uid(), 'members', to_jsonb(p.members), 'pair', p.pair_key,
+    'names', (select jsonb_object_agg(m, public.space_member_name(p.space, m)) from unnest(p.members) m),
+    'mine', to_jsonb(v_mine.answers), 'mine_done', v_mine.done_at is not null, 'other_done', v_theirs.done_at is not null,
+    'other', case when v_mine.done_at is not null and v_theirs.done_at is not null then to_jsonb(v_theirs.answers) end);
+end $$;
+revoke all on function public.values_state() from public, anon;
+grant execute on function public.values_state() to authenticated;
+
+-- 存自己的答案（做到一半也存）；24 格都答了就算做完。兩人都做完就不能改。
+-- 第一次做完時通知對方（只放小鈴鐺，不寄 Email、不推播：emailed_at 先填上，推播清單也沒有這兩種）
+create or replace function public.values_save(p_answers int[]) returns jsonb
+language plpgsql security definer set search_path = public as $$
+declare
+  p public.daily_pairs := public.daily_pair();
+  v_other uuid;
+  v_mine public.values_answers;
+  v_theirs public.values_answers;
+  v_done boolean;
+begin
+  if p.pair_key is null then raise exception '另一半加入之後就能一起做'; end if;
+  if p_answers is null or cardinality(p_answers) <> 24
+     or exists (select 1 from unnest(p_answers) a where a is null or a not between 0 and 5) then raise exception '答案格式不對'; end if;
+  v_done := not (0 = any(p_answers));
+  v_other := (select m from unnest(p.members) m where m <> auth.uid() limit 1);
+  perform pg_advisory_xact_lock(hashtext('values:' || p.pair_key));
+  select * into v_mine from public.values_answers where pair_key = p.pair_key and user_id = auth.uid();
+  select * into v_theirs from public.values_answers where pair_key = p.pair_key and user_id = v_other;
+  if v_mine.done_at is not null and v_theirs.done_at is not null then raise exception '已經揭曉了，不能改'; end if;
+  insert into public.values_answers (pair_key, user_id, answers, done_at)
+    values (p.pair_key, auth.uid(), p_answers::smallint[], case when v_done then now() end)
+    on conflict (pair_key, user_id) do update set answers = excluded.answers, updated_at = now(),
+      done_at = case when v_done then coalesce(public.values_answers.done_at, now()) end;
+  if v_done and v_mine.done_at is null then
+    insert into public.notifications (recipient, space_owner, actor, actor_name, kind, emailed_at)
+      values (v_other, p.space, auth.uid(), public.space_member_name(p.space, auth.uid()),
+        case when v_theirs.done_at is not null then 'values_revealed' else 'values_partner_done' end, now());
+  end if;
+  return jsonb_build_object('done', v_done, 'revealed', v_done and v_theirs.done_at is not null);
+end $$;
+revoke all on function public.values_save(int[]) from public, anon;
+grant execute on function public.values_save(int[]) to authenticated;
 
 -- ============================================================
 -- 倒數日（2026-10-08）：去旅行、生日、見面這些大事件還有幾天。兩個人共用一份清單，都能新增、修改、刪除（Jasmine 10/8 決定）。

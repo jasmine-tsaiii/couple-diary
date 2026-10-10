@@ -84,6 +84,7 @@ async function viewTogether() {
   const caps = await loadCapsulesSafe();
   // 新舊版本交接時 topics.js 可能還沒載入，就先不顯示這一列
   const topicRow = typeof topicRowHtml === 'function' ? await topicRowHtml() : '';
+  const valuesRow = typeof valuesRowHtml === 'function' ? await valuesRowHtml() : '';
   const cdRow = typeof countdownRowHtml === 'function' ? await countdownRowHtml() : '';
   let taskSub = '上鎖紀錄的解鎖任務';
   let taskBadge = '';
@@ -105,6 +106,7 @@ async function viewTogether() {
       navRow({ href: '#/wishes', icon: TILE_ICON.wish, title: '一起完成的事', sub: wishes && wishes.length ? `情侶待辦・${wishDone} / ${wishes.length}` : '情侶待辦清單' }),
       capsuleRowNav(caps),
       topicRow,
+      valuesRow,
       cdRow,
       navRow({ href: '#/signup', id: 'row-signup', icon: TILE_ICON.share, title: '註冊後可以和另一半一起玩', sub: '秘密留言板、每天一題、解鎖任務' }),
     ]
@@ -112,6 +114,7 @@ async function viewTogether() {
       cloud && hasNotes && (!CloudDB.isAnonymous() || partner) ? noteRowHtml(notes) : '',
       cloud && (!CloudDB.isAnonymous() || partner) ? dailyRowHtml(daily) : '',
       topicRow,
+      valuesRow,
       cdRow,
       navRow({ href: '#/wishes', icon: TILE_ICON.wish, title: '一起完成的事', sub: wishes && wishes.length ? `情侶待辦・${wishDone} / ${wishes.length}` : '情侶待辦清單' }),
       cloud ? navRow({ href: '#/tasks', icon: ICON.lock, title: '解鎖任務', sub: taskSub, badge: taskBadge }) : '',

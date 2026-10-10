@@ -311,6 +311,13 @@ const CloudDB = CLOUD_ENABLED ? (() => {
       return check(r);
     },
     async topicSave(qId, body) { return check(await client.rpc('topic_save', { p_q_id: qId, p_body: body })); },
+    // ---- 價值觀地圖：一人一份 24 格答案，兩人都做完才給對方的 ----
+    async valuesState() {
+      const r = await client.rpc('values_state');
+      if (r.error && !netDown(r.error) && /values_state|function|schema cache/i.test(r.error.message || '')) return { ok: false, missing: true };
+      return check(r);
+    },
+    async valuesSave(answers) { return check(await client.rpc('values_save', { p_answers: answers })); },
     async dailySave(day, qId, body) { return check(await client.rpc('daily_save', { p_day: day, p_q_id: qId, p_body: body })); },
     async dailyHistory(before, limit) { return check(await client.rpc('daily_history', { p_before: before, p_limit: limit })) || []; },
     async quizStart(questions) { return check(await client.rpc('quiz_start', { p_questions: questions })); },

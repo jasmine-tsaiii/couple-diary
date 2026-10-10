@@ -928,6 +928,8 @@ function notifyText(n) {
     case 'daily_partner_done': return `${who}寫好今天這一題了，換你囉`;
     case 'daily_revealed': return `${who}也寫好今天的題目了，來看看彼此的答案`;
     case 'note_new': return `${who}留了一張紙條給你`;
+    case 'values_partner_done': return `${who}做完「價值觀地圖」了，換你囉`;
+    case 'values_revealed': return '「價值觀地圖」兩個人都做完了，來看看你們的地圖';
     case 'countdown': return x.days ? `再 ${x.days} 天就是「${x.title || ''}」了` : `今天就是「${x.title || ''}」！`;
     default: return `${who}有新動態`;
   }
@@ -977,6 +979,7 @@ function notifyHref(n) {
   if (n.kind === 'quiz_partner_done' || n.kind === 'quiz_revealed') return '#/quiz';
   if (n.kind === 'daily_partner_done' || n.kind === 'daily_revealed') return '#/daily';
   if (n.kind === 'note_new') return '#/notes';
+  if (n.kind === 'values_partner_done' || n.kind === 'values_revealed') return '#/values';
   if (n.kind === 'countdown') return '#/countdowns';
   if (!n.record_id) return '#/';
   if (n.kind === 'task_submitted') return '#/tasks';

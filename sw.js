@@ -28,6 +28,7 @@ const PRECACHE = [
   'js/app/daily.js',
   'js/app/notes.js',
   'js/app/topics.js',
+  'js/app/values.js',
   'js/app/plus.js',
   'js/app/countdown.js',
   'js/app/tabs.js',

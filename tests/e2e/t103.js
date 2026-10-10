@@ -42,7 +42,7 @@ const SHOT = (n) => (process.env.SHOT_DIR || '.') + '/' + n;
   // 一起分頁：主題題庫下面多一列倒數日；還沒有就寫說明
   await open('#/together');
   const rows = await p.$$eval('.nav-row .nav-text .bold', (e) => e.map((x) => x.textContent));
-  log('together row after topics', rows.indexOf('倒數日') === rows.indexOf('主題題庫') + 1, rows.join(','));
+  log('together row after values map', rows.indexOf('倒數日') === rows.indexOf('價值觀地圖') + 1, rows.join(','));
   log('row empty sub', (await p.textContent('#row-countdowns')).includes('還有幾天'));
   await p.click('#row-countdowns'); await p.waitForTimeout(800);
   log('empty list', (await text()).includes('還沒有倒數日'));
