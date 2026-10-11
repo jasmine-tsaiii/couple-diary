@@ -285,28 +285,32 @@ async function valuesImage(rows, oname) {
   const b = paper(g, W, H);
   const x = b.x + b.pad; const cw = b.w - b.pad * 2;
   footer(g, W, H);
-  let y = b.y + 100;
+  let y = b.y + 70;
   kicker(g, x, y, 'Values', '價值觀地圖');
-  y += 80;
-  g.fillStyle = CARD_INK; g.font = `900 56px ${SERIF}`; g.fillText('我們的價值觀地圖', x, y);
-  y += 50;
+  y += 64;
+  g.fillStyle = CARD_INK; g.font = `900 48px ${SERIF}`; g.fillText('我們的價值觀地圖', x, y);
+  y += 46;
   const dot = (cx, cy, col) => { g.beginPath(); g.arc(cx, cy, 13, 0, Math.PI * 2); g.fillStyle = col; g.fill(); g.lineWidth = 4; g.strokeStyle = CARD_BG; g.stroke(); };
   const ME = CARD_ACCENT; const YOU = '#3E4C8A';
   g.font = `500 28px ${SERIF}`;
   dot(x + 12, y - 9, ME); g.fillStyle = CARD_MUTED; g.fillText(myName, x + 34, y);
   const nx = x + 34 + g.measureText(myName).width + 36;
   dot(nx + 12, y - 9, YOU); g.fillStyle = CARD_MUTED; g.fillText(oname, nx + 34, y);
-  y += 24;
+  y += 2;
   for (const r of rows) {
-    y += 54;
-    g.textAlign = 'left'; g.fillStyle = CARD_INK; g.font = `700 32px ${SERIF}`; g.fillText(r.dim.name, x, y);
+    y += 51;
+    g.textAlign = 'left'; g.fillStyle = CARD_INK; g.font = `700 30px ${SERIF}`; g.fillText(r.dim.name, x, y);
     g.textAlign = 'right'; g.fillStyle = r.level.key === 'same' ? '#25502F' : r.level.key === 'bit' ? '#5E420E' : '#6B2A20'; g.font = `600 26px ${SERIF}`; g.fillText(r.level.label, x + cw, y);
-    g.textAlign = 'left';
-    const ty = y + 30;
+    const ty = y + 24;
     g.fillStyle = 'rgba(118,99,90,0.18)'; roundRect(g, x, ty - 5, cw, 10, 5); g.fill();
     const close = Math.abs(r.me - r.other) < 0.4 ? 11 : 0;
     dot(x + cw * ((r.me - 1) / 4) - close, ty, ME); dot(x + cw * ((r.other - 1) / 4) + close, ty, YOU);
-    y = ty + 14;
+    // 軸的兩端寫上代表什麼，不然只看點點看不懂（Jasmine 10/11）
+    y = ty + 36;
+    g.fillStyle = CARD_MUTED; g.font = `400 22px ${SERIF}`;
+    g.textAlign = 'left'; g.fillText(r.dim.left, x, y);
+    g.textAlign = 'right'; g.fillText(r.dim.right, x + cw, y);
+    g.textAlign = 'left';
   }
   return new Promise((resolve) => c.toBlob(resolve, 'image/png'));
 }
