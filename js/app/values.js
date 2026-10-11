@@ -72,11 +72,11 @@ function valuesCompare(mine, other) {
 }
 // 啾啾的一句話：固定文案，不用 AI
 function valuesSummary(rows) {
-  const same = rows.filter((r) => r.level.key === 'same').map((r) => r.dim.name);
+  const n = (k) => rows.filter((r) => r.level.key === k).length;
   const top = [...rows].sort((x, y) => y.diff - x.diff)[0];
-  if (same.length === rows.length) return '你們六個面向都很合拍，很少見喔！還是可以挑一個聊聊，細節不一定一樣。';
-  const head = same.length ? `你們在${same.slice(0, 3).join('、')}上很合拍。` : '你們每個面向都有一點不一樣，這很正常。';
-  return `${head}${top.dim.name}差最多，${top.dim.tip}`;
+  if (n('same') === rows.length) return '你們六件事都很合拍，很少見喔！';
+  const parts = [n('same') && `${n('same')} 件很合拍`, n('bit') && `${n('bit')} 件有點不一樣`, n('far') && `${n('far')} 件差很多`].filter(Boolean);
+  return `${rows.length} 件事裡，${parts.join('、')}。${top.dim.name}差最多。`;
 }
 // 要推薦去聊的面向：差距 ≥ 1 的前兩名
 const valuesTalkDims = (rows) => [...rows].filter((r) => r.diff >= 1).sort((x, y) => y.diff - x.diff).slice(0, 2);
@@ -229,15 +229,50 @@ function renderValuesWait(top, mine, oname, otherDone) {
   document.getElementById('vm-edit').addEventListener('click', () => renderValuesQuestion(top, mine.slice(), 0, oname));
 }
 
+// 揭曉頁：六格翻牌（Jasmine 10/11 選 C）。格子只放名字和顏色點，點一格才從下面拉出兩人位置
+const VALUES_LV_ORDER = { far: 0, bit: 1, same: 2 };
+const valuesSorted = (rows) => [...rows].sort((a, b) => VALUES_LV_ORDER[a.level.key] - VALUES_LV_ORDER[b.level.key] || b.diff - a.diff);
+function valuesTilesHtml(rows) {
+  return `<div class="vm-grid">${valuesSorted(rows).map((x) => `<button class="vm-tile vm-t-${x.level.key}" data-dim="${x.dim.key}" data-level="${x.level.key}" aria-label="${esc(x.dim.name)}：${x.level.label}">
+      <span class="vm-lv" aria-hidden="true"></span><span class="vm-temo" aria-hidden="true">${x.dim.icon}</span><span class="bold">${esc(x.dim.name)}</span></button>`).join('')}</div>
+    <div class="vm-lvlegend small muted"><span><i class="vm-lv vm-t-same"></i>很像</span><span><i class="vm-lv vm-t-bit"></i>有點不一樣</span><span><i class="vm-lv vm-t-far"></i>差很多</span></div>`;
+}
+function valuesTalkHtml(d) {
+  if (d.topic) return `<a class="btn small secondary vm-talk" href="#/topics/${d.topic}" data-talk="${d.key}">一起聊聊${esc(d.name)} →</a>`;
+  return `<details class="vm-talkbox" data-talk="${d.key}"><summary class="btn small secondary vm-talk">一起聊聊${esc(d.name)}</summary>
+    <ol class="small">${d.talk.map((t) => `<li>${esc(t)}</li>`).join('')}</ol></details>`;
+}
+function valuesOpenSheet(x, oname) {
+  valuesCloseSheet();
+  const d = x.dim;
+  const close = Math.abs(x.me - x.other) < 0.4;
+  // 名字貼邊時往內對齊，不會被切掉
+  const edge = (score) => (score < 1.6 ? ' l' : score > 4.4 ? ' r' : '');
+  const dot = (cls, score, who, k) => `<span class="vm-dot ${cls}" style="left:calc(${valuesPos(score)} ${close ? (k ? '+ 10px' : '- 10px') : '+ 0px'})"><span class="vm-who${edge(score)}">${esc(who)}</span></span>`;
+  const bg = document.createElement('div');
+  bg.className = 'vm-sheet-bg';
+  bg.innerHTML = `<div class="vm-sheet" role="dialog" aria-label="${esc(d.name)}">
+      <div class="vm-grab" aria-hidden="true"></div>
+      <div class="vm-head"><span class="bold" style="font-size:18px">${d.icon} ${esc(d.name)}<span class="vm-tag vm-${x.level.key}" style="margin-left:8px">${x.level.label}</span></span><button class="vm-x" aria-label="關閉">✕</button></div>
+      <div class="vm-track lg">${dot('me', x.me, '我', 0)}${dot('you', x.other, oname, 1)}</div>
+      <div class="vm-ends small muted"><span>${esc(d.left)}</span><span>${esc(d.right)}</span></div>
+      ${x.level.key === 'same' ? '<div class="small muted">你們想法差不多，很好聊開。</div>' : `<div class="small">🐤 ${esc(d.tip)}</div>`}
+      ${valuesTalkHtml(d)}
+    </div>`;
+  document.body.appendChild(bg);
+  requestAnimationFrame(() => bg.classList.add('on'));
+  bg.addEventListener('click', (e) => { if (e.target === bg || e.target.closest('.vm-x')) valuesCloseSheet(); });
+  bg.querySelectorAll('[data-talk]').forEach((el) => el.addEventListener(el.tagName === 'DETAILS' ? 'toggle' : 'click', () => {
+    if (el.tagName !== 'DETAILS' || el.open) track('values_talk', { dim: el.dataset.talk });
+    if (el.tagName === 'A') valuesCloseSheet();
+  }));
+  window.addEventListener('hashchange', valuesCloseSheet, { once: true });
+}
+function valuesCloseSheet() { document.querySelectorAll('.vm-sheet-bg').forEach((n) => n.remove()); }
+
 function renderValuesReveal(top, mine, other, oname) {
   const rows = valuesCompare(mine, other);
-  const talk = valuesTalkDims(rows);
-  const talkHtml = talk.map((r) => {
-    const d = r.dim;
-    if (d.topic) return `<a class="btn small secondary vm-talk" href="#/topics/${d.topic}" data-talk="${d.key}">一起聊聊${esc(d.name)} →</a>`;
-    return `<details class="vm-talkbox" data-talk="${d.key}"><summary class="btn small secondary vm-talk">一起聊聊${esc(d.name)}</summary>
-      <ol class="small">${d.talk.map((t) => `<li>${esc(t)}</li>`).join('')}</ol></details>`;
-  }).join('');
+  const allMap = valuesSorted(rows).map((x) => valuesBar(x.dim, [{ cls: 'me', score: x.me, who: '我' }, { cls: 'you', score: x.other, who: oname }], x.level)).join('');
   const detail = VALUES_QS.map(([dk, q, l, r], i) => `<div class="vm-qrow">
       <div class="small">${valuesDim(dk).icon} ${esc(q)}</div>
       <div class="vm-track sm">${valuesDots([{ cls: 'me', score: mine[i], who: '我' }, { cls: 'you', score: other[i], who: oname }])}</div>
@@ -246,17 +281,27 @@ function renderValuesReveal(top, mine, other, oname) {
   app.innerHTML = `${top}
     <div class="card vm-map" style="gap:12px">
       <div class="bold" style="font-size:18px">我們的價值觀地圖</div>
-      <div class="vm-legend small"><span class="vm-dot me"></span>我<span class="vm-dot you"></span>${esc(oname)}</div>
       <div class="vm-bird">🐤 ${esc(valuesSummary(rows))}</div>
+      ${valuesTilesHtml(rows)}
+      <div class="small muted" style="text-align:center">點一格，看看你們各站在哪裡</div>
     </div>
-    ${rows.map((x) => `<div class="card vm-dimcard">${valuesBar(x.dim, [{ cls: 'me', score: x.me, who: '我' }, { cls: 'you', score: x.other, who: oname }], x.level)}</div>`).join('')}
-    ${talkHtml ? `<div class="card" style="gap:10px"><div class="bold">差最多的，一起聊聊</div>${talkHtml}</div>` : ''}
+    <button class="btn secondary" id="vm-all" aria-expanded="false">看整張地圖</button>
+    <div class="card vm-map" id="vm-allmap" style="gap:16px" hidden>
+      <div class="vm-legend small"><span class="vm-dot me"></span>我<span class="vm-dot you"></span>${esc(oname)}</div>
+      ${allMap}
+    </div>
     <details class="card vm-detail"><summary class="bold">看每一題的答案</summary>${detail}</details>
     <button class="btn secondary" id="vm-img">存成圖片</button>
     <div class="small muted" style="text-align:center">沒有誰對誰錯，不一樣的地方，就是最值得聊的地方。</div>`;
-  app.querySelectorAll('[data-talk]').forEach((el) => el.addEventListener(el.tagName === 'DETAILS' ? 'toggle' : 'click', () => {
-    if (el.tagName !== 'DETAILS' || el.open) track('values_talk', { dim: el.dataset.talk });
+  app.querySelectorAll('.vm-tile').forEach((t) => t.addEventListener('click', () => {
+    valuesOpenSheet(rows.find((x) => x.dim.key === t.dataset.dim), oname);
+    track('values_tile', { dim: t.dataset.dim });
   }));
+  const allBtn = document.getElementById('vm-all'); const allBox = document.getElementById('vm-allmap');
+  allBtn.addEventListener('click', () => {
+    const open = allBox.hidden; allBox.hidden = !open;
+    allBtn.setAttribute('aria-expanded', open); allBtn.textContent = open ? '收起整張地圖' : '看整張地圖';
+  });
   const imgBtn = document.getElementById('vm-img');
   imgBtn.addEventListener('click', () => withBusy(imgBtn, '準備中…', async () => {
     const blob = await valuesImage(rows, oname);
@@ -275,16 +320,21 @@ function renderValuesReveal(top, mine, other, oname) {
   }));
 }
 
-// 存成圖片：沿用回憶小卡的紙張和頁尾（方形 1080）
-async function valuesImage(rows, oname) {
-  // 直式（1080×1680）：每個面向一張白色小卡，兩端的字放在軸下面（Jasmine 10/11 選 A：方形太擠）
-  const W = 1080; const H = 1680;
+// 存成圖片：整張地圖（直式 1080），沿用回憶小卡的紙張和頁尾。一個面向一張小卡，差最多的排前面
+async function valuesImage(rows, oname, style = 'grid') {
+  if (style === 'grid') return valuesImageGrid(rows, oname);
+  const W = 1080;
+  const list = valuesSorted(rows);
+  const CH = 150; const GAP = 14;
+  const myName = (isPartner() ? CloudDB.partnerInfo().name : NAMES.me) || '我';
+  const summary = valuesSummary(rows);
+  await ensureFonts(`我們的價值觀地圖差很多有點不一樣很像${myName}${oname}${summary}${rows.map((r) => r.dim.name + r.dim.left + r.dim.right).join('')}Values啾啾日記`);
+  const b0 = sheetBox(W, 2000); const cw = b0.w - 112;
+  const H = Math.max(1350, Math.round(b0.y + 370 + list.length * (CH + GAP) + 130 + 190));
   const c = document.createElement('canvas'); c.width = W; c.height = H;
   const g = c.getContext('2d');
-  const myName = (isPartner() ? CloudDB.partnerInfo().name : NAMES.me) || '我';
-  await ensureFonts(`我們的價值觀地圖${myName}${oname}${rows.map((r) => r.dim.name + r.dim.left + r.dim.right + r.level.label).join('')}Values啾啾日記`);
   const b = paper(g, W, H);
-  const x = b.x + 56; const cw = b.w - 112;
+  const x = b.x + 56;
   footer(g, W, H);
   let y = b.y + 96;
   kicker(g, x, y, 'Values', '價值觀地圖');
@@ -297,20 +347,24 @@ async function valuesImage(rows, oname) {
   dot(x + 12, y - 9, ME); g.fillStyle = CARD_MUTED; g.fillText(myName, x + 34, y);
   const nx = x + 34 + g.measureText(myName).width + 36;
   dot(nx + 12, y - 9, YOU); g.fillStyle = CARD_MUTED; g.fillText(oname, nx + 34, y);
-  y += 34;
-  const TAG = { same: ['#E3F0E6', '#25502F'], bit: ['#FBF0D9', '#5E420E'], far: ['#FBE9E7', '#6B2A20'] };
-  const ch = 150; const gap = 16;
-  for (const r of rows) {
-    // 白色小卡
-    g.save(); g.shadowColor = 'rgba(90,64,40,0.10)'; g.shadowBlur = 10; g.shadowOffsetY = 2;
-    g.fillStyle = '#FFFFFF'; roundRect(g, x, y, cw, ch, 22); g.fill(); g.restore();
+  y += 56;
+  // 啾啾一句整體結論
+  g.fillStyle = CARD_INK; g.font = `500 28px ${SERIF}`;
+  let line = ''; const lines = [];
+  for (const ch of summary) { if (g.measureText(line + ch).width > cw) { lines.push(line); line = ch; } else line += ch; }
+  lines.push(line);
+  lines.slice(0, 2).forEach((l, k) => g.fillText(l, x, y + k * 42));
+  y += 42 * Math.min(2, lines.length) + 10;
+  const LV = { far: ['#D0705F', '差很多'], bit: ['#D9A441', '有點不一樣'], same: ['#6FA77F', '很像'] };
+  for (const r of list) {
+    g.save(); g.shadowColor = 'rgba(90,64,40,0.10)'; g.shadowBlur = 10; g.shadowOffsetY = 2; g.fillStyle = '#FFFFFF'; roundRect(g, x, y, cw, CH, 22); g.fill(); g.restore();
     const ix = x + 30; const iw = cw - 60;
-    g.textAlign = 'left'; g.fillStyle = CARD_INK; g.font = `700 32px ${SERIF}`; g.fillText(r.dim.name, ix, y + 50);
-    // 很像／不一樣的小標籤
-    g.font = `600 24px ${SERIF}`;
-    const tw = g.measureText(r.level.label).width + 32;
-    g.fillStyle = TAG[r.level.key][0]; roundRect(g, ix + iw - tw, y + 22, tw, 40, 20); g.fill();
-    g.fillStyle = TAG[r.level.key][1]; g.textAlign = 'center'; g.fillText(r.level.label, ix + iw - tw / 2, y + 50);
+    g.fillStyle = CARD_INK; g.font = `700 32px ${SERIF}`; g.textAlign = 'left'; g.fillText(r.dim.name, ix, y + 52);
+    // 右上角：顏色點＋程度
+    const [col, lab] = LV[r.level.key];
+    g.font = `700 24px ${SERIF}`; g.textAlign = 'right'; g.fillStyle = col; g.fillText(lab, ix + iw, y + 50);
+    const lw = g.measureText(lab).width;
+    g.beginPath(); g.arc(ix + iw - lw - 18, y + 42, 8, 0, Math.PI * 2); g.fill();
     const tx = ix + 14; const tw2 = iw - 28; const ty = y + 88;
     g.fillStyle = '#F1E9E1'; roundRect(g, tx, ty - 5, tw2, 10, 5); g.fill();
     const close = Math.abs(r.me - r.other) < 0.4 ? 12 : 0;
@@ -319,7 +373,61 @@ async function valuesImage(rows, oname) {
     g.textAlign = 'left'; g.fillText(r.dim.left, ix, y + 130);
     g.textAlign = 'right'; g.fillText(r.dim.right, ix + iw, y + 130);
     g.textAlign = 'left';
-    y += ch + gap;
+    y += CH + GAP;
   }
+  return new Promise((resolve) => c.toBlob(resolve, 'image/png'));
+}
+
+// 分享圖（翻牌版）：六格，每格名字、程度、一條小軸和兩端說明
+async function valuesImageGrid(rows, oname) {
+  const W = 1080;
+  const list = valuesSorted(rows);
+  const H = Math.max(1350, Math.round(sheetBox(W, 2000).y + 370 + Math.ceil(list.length / 2) * 270 + 130 + 190));
+  const myName = (isPartner() ? CloudDB.partnerInfo().name : NAMES.me) || '我';
+  const summary = valuesSummary(rows);
+  await ensureFonts(`我們的價值觀地圖差很多有點不一樣很像${myName}${oname}${summary}${rows.map((r) => r.dim.name + r.dim.left + r.dim.right).join('')}Values啾啾日記`);
+  const c = document.createElement('canvas'); c.width = W; c.height = H;
+  const g = c.getContext('2d');
+  const b = paper(g, W, H);
+  const x = b.x + 56; const cw = b.w - 112;
+  footer(g, W, H);
+  let y = b.y + 96;
+  kicker(g, x, y, 'Values', '價值觀地圖');
+  y += 72;
+  g.fillStyle = CARD_INK; g.font = `900 54px ${SERIF}`; g.fillText('我們的價值觀地圖', x, y);
+  y += 54;
+  const dot = (cx, cy, col, rr = 14) => { g.beginPath(); g.arc(cx, cy, rr, 0, Math.PI * 2); g.fillStyle = col; g.fill(); g.lineWidth = 4; g.strokeStyle = '#FFFFFF'; g.stroke(); };
+  const ME = CARD_ACCENT; const YOU = '#3E4C8A';
+  g.font = `500 28px ${SERIF}`;
+  dot(x + 12, y - 9, ME); g.fillStyle = CARD_MUTED; g.fillText(myName, x + 34, y);
+  const nx = x + 34 + g.measureText(myName).width + 36;
+  dot(nx + 12, y - 9, YOU); g.fillStyle = CARD_MUTED; g.fillText(oname, nx + 34, y);
+  y += 56;
+  g.fillStyle = CARD_INK; g.font = `500 28px ${SERIF}`;
+  let line = ''; const lines = [];
+  for (const ch of summary) { if (g.measureText(line + ch).width > cw) { lines.push(line); line = ch; } else line += ch; }
+  lines.push(line);
+  lines.slice(0, 2).forEach((l, k) => g.fillText(l, x, y + k * 42));
+  y += 42 * Math.min(2, lines.length) + 8;
+  const LV = { far: ['#D0705F', '差很多', '#FBE9E7'], bit: ['#D9A441', '有點不一樣', '#FFFFFF'], same: ['#6FA77F', '很像', '#FFFFFF'] };
+  const GAP = 20; const TW = (cw - GAP) / 2; const TH = 250;
+  list.forEach((r, k) => {
+    const tx = x + (k % 2) * (TW + GAP); const ty = y + Math.floor(k / 2) * (TH + GAP);
+    const [col, lab, bg] = LV[r.level.key];
+    g.save(); g.shadowColor = 'rgba(90,64,40,0.10)'; g.shadowBlur = 10; g.shadowOffsetY = 2; g.fillStyle = bg; roundRect(g, tx, ty, TW, TH, 26); g.fill(); g.restore();
+    g.textAlign = 'center';
+    g.fillStyle = CARD_INK; g.font = `800 36px ${SERIF}`; g.fillText(r.dim.name, tx + TW / 2, ty + 70);
+    g.font = `700 24px ${SERIF}`; const lw = g.measureText(lab).width;
+    g.fillStyle = col; g.beginPath(); g.arc(tx + TW / 2 - lw / 2 - 14, ty + 108, 8, 0, Math.PI * 2); g.fill();
+    g.fillText(lab, tx + TW / 2 + 8, ty + 116);
+    const bx = tx + 40; const bw = TW - 80; const by = ty + 165;
+    g.fillStyle = r.level.key === 'far' ? '#F3D6D1' : '#F1E9E1'; roundRect(g, bx, by - 5, bw, 10, 5); g.fill();
+    const close = Math.abs(r.me - r.other) < 0.4 ? 11 : 0;
+    dot(bx + bw * ((r.me - 1) / 4) - close, by, ME, 13); dot(bx + bw * ((r.other - 1) / 4) + close, by, YOU, 13);
+    g.fillStyle = CARD_MUTED; g.font = `400 20px ${SERIF}`;
+    g.textAlign = 'left'; g.fillText(r.dim.left, tx + 26, ty + 214);
+    g.textAlign = 'right'; g.fillText(r.dim.right, tx + TW - 26, ty + 214);
+    g.textAlign = 'left';
+  });
   return new Promise((resolve) => c.toBlob(resolve, 'image/png'));
 }

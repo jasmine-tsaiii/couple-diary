@@ -65,17 +65,29 @@ const SHOT = (n) => (process.env.SHOT_DIR || '.') + '/' + n;
   for (let i = 0; i < 24; i++) await pick(theirs[i]);
   await p.waitForTimeout(700);
   const tr = await text();
-  log('revealed', tr.includes('我們的價值觀地圖') && await p.locator('.vm-dot.you').count() >= 6);
-  log('levels', (await p.textContent('[data-dim="money"] .vm-tag')) === '差很多' && (await p.textContent('[data-dim="work"] .vm-tag')) === '有點不一樣' && (await p.textContent('[data-dim="family"] .vm-tag')) === '很像');
-  log('summary', tr.includes('你們在家人、相處距離、未來規劃上很合拍'));
-  log('talk links', await p.locator('a.vm-talk[href="#/topics/money"]').count() === 1 && await p.locator('details[data-talk="fight"]').count() === 1);
+  log('revealed', tr.includes('我們的價值觀地圖') && await p.locator('.vm-tile').count() === 6);
+  log('levels', await p.locator('.vm-tile[data-dim="money"][data-level="far"]').count() === 1 && await p.locator('.vm-tile[data-dim="work"][data-level="bit"]').count() === 1 && await p.locator('.vm-tile[data-dim="family"][data-level="same"]').count() === 1);
+  log('far first', (await p.getAttribute('.vm-tile >> nth=0', 'data-level')) === 'far');
+  log('summary', tr.includes('6 件事裡，3 件很合拍、1 件有點不一樣、2 件差很多。'));
+  log('map hidden', !(await p.isVisible('#vm-allmap')));
+  await p.click('#vm-all'); await p.waitForTimeout(150);
+  log('map opens', await p.locator('#vm-allmap .vm-track .vm-dot.you').count() === 6 && await p.isVisible('#vm-allmap'));
+  await p.click('#vm-all');
+  await p.click('.vm-tile[data-dim="money"]'); await p.waitForTimeout(350);
+  log('sheet', await p.isVisible('.vm-sheet .vm-dot.you') && await p.locator('.vm-sheet a.vm-talk[href="#/topics/money"]').count() === 1);
+  await p.screenshot({ path: SHOT('values-sheet.png') });
+  await p.click('.vm-x'); await p.waitForTimeout(150);
+  log('sheet closes', await p.locator('.vm-sheet').count() === 0);
   await p.screenshot({ path: SHOT('values-reveal.png'), fullPage: true });
-  await p.click('details[data-talk="fight"] summary'); await p.waitForTimeout(200);
-  log('fight questions', (await text()).includes('暫停'));
+  await p.click('.vm-tile[data-dim="fight"]'); await p.waitForTimeout(350);
+  await p.click('.vm-sheet details[data-talk="fight"] summary'); await p.waitForTimeout(200);
+  log('fight questions', (await p.textContent('.vm-sheet')).includes('暫停'));
+  await p.click('.vm-x'); await p.waitForTimeout(150);
   const locked = await p.evaluate(async () => { try { await CloudDB.valuesSave(new Array(24).fill(2)); return false; } catch (e) { return /已經揭曉/.test(e.message); } });
   log('no edit after reveal', locked);
+  await p.click('.vm-tile[data-dim="money"]'); await p.waitForTimeout(350);
   await p.click('a.vm-talk[href="#/topics/money"]'); await p.waitForTimeout(800);
-  log('talk opens topic', p.url().endsWith('#/topics/money'));
+  log('talk opens topic', p.url().endsWith('#/topics/money') && await p.locator('.vm-sheet').count() === 0);
   // 主人也看到揭曉、有通知
   await as(owner); await open('#/values');
   log('owner sees reveal', (await text()).includes('我們的價值觀地圖'));
@@ -83,6 +95,7 @@ const SHOT = (n) => (process.env.SHOT_DIR || '.') + '/' + n;
   log('owner notified', n2.includes('values_revealed'));
   // 存成圖片做得出來
   const blobOk = await p.evaluate(async () => { const st = await CloudDB.valuesState(); const b = await valuesImage(valuesCompare(st.mine, st.other), '小明'); window.__img = b ? await new Promise((r) => { const f = new FileReader(); f.onload = () => r(f.result); f.readAsDataURL(b); }) : null; return !!b && b.size > 10000; });
+  if (process.env.KEEP) { const d2 = await p.evaluate(async () => { const st = await CloudDB.valuesState(); const b = await valuesImage(valuesCompare(st.mine, st.other), '小明', 'list'); return new Promise((r) => { const f = new FileReader(); f.onload = () => r(f.result); f.readAsDataURL(b); }); }); fs.writeFileSync(SHOT('values-image-list.png'), Buffer.from(d2.split(',')[1], 'base64')); }
   if (process.env.KEEP) { const d = await p.evaluate(() => window.__img); if (d) fs.writeFileSync(SHOT('values-image.png'), Buffer.from(d.split(',')[1], 'base64')); }
   log('image', blobOk);
 

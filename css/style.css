@@ -1002,5 +1002,30 @@ button.cd-row, .cd-row .cd-past-open { width: 100%; background: none; border: 0;
 .vm-detail { gap: 14px; }
 .vm-detail summary { cursor: pointer; }
 .vm-dimcard { padding: 16px 16px 14px; }
+.vm-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.vm-tile { position: relative; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; min-height: 104px; border: 1px solid var(--line); border-radius: 18px; background: var(--card); color: var(--ink, inherit); font-size: 16px; cursor: pointer; padding: 10px; }
+.vm-tile.vm-t-far { background: var(--open-bg); border-color: transparent; }
+.vm-temo { font-size: 30px; line-height: 1; }
+.vm-lv { display: inline-block; width: 11px; height: 11px; border-radius: 50%; }
+.vm-tile .vm-lv { position: absolute; top: 10px; right: 10px; }
+.vm-lv.vm-t-far, .vm-t-far .vm-lv { background: #D0705F; }
+.vm-lv.vm-t-bit, .vm-t-bit .vm-lv { background: #D9A441; }
+.vm-lv.vm-t-same, .vm-t-same .vm-lv { background: #6FA77F; }
+.vm-lvlegend { display: flex; justify-content: center; gap: 14px; }
+.vm-lvlegend .vm-lv { width: 9px; height: 9px; margin-right: 4px; }
+.vm-sheet-bg { position: fixed; inset: 0; z-index: 30; background: rgba(43, 35, 32, 0); display: flex; align-items: flex-end; transition: background .2s; }
+.vm-sheet-bg.on { background: rgba(43, 35, 32, .35); }
+.vm-sheet { width: 100%; max-width: 560px; margin: 0 auto; background: var(--card); border-radius: 24px 24px 0 0; padding: 12px 20px calc(24px + env(safe-area-inset-bottom)); display: flex; flex-direction: column; gap: 10px; transform: translateY(100%); transition: transform .22s ease-out; }
+.vm-sheet-bg.on .vm-sheet { transform: none; }
+@media (prefers-reduced-motion: reduce) { .vm-sheet, .vm-sheet-bg { transition: none; } }
+.vm-grab { width: 40px; height: 5px; border-radius: 3px; background: var(--line); margin: 0 auto 4px; }
+.vm-x { border: 0; background: none; font-size: 18px; color: var(--muted); cursor: pointer; padding: 4px 6px; }
+.vm-track.lg { height: 10px; margin: 34px 12px 6px; }
+.vm-track.lg .vm-dot { width: 24px; height: 24px; border-width: 3px; }
+.vm-who { position: absolute; bottom: 28px; left: 50%; transform: translateX(-50%); font-size: 12px; font-weight: 700; white-space: nowrap; }
+.vm-who.l { left: -6px; transform: none; }
+.vm-who.r { left: auto; right: -6px; transform: none; }
+.vm-dot.me .vm-who { color: var(--accent); }
+.vm-dot.you .vm-who { color: var(--fight); }
 .vm-dimcard .vm-track { margin: 14px 11px 8px; }
 .vm-qrow { display: flex; flex-direction: column; gap: 4px; padding-top: 12px; border-top: 1px solid var(--line); }
