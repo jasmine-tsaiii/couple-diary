@@ -244,12 +244,12 @@ function renderValuesReveal(top, mine, other, oname) {
       <div class="vm-ends small muted"><span>${esc(l)}</span><span>${esc(r)}</span></div>
     </div>`).join('');
   app.innerHTML = `${top}
-    <div class="card vm-map" style="gap:14px">
+    <div class="card vm-map" style="gap:12px">
       <div class="bold" style="font-size:18px">我們的價值觀地圖</div>
       <div class="vm-legend small"><span class="vm-dot me"></span>我<span class="vm-dot you"></span>${esc(oname)}</div>
       <div class="vm-bird">🐤 ${esc(valuesSummary(rows))}</div>
-      ${rows.map((x) => valuesBar(x.dim, [{ cls: 'me', score: x.me, who: '我' }, { cls: 'you', score: x.other, who: oname }], x.level)).join('')}
     </div>
+    ${rows.map((x) => `<div class="card vm-dimcard">${valuesBar(x.dim, [{ cls: 'me', score: x.me, who: '我' }, { cls: 'you', score: x.other, who: oname }], x.level)}</div>`).join('')}
     ${talkHtml ? `<div class="card" style="gap:10px"><div class="bold">差最多的，一起聊聊</div>${talkHtml}</div>` : ''}
     <details class="card vm-detail"><summary class="bold">看每一題的答案</summary>${detail}</details>
     <button class="btn secondary" id="vm-img">存成圖片</button>
@@ -277,40 +277,49 @@ function renderValuesReveal(top, mine, other, oname) {
 
 // 存成圖片：沿用回憶小卡的紙張和頁尾（方形 1080）
 async function valuesImage(rows, oname) {
-  const W = 1080; const H = 1080;
+  // 直式（1080×1680）：每個面向一張白色小卡，兩端的字放在軸下面（Jasmine 10/11 選 A：方形太擠）
+  const W = 1080; const H = 1680;
   const c = document.createElement('canvas'); c.width = W; c.height = H;
   const g = c.getContext('2d');
   const myName = (isPartner() ? CloudDB.partnerInfo().name : NAMES.me) || '我';
   await ensureFonts(`我們的價值觀地圖${myName}${oname}${rows.map((r) => r.dim.name + r.dim.left + r.dim.right + r.level.label).join('')}Values啾啾日記`);
   const b = paper(g, W, H);
-  const x = b.x + b.pad; const cw = b.w - b.pad * 2;
+  const x = b.x + 56; const cw = b.w - 112;
   footer(g, W, H);
-  let y = b.y + 70;
+  let y = b.y + 96;
   kicker(g, x, y, 'Values', '價值觀地圖');
-  y += 64;
-  g.fillStyle = CARD_INK; g.font = `900 48px ${SERIF}`; g.fillText('我們的價值觀地圖', x, y);
-  y += 46;
-  const dot = (cx, cy, col) => { g.beginPath(); g.arc(cx, cy, 13, 0, Math.PI * 2); g.fillStyle = col; g.fill(); g.lineWidth = 4; g.strokeStyle = CARD_BG; g.stroke(); };
+  y += 72;
+  g.fillStyle = CARD_INK; g.font = `900 54px ${SERIF}`; g.fillText('我們的價值觀地圖', x, y);
+  y += 54;
+  const dot = (cx, cy, col) => { g.beginPath(); g.arc(cx, cy, 14, 0, Math.PI * 2); g.fillStyle = col; g.fill(); g.lineWidth = 4; g.strokeStyle = '#FFFFFF'; g.stroke(); };
   const ME = CARD_ACCENT; const YOU = '#3E4C8A';
   g.font = `500 28px ${SERIF}`;
   dot(x + 12, y - 9, ME); g.fillStyle = CARD_MUTED; g.fillText(myName, x + 34, y);
   const nx = x + 34 + g.measureText(myName).width + 36;
   dot(nx + 12, y - 9, YOU); g.fillStyle = CARD_MUTED; g.fillText(oname, nx + 34, y);
-  y += 2;
+  y += 34;
+  const TAG = { same: ['#E3F0E6', '#25502F'], bit: ['#FBF0D9', '#5E420E'], far: ['#FBE9E7', '#6B2A20'] };
+  const ch = 150; const gap = 16;
   for (const r of rows) {
-    y += 51;
-    g.textAlign = 'left'; g.fillStyle = CARD_INK; g.font = `700 30px ${SERIF}`; g.fillText(r.dim.name, x, y);
-    g.textAlign = 'right'; g.fillStyle = r.level.key === 'same' ? '#25502F' : r.level.key === 'bit' ? '#5E420E' : '#6B2A20'; g.font = `600 26px ${SERIF}`; g.fillText(r.level.label, x + cw, y);
-    const ty = y + 24;
-    g.fillStyle = 'rgba(118,99,90,0.18)'; roundRect(g, x, ty - 5, cw, 10, 5); g.fill();
-    const close = Math.abs(r.me - r.other) < 0.4 ? 11 : 0;
-    dot(x + cw * ((r.me - 1) / 4) - close, ty, ME); dot(x + cw * ((r.other - 1) / 4) + close, ty, YOU);
-    // 軸的兩端寫上代表什麼，不然只看點點看不懂（Jasmine 10/11）
-    y = ty + 36;
-    g.fillStyle = CARD_MUTED; g.font = `400 22px ${SERIF}`;
-    g.textAlign = 'left'; g.fillText(r.dim.left, x, y);
-    g.textAlign = 'right'; g.fillText(r.dim.right, x + cw, y);
+    // 白色小卡
+    g.save(); g.shadowColor = 'rgba(90,64,40,0.10)'; g.shadowBlur = 10; g.shadowOffsetY = 2;
+    g.fillStyle = '#FFFFFF'; roundRect(g, x, y, cw, ch, 22); g.fill(); g.restore();
+    const ix = x + 30; const iw = cw - 60;
+    g.textAlign = 'left'; g.fillStyle = CARD_INK; g.font = `700 32px ${SERIF}`; g.fillText(r.dim.name, ix, y + 50);
+    // 很像／不一樣的小標籤
+    g.font = `600 24px ${SERIF}`;
+    const tw = g.measureText(r.level.label).width + 32;
+    g.fillStyle = TAG[r.level.key][0]; roundRect(g, ix + iw - tw, y + 22, tw, 40, 20); g.fill();
+    g.fillStyle = TAG[r.level.key][1]; g.textAlign = 'center'; g.fillText(r.level.label, ix + iw - tw / 2, y + 50);
+    const tx = ix + 14; const tw2 = iw - 28; const ty = y + 88;
+    g.fillStyle = '#F1E9E1'; roundRect(g, tx, ty - 5, tw2, 10, 5); g.fill();
+    const close = Math.abs(r.me - r.other) < 0.4 ? 12 : 0;
+    dot(tx + tw2 * ((r.me - 1) / 4) - close, ty, ME); dot(tx + tw2 * ((r.other - 1) / 4) + close, ty, YOU);
+    g.fillStyle = CARD_MUTED; g.font = `400 23px ${SERIF}`;
+    g.textAlign = 'left'; g.fillText(r.dim.left, ix, y + 130);
+    g.textAlign = 'right'; g.fillText(r.dim.right, ix + iw, y + 130);
     g.textAlign = 'left';
+    y += ch + gap;
   }
   return new Promise((resolve) => c.toBlob(resolve, 'image/png'));
 }
