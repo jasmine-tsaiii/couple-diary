@@ -1857,7 +1857,7 @@ alter table public.notifications add constraint notifications_kind_check check (
   'new_happy', 'new_task_record', 'task_submitted', 'task_approved',
   'partner_request', 'partner_joined', 'anniversary', 'cloud_reflect', 'write_nudge',
   'quiz_partner_done', 'quiz_revealed', 'daily_partner_done', 'daily_revealed', 'note_new', 'countdown',
-  'values_partner_done', 'values_revealed'));
+  'values_partner_done', 'values_revealed', 'daily_remind'));
 -- Email 信裡「取消收信」連結用的暗號：每個人一組亂數，不用登入就能取消
 alter table public.notify_prefs add column if not exists unsub_token uuid not null default gen_random_uuid();
 
@@ -2080,7 +2080,7 @@ alter table public.notifications add constraint notifications_kind_check check (
   'new_happy', 'new_task_record', 'task_submitted', 'task_approved',
   'partner_request', 'partner_joined', 'anniversary', 'cloud_reflect', 'write_nudge',
   'quiz_partner_done', 'quiz_revealed', 'daily_partner_done', 'daily_revealed', 'note_new', 'countdown',
-  'values_partner_done', 'values_revealed'));
+  'values_partner_done', 'values_revealed', 'daily_remind'));
 
 -- 目前這一對：主人 + 已同意的另一半（排序好，方便比對）
 create or replace function public.quiz_members(p_space uuid) returns uuid[]
@@ -2768,7 +2768,7 @@ create or replace function public.notifications_push_kick() returns trigger
 language plpgsql security definer set search_path = public as $$
 begin
   if new.kind in ('new_happy', 'new_task_record', 'task_submitted', 'task_approved', 'partner_request', 'partner_joined',
-                  'quiz_partner_done', 'daily_partner_done', 'daily_revealed', 'note_new')
+                  'quiz_partner_done', 'daily_partner_done', 'daily_revealed', 'note_new', 'daily_remind')
      and exists (select 1 from public.push_subscriptions where uid = new.recipient) then
     begin
       perform net.http_post(
@@ -3046,6 +3046,41 @@ revoke all on function public.countdown_delete(uuid) from public, anon;
 grant execute on function public.countdown_list() to authenticated;
 grant execute on function public.countdown_save(uuid, text, date, text, boolean) to authenticated;
 grant execute on function public.countdown_delete(uuid) to authenticated;
+
+-- ============================================================
+-- 每天一題晚上 9 點提醒（2026-10-12，Jasmine 決定「只提醒沒寫的人」）
+-- notify-cron.sql 每天 21:00（台灣）叫一次。只發給：現在還是這一對（換了另一半的舊紀錄不算）、
+-- 這 7 天內這一對有人寫過每天一題（太久沒玩的不吵）、今天自己還沒寫的人。一天最多一則。
+-- 另一半今天已經寫了，actor 就填另一半，文字會變成「○○寫好今天這一題了，還在等你」。
+-- 只放小鈴鐺和手機推播，不寄 Email（emailed_at 先填上；晚上 9 點的信同時在寄，排不進去）。
+-- ============================================================
+create or replace function public.notify_daily_question() returns integer
+language plpgsql security definer set search_path = public as $$
+declare
+  v_today date := public.daily_today();
+  v_n integer;
+begin
+  with cur as (
+    select p.pair_key, p.space, p.members from public.daily_pairs p
+    where p.members = public.quiz_members(p.space)
+      and exists (select 1 from public.daily_answers a where a.pair_key = p.pair_key and a.day >= v_today - 7)
+  ), todo as (
+    select c.pair_key, c.space, m as recipient,
+      (select a.user_id from public.daily_answers a where a.pair_key = c.pair_key and a.day = v_today and a.user_id <> m limit 1) as partner_wrote
+    from cur c, unnest(c.members) m
+    where not exists (select 1 from public.daily_answers a where a.pair_key = c.pair_key and a.day = v_today and a.user_id = m)
+      and not exists (select 1 from public.notifications n where n.recipient = m and n.kind = 'daily_remind'
+        and n.created_at >= now() - interval '20 hours')
+  )
+  insert into public.notifications (recipient, space_owner, actor, actor_name, kind, emailed_at)
+  select t.recipient, t.space, t.partner_wrote,
+    case when t.partner_wrote is not null then coalesce(public.space_member_name(t.space, t.partner_wrote), '') else '' end,
+    'daily_remind', now()
+  from todo t;
+  get diagnostics v_n = row_count;
+  return v_n;
+end $$;
+revoke all on function public.notify_daily_question() from public, anon, authenticated;
 
 -- 改完函式後請 API 重新讀一次（不然 App 可能還是說找不到新的函式）
 notify pgrst, 'reload schema';

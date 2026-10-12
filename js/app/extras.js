@@ -927,6 +927,7 @@ function notifyText(n) {
     case 'quiz_revealed': return '「重新認識你」兩個人都交卷了，來看答案吧';
     case 'daily_partner_done': return `${who}寫好今天這一題了，換你囉`;
     case 'daily_revealed': return `${who}也寫好今天的題目了，來看看彼此的答案`;
+    case 'daily_remind': return n.actor_name ? `${who}寫好今天這一題了，還在等你` : '今天的題目還在等你，寫好就能看到彼此的答案';
     case 'note_new': return `${who}留了一張紙條給你`;
     case 'values_partner_done': return `${who}做完「價值觀地圖」了，換你囉`;
     case 'values_revealed': return '「價值觀地圖」兩個人都做完了，來看看你們的地圖';
@@ -977,7 +978,7 @@ function notifyHref(n) {
   if (n.kind === 'anniversary') return '#/cards';
   if (n.kind === 'write_nudge') return '#/new/happy';
   if (n.kind === 'quiz_partner_done' || n.kind === 'quiz_revealed') return '#/quiz';
-  if (n.kind === 'daily_partner_done' || n.kind === 'daily_revealed') return '#/daily';
+  if (n.kind === 'daily_partner_done' || n.kind === 'daily_revealed' || n.kind === 'daily_remind') return '#/daily';
   if (n.kind === 'note_new') return '#/notes';
   if (n.kind === 'values_partner_done' || n.kind === 'values_revealed') return '#/values';
   if (n.kind === 'countdown') return '#/countdowns';

@@ -2,7 +2,7 @@
 // 有新通知時資料庫會馬上叫這裡（schema.sql 的 notifications_push_kick），早上 8 點也會叫一次（notify-cron.sql）。
 // 重複叫沒關係：推過的會標記 pushed_at，不會重推。
 // 規則：
-// - 只推另一半做的事（PUSH_KINDS）；紀念日、烏雲回顧、寫日記提醒不推
+// - 只推另一半做的事（PUSH_KINDS）＋晚上 9 點的每天一題提醒；紀念日、烏雲回顧、寫日記提醒不推
 // - 晚上 11 點到早上 8 點（台灣）不推，早上 8 點把這段時間的合成一則推出去
 // - 已經在 App 裡看過（已讀）的不推；超過 12 小時的舊通知不推
 // - 通知裡不放紀錄的標題和內容，只說誰做了什麼＋一句提示（文字在下面 TEMPLATE 那一段）
@@ -13,7 +13,7 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.49.1';
 
 // ===== 推播的文字 BEGIN TEMPLATE =====
 const PUSH_KINDS = ['new_happy', 'new_task_record', 'task_submitted', 'task_approved', 'partner_request', 'partner_joined',
-  'quiz_partner_done', 'daily_partner_done', 'daily_revealed', 'note_new'];
+  'quiz_partner_done', 'daily_partner_done', 'daily_revealed', 'note_new', 'daily_remind'];
 
 type Row = { id: number; recipient: string; space_owner: string; actor: string | null; actor_name: string; kind: string; created_at: string };
 
@@ -34,6 +34,8 @@ function pair(r: Row): [string, string] {
     case 'daily_partner_done': return [`${who}寫好今天這一題了`, '換你寫，寫完就能看到彼此的答案'];
     case 'daily_revealed': return [`${who}也寫好今天的題目了`, '來看看彼此的答案'];
     case 'note_new': return [`${who}留了一張紙條給你`, '點開看看寫了什麼'];
+    // 晚上 9 點每天一題提醒：另一半寫了就說是誰寫了，還沒人寫就說題目在等你
+    case 'daily_remind': return r.actor ? [`${who}寫好今天這一題了，還在等你`, '寫完就能看到彼此的答案'] : ['今天的題目還在等你', '寫好就能看到彼此的答案'];
     default: return [`${who}有新的動態`, '點開看看'];
   }
 }
@@ -45,7 +47,7 @@ function target(rows: Row[]) {
   if (rows.length > 1) return '#/notifications';
   const k = rows[0].kind;
   if (k === 'note_new') return '#/notes';
-  if (k === 'daily_partner_done' || k === 'daily_revealed') return '#/daily';
+  if (k === 'daily_partner_done' || k === 'daily_revealed' || k === 'daily_remind') return '#/daily';
   if (k === 'quiz_partner_done') return '#/quiz';
   return '#/notifications';
 }

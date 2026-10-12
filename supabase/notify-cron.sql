@@ -25,3 +25,7 @@ select cron.schedule('send-push-morning', '1 0 * * *', $$
     body := '{}'::jsonb
   )
 $$);
+
+-- 每天一題提醒：每天晚上 9 點（台灣時間），今天還沒寫的人收到一則（小鈴鐺＋手機推播，不寄信）
+select cron.unschedule('daily-question-remind') where exists (select 1 from cron.job where jobname = 'daily-question-remind');
+select cron.schedule('daily-question-remind', '0 13 * * *', $$ select public.notify_daily_question() $$);
