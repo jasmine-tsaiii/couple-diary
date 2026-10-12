@@ -1,5 +1,5 @@
 // 啾啾日記 js/app/daily.js：每天一題（2026-09-30）
-// 每天一題開放式問題，兩人各自寫，不猜對方、不計分；兩人都寫完才一起揭曉。對方寫了你還沒寫的舊題目可以補寫。
+// 每天一題開放式問題，兩人各自寫，不猜對方、不計分；兩人都寫完才一起揭曉。對方寫了你還沒寫的舊題目可以補寫，最近 7 天兩人都沒寫的也可以補；你寫了對方還沒寫的會列在「等對方補寫」。
 // 題庫在這裡，id d001… 固定不能改，只能往後加。伺服器存 q_id，以存下來的為準。
 
 const DAILY_QS = [
@@ -249,10 +249,30 @@ async function viewDaily() {
       <button class="btn small" data-late="${esc(p.day)}" data-q="${esc(p.q_id)}" style="align-self:flex-start">送出</button>
     </div>`).join('')}
     ${pend.length > 5 ? `<div class="small muted" style="text-align:center">還有 ${pend.length - 5} 題，寫完上面的就會出現</div>` : ''}` : '';
+  const missed = st.missed || [];
+  const missedHtml = missed.length ? `<div class="section-title">錯過的題目</div>
+    <div class="small muted" style="margin-top:-6px">最近 7 天兩個人都沒寫的，誰先寫都可以，一樣兩人都寫完才揭曉。</div>
+    <div class="list">${missed.map((m) => { const q = dailyQId(st.pair, m.n); return `<details class="card daily-past daily-missed" data-missed-card="${esc(m.day)}">
+      <summary><span class="small muted">${dailyDay(m.day)}</span><span class="bold">${esc(dailyText(q))}</span></summary>
+      <div class="daily-past-body">
+        <textarea class="textarea" id="d-late-${esc(m.day)}" maxlength="300" rows="3" placeholder="你的答案" aria-label="${esc(dailyText(q))}"></textarea>
+        <button class="btn small" data-late="${esc(m.day)}" data-q="${esc(q)}" style="align-self:flex-start">送出</button>
+      </div>
+    </details>`; }).join('')}</div>` : '';
+  const waiting = st.waiting || [];
+  const waitingHtml = waiting.length ? `<div class="section-title">等${esc(oname)}補寫</div>
+    <div class="small muted" style="margin-top:-6px">你寫好了、${esc(oname)}還沒寫的題目，${esc(oname)}寫完就一起揭曉。</div>
+    <div class="list">${waiting.map((w) => `<details class="card daily-past daily-waiting" data-waiting-card="${esc(w.day)}">
+      <summary><span class="small muted">${dailyDay(w.day)}</span><span class="bold">${esc(dailyText(w.q_id))}</span></summary>
+      <div class="daily-past-body"><div class="quiz-person"><div class="small bold">你</div><div class="prose">${esc(w.body || '')}</div></div></div>
+    </details>`).join('')}</div>
+    ${nudgeBtnHtml('daily_late', '#/daily', oname, `邀請${oname}來補寫`)}` : '';
   app.innerHTML = `${top}
     ${todayCard}
     ${pendHtml}
+    ${missedHtml}
     <div class="small muted" style="text-align:center">這個月一起寫了 ${st.month_days || 0} 天</div>
+    ${waitingHtml}
     <div id="d-history"></div>
     ${await quizRow()}`;
   bindNudgeBtns();

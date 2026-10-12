@@ -692,6 +692,9 @@ body.quiz-focus #app { padding-bottom: calc(96px + env(safe-area-inset-bottom));
 .daily-past summary::after { content: '看答案'; grid-column: 2; grid-row: 1 / span 2; font-size: 13px; color: var(--accent-text, var(--muted)); white-space: nowrap; }
 .daily-past[open] summary::after { content: '收起'; }
 .daily-past summary::-webkit-details-marker { display: none; }
+.daily-missed summary::after { content: '補寫'; }
+.daily-waiting summary::after { content: '你寫的'; }
+.daily-missed[open] summary::after, .daily-waiting[open] summary::after { content: '收起'; }
 .daily-past-body { display: flex; flex-direction: column; gap: 8px; margin-top: 10px; }
 .daily-today .prose, .daily-past .prose { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; }
 

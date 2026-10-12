@@ -2382,6 +2382,16 @@ begin
         where a.pair_key = p.pair_key and a.user_id = v_other and a.day < v_today
           and not exists (select 1 from public.daily_answers b where b.pair_key = p.pair_key and b.day = a.day and b.user_id = auth.uid())
         order by a.day desc limit 50) t),
+    -- 我寫了、對方還沒寫的舊題目（給寫好的人看「等對方補寫」）
+    'waiting', (select coalesce(jsonb_agg(jsonb_build_object('day', t.day, 'q_id', t.q_id, 'body', t.body) order by t.day desc), '[]'::jsonb)
+      from (select a.day, a.q_id, a.body from public.daily_answers a
+        where a.pair_key = p.pair_key and a.user_id = auth.uid() and a.day < v_today
+          and not exists (select 1 from public.daily_answers b where b.pair_key = p.pair_key and b.day = a.day and b.user_id = v_other)
+        order by a.day desc limit 20) t),
+    -- 最近 7 天兩個人都沒寫的日子，誰先寫都可以補（題目由前端用 n 算）
+    'missed', (select coalesce(jsonb_agg(jsonb_build_object('day', g.day, 'n', g.day - p.started_on) order by g.day desc), '[]'::jsonb)
+      from (select gs::date as day from generate_series(greatest(p.started_on, v_today - 7), v_today - 1, interval '1 day') gs) g
+      where not exists (select 1 from public.daily_answers b where b.pair_key = p.pair_key and b.day = g.day)),
     'month_days', (select count(*) from (select day from public.daily_answers
         where pair_key = p.pair_key and date_trunc('month', day) = date_trunc('month', v_today)
         group by day having count(*) = 2) d));
@@ -2389,7 +2399,7 @@ end $$;
 revoke all on function public.daily_state() from public, anon;
 grant execute on function public.daily_state() to authenticated;
 
--- 寫／改自己的答案：今天，或對方寫了我還沒寫的舊題目。兩人都寫了就不能改。
+-- 寫／改自己的答案：今天、對方寫了我還沒寫的舊題目，或最近 7 天兩人都沒寫的日子。兩人都寫了就不能改。
 create or replace function public.daily_save(p_day date, p_q_id text, p_body text) returns jsonb
 language plpgsql security definer set search_path = public as $$
 declare
@@ -2409,7 +2419,7 @@ begin
   perform pg_advisory_xact_lock(hashtext('daily:' || p.pair_key || ':' || p_day::text));
   select * into v_mine from public.daily_answers where pair_key = p.pair_key and day = p_day and user_id = auth.uid();
   select * into v_theirs from public.daily_answers where pair_key = p.pair_key and day = p_day and user_id = v_other;
-  if p_day < v_today and v_theirs.id is null and v_mine.id is null then raise exception '這一天不能寫'; end if;
+  if p_day < v_today - 7 and v_theirs.id is null and v_mine.id is null then raise exception '這一天已經超過 7 天，不能補寫了'; end if;
   if v_mine.id is not null and v_theirs.id is not null then raise exception '已經揭曉了，不能改'; end if;
   -- 同一天同一題：對方先寫了就用對方那題
   if v_theirs.id is not null then v_q := v_theirs.q_id; elsif v_mine.id is not null then v_q := v_mine.q_id; end if;

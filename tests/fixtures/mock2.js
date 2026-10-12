@@ -140,6 +140,8 @@
       return { ok: true, me: u.id, members: d.members, names, pair: d.pair, today: d.today, n: days(d.today), q_id: (mine || th || {}).q_id || null,
         mine: mine ? mine.body : null, other_done: !!th, revealed: !!(mine && th), other: mine && th ? th.body : null,
         pending: A.filter((a) => a.user_id === d.other && a.day < d.today && !A.some((b) => b.day === a.day && b.user_id === u.id)).sort((x, y) => (x.day < y.day ? 1 : -1)).map((a) => ({ day: a.day, q_id: a.q_id })),
+        waiting: A.filter((a) => a.user_id === u.id && a.day < d.today && !A.some((b) => b.day === a.day && b.user_id === d.other)).sort((x, y) => (x.day < y.day ? 1 : -1)).map((a) => ({ day: a.day, q_id: a.q_id, body: a.body })),
+        missed: [1, 2, 3, 4, 5, 6, 7].map((k) => new Date(Date.parse(d.today) - k * 864e5).toISOString().slice(0, 10)).filter((x) => x >= d.started_on && !A.some((b) => b.day === x)).map((x) => ({ day: x, n: days(x) })),
         month_days: both.filter((x) => x.slice(0, 7) === d.today.slice(0, 7)).length };
     },
     daily_save(S, u, a) {
@@ -147,7 +149,7 @@
       const body = String(a.p_body || '').trim(); if (!body || body.length > 300) throw new Error('答案要 1 到 300 個字');
       if (!a.p_day || a.p_day > d.today || a.p_day < d.started_on) throw new Error('這一天不能寫');
       const A = S.daily.answers; const mine = A.find((x) => x.pair === d.pair && x.day === a.p_day && x.user_id === u.id); const th = A.find((x) => x.pair === d.pair && x.day === a.p_day && x.user_id === d.other);
-      if (a.p_day < d.today && !th && !mine) throw new Error('這一天不能寫');
+      if (a.p_day < new Date(Date.parse(d.today) - 7 * 864e5).toISOString().slice(0, 10) && !th && !mine) throw new Error('這一天已經超過 7 天，不能補寫了');
       if (mine && th) throw new Error('已經揭曉了，不能改');
       const q = th ? th.q_id : mine ? mine.q_id : a.p_q_id;
       if (mine) mine.body = body; else A.push({ pair: d.pair, day: a.p_day, q_id: q, user_id: u.id, body });
