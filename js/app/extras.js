@@ -931,6 +931,10 @@ function notifyText(n) {
     case 'note_new': return `${who}留了一張紙條給你`;
     case 'values_partner_done': return `${who}做完「價值觀地圖」了，換你囉`;
     case 'values_revealed': return '「價值觀地圖」兩個人都做完了，來看看你們的地圖';
+    case 'piggy_heart': return `${who}在你的存錢筒「${x.title || ''}」按了愛心`;
+    case 'piggy_cheer': return `${who}在你的存錢筒「${x.title || ''}」寫了鼓勵`;
+    case 'piggy_boost': return `${who}幫你的存錢筒加碼了 NT$${Number(x.amount || 0).toLocaleString('en-US')}`;
+    case 'piggy_full': return `${who}的存錢筒存滿了「${x.title || ''}」，去恭喜一下吧`;
     case 'countdown': return x.days ? `再 ${x.days} 天就是「${x.title || ''}」了` : `今天就是「${x.title || ''}」！`;
     default: return `${who}有新動態`;
   }
@@ -982,6 +986,8 @@ function notifyHref(n) {
   if (n.kind === 'note_new') return '#/notes';
   if (n.kind === 'values_partner_done' || n.kind === 'values_revealed') return '#/values';
   if (n.kind === 'countdown') return '#/countdowns';
+  if (n.kind === 'piggy_full') return '#/piggy/partner';
+  if (n.kind && n.kind.startsWith('piggy_')) return '#/piggy';
   if (!n.record_id) return '#/';
   if (n.kind === 'task_submitted') return '#/tasks';
   if (n.kind === 'new_task_record') return `#/task/${encodeURIComponent(n.record_id)}`;

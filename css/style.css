@@ -1032,3 +1032,58 @@ button.cd-row, .cd-row .cd-past-open { width: 100%; background: none; border: 0;
 .vm-dot.you .vm-who { color: var(--fight); }
 .vm-dimcard .vm-track { margin: 14px 11px 8px; }
 .vm-qrow { display: flex; flex-direction: column; gap: 4px; padding-top: 12px; border-top: 1px solid var(--line); }
+
+/* ---------- 獎勵存錢筒（2026-10-15） ---------- */
+.pg-seg { grid-template-columns: 1fr 1fr; }
+.pg-rules-btn { margin-left: auto; width: auto; padding: 0 14px; }
+.pg-goal { gap: 10px; }
+.pg-goal-head { display: flex; align-items: center; gap: 12px; width: 100%; background: none; border: 0; padding: 0; text-align: left; color: inherit; font: inherit; cursor: pointer; }
+div.pg-goal-head { cursor: default; }
+.pg-goal-ic { flex: none; width: 52px; height: 52px; border-radius: 14px; background: var(--happy-bg); display: flex; align-items: center; justify-content: center; font-size: 28px; }
+.pg-goal-title { font-size: 18px; font-weight: 800; overflow-wrap: anywhere; }
+.pg-pct { font-size: 36px; font-weight: 900; line-height: 1; color: var(--happy-text); }
+.pg-bar { height: 14px; }
+.pg-goal.full .pg-bar > div { background: linear-gradient(90deg, var(--happy), var(--happy-dark)); }
+.pg-bal { font-size: 22px; }
+.pg-rules { gap: 8px; }
+.pg-rule b { margin-left: 2px; }
+.chip.pg-rule .pg-amt.in { color: var(--resolved-ink); }
+.pg-recent-head { align-items: baseline; }
+.pg-list { padding: 4px 14px; gap: 0; }
+.pg-ent { border-top: 1px solid var(--line); padding: 10px 0; }
+.pg-ent:first-child { border-top: 0; }
+.pg-ent-main { display: flex; align-items: flex-start; gap: 10px; width: 100%; background: none; border: 0; padding: 0; text-align: left; color: inherit; font: inherit; }
+button.pg-ent-main { cursor: pointer; }
+.pg-emo { flex: none; width: 36px; height: 36px; border-radius: 10px; background: var(--cloud-bg); display: flex; align-items: center; justify-content: center; font-size: 19px; }
+.pg-emo.out { background: var(--open-bg); }
+.pg-emo.boost { background: var(--happy-bg); }
+.pg-ent-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.pg-ent-text .bold { overflow-wrap: anywhere; }
+.pg-note { font-size: 13px; color: var(--muted); line-height: 1.45; overflow-wrap: anywhere; white-space: pre-wrap; }
+.pg-amt { font-weight: 800; white-space: nowrap; }
+.pg-amt.in { color: var(--resolved-ink); }
+.pg-amt.out { color: var(--danger); }
+.pg-ent-extra { margin: 6px 0 0 46px; display: flex; flex-direction: column; gap: 6px; }
+.pg-heart-got { font-size: 13px; color: var(--happy-text); font-weight: 700; }
+.pg-cheer { background: var(--happy-bg); color: var(--happy-dark); border-radius: 10px; padding: 6px 10px; font-size: 13px; line-height: 1.45; overflow-wrap: anywhere; }
+.pg-cheer-del { font-size: 12px; padding: 0 2px; color: var(--muted); }
+.pg-acts { display: flex; gap: 8px; flex-wrap: wrap; }
+.pg-react { min-height: 34px; padding: 4px 12px; border-radius: 99px; border: 1px solid var(--field); background: var(--card); color: var(--soft); font: inherit; font-size: 13px; cursor: pointer; }
+.pg-react.on { background: var(--happy-bg); border-color: transparent; color: var(--happy-text); font-weight: 700; }
+.pg-day { font-size: 13px; font-weight: 800; color: var(--muted); margin: 4px 4px -6px; }
+.pg-month { display: flex; align-items: center; justify-content: space-between; }
+.pg-month a.icon-btn { font-size: 22px; text-decoration: none; color: var(--soft); }
+.pg-sum { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+.pg-sum > div { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 10px 12px; display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.pg-sum b { font-size: 17px; overflow-wrap: anywhere; }
+.pg-foot { text-align: center; }
+.pg-emojis { display: flex; flex-wrap: wrap; gap: 6px; }
+.pg-emoji { width: 40px; height: 40px; border-radius: 12px; border: 1.5px solid var(--field); background: var(--bg); font-size: 20px; display: flex; align-items: center; justify-content: center; cursor: pointer; padding: 0; }
+.pg-emoji.on { border-color: var(--happy); background: var(--happy-bg); }
+.pg-dlg .celebrate-box { max-height: calc(100vh - 48px); max-height: calc(100dvh - 48px); overflow-y: auto; }
+.pg-rule-row { display: flex; align-items: center; gap: 6px; border-top: 1px solid var(--line); padding: 8px 0; }
+.pg-rule-row:first-child { border-top: 0; }
+.pg-rule-row .pg-ent-main { align-items: center; }
+.pg-move { display: flex; flex: none; }
+.pg-move .icon-btn { width: 36px; height: 36px; font-size: 16px; }
+.pg-move .icon-btn:disabled { opacity: .3; }

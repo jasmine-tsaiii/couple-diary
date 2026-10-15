@@ -411,6 +411,12 @@ const CloudDB = CLOUD_ENABLED ? (() => {
       if (cdMissing(r, 'countdown_delete')) throw cdNotReady();
       check(r);
     },
+    // ---- 獎勵存錢筒（2026-10-15）：每人一個，全部透過函式；資料庫還沒更新時說「還在準備中」 ----
+    async piggy(fn, args) {
+      const r = await client.rpc(fn, args || {});
+      if (cdMissing(r, fn)) { const e = new Error('獎勵存錢筒還在準備中，過一陣子再試試'); e.notReady = true; throw e; }
+      return check(r);
+    },
     async capsuleList() {
       const r = await client.rpc('capsule_list');
       if (r.error && /capsule_list|function/i.test(r.error.message || '')) { const e = new Error('時光膠囊要等資料庫更新後才能用'); e.notReady = true; throw e; }

@@ -527,6 +527,107 @@
       S.countdowns.forEach((x) => { if (x.space === space && a.p_pinned) x.pinned = false; });
       c.pinned = !!a.p_pinned;
     },
+    // 獎勵存錢筒：簡化版的伺服器邏輯（每人一個；另一半看得到、按愛心、寫鼓勵、加碼；暫停分享時另一半看不到主人的）
+    _pg(S) { S.pg = S.pg || { profiles: [], rules: [], goals: [], entries: [], reacts: [] }; return S.pg; },
+    _pgMembers(S, space) { return [space, ...S.t.partners.filter((x) => x.owner === space && x.approved !== false).map((x) => x.uid)]; },
+    _pgName(S, space, m) { if (m === space) { const sh = S.t.shares.find((x) => x.owner === space); return (sh && sh.owner_name) || '對方'; } const p = S.t.partners.find((x) => x.uid === m); return (p && p.name) || '對方'; },
+    _pgSee(S, u, space, owner) { const ms = rpcs._pgMembers(S, space); return ms.includes(u.id) && ms.includes(owner) && (owner === u.id || !(owner === space && pausedSp(S, space))); },
+    _pgOther(S, u, space) { return rpcs._pgMembers(S, space).find((m) => m !== u.id) || null; },
+    _pgBal(S, space, owner) { return rpcs._pg(S).entries.filter((e) => e.space === space && e.owner === owner).reduce((n, e) => n + (e.dir === 'in' ? e.amount : -e.amount), 0); },
+    _pgNotify(S, u, space, to, kind, extra) { if (!to || to === u.id) return; S.notifs = S.notifs || []; S.notifs.push({ id: Date.now() + Math.random(), recipient: to, actor: u.id, actor_name: rpcs._pgName(S, space, u.id), kind, extra, created_at: new Date().toISOString(), emailed_at: new Date().toISOString() }); },
+    _pgToday() { const d = new Date(Date.now() + 8 * 3600e3); return d.toISOString().slice(0, 10); },
+    piggy_get(S, u, a) {
+      if (S.noPiggy) throw new Error('Could not find the function public.piggy_get(p_month, p_who) in the schema cache');
+      const space = rpcs._capSpace(S, u); if (!space) return { none: true };
+      const owner = a.p_who === 'partner' ? rpcs._pgOther(S, u, space) : u.id;
+      if (!owner) return { none: true };
+      if (!rpcs._pgSee(S, u, space, owner)) return { paused: true };
+      const pg = rpcs._pg(S);
+      if (owner === u.id && !pg.profiles.some((x) => x.space === space && x.owner === u.id)) {
+        pg.profiles.push({ space, owner: u.id });
+        if (!pg.rules.some((r) => r.space === space && r.owner === u.id)) {
+          [['🏃', '運動 30 分鐘', 50], ['😴', '12 點前睡', 30], ['📚', '讀書 1 小時', 30]].forEach(([emoji, title, amount], i) => pg.rules.push({ id: 'pr' + (++S.n), space, owner: u.id, emoji, title, amount, dir: 'in', sort: i + 1 }));
+        }
+      }
+      const ms = rpcs._pgMembers(S, space);
+      const month = /^\d{4}-\d{2}$/.test(a.p_month || '') ? a.p_month : null;
+      let list = pg.entries.filter((e) => e.space === space && e.owner === owner).sort((x, y) => (x.on_date === y.on_date ? (x.created_at < y.created_at ? 1 : -1) : (x.on_date < y.on_date ? 1 : -1)));
+      if (month) list = list.filter((e) => e.on_date.slice(0, 7) === month); else list = list.slice(0, 20);
+      const sum = (dir) => pg.entries.filter((e) => e.space === space && e.owner === owner && e.dir === dir && month && e.on_date.slice(0, 7) === month).reduce((n, e) => n + e.amount, 0);
+      const goals = pg.goals.filter((g) => g.space === space && g.owner === owner);
+      return {
+        me: owner === u.id, name: rpcs._pgName(S, space, owner), balance: rpcs._pgBal(S, space, owner),
+        rules: owner === u.id ? pg.rules.filter((r) => r.space === space && r.owner === u.id).sort((x, y) => x.sort - y.sort).map(({ id, emoji, title, amount, dir }) => ({ id, emoji, title, amount, dir })) : [],
+        goal: goals.filter((g) => !g.done_at).sort((x, y) => (x.created_at < y.created_at ? 1 : -1))[0] || null,
+        done_goals: goals.filter((g) => g.done_at).sort((x, y) => (x.done_at < y.done_at ? 1 : -1)),
+        month: month ? { in: sum('in'), out: sum('out') } : null,
+        entries: list.map((e) => ({ ...e, mine: e.author === u.id, author_name: rpcs._pgName(S, space, e.author),
+          hearts: pg.reacts.filter((r) => r.entry_id === e.id && r.kind === 'heart' && ms.includes(r.author)).map((r) => rpcs._pgName(S, space, r.author)),
+          heart_mine: pg.reacts.some((r) => r.entry_id === e.id && r.kind === 'heart' && r.author === u.id),
+          cheers: pg.reacts.filter((r) => r.entry_id === e.id && r.kind === 'cheer' && ms.includes(r.author)).map((r) => ({ id: r.id, body: r.body, mine: r.author === u.id, author_name: rpcs._pgName(S, space, r.author), created_at: r.created_at })) })),
+      };
+    },
+    piggy_rule_save(S, u, a) {
+      const space = rpcs._capSpace(S, u); if (!space) throw new Error('要先登入才能用存錢筒'); const pg = rpcs._pg(S);
+      if (a.p_id) { const r = pg.rules.find((x) => x.id === a.p_id && x.owner === u.id); if (!r) throw new Error('找不到這條規則'); Object.assign(r, { emoji: a.p_emoji, title: a.p_title, amount: a.p_amount, dir: a.p_dir }); return { id: r.id }; }
+      const mine = pg.rules.filter((x) => x.space === space && x.owner === u.id); if (mine.length >= 30) throw new Error('規則最多 30 條，先刪掉一些不用的吧');
+      const r = { id: 'pr' + (++S.n), space, owner: u.id, emoji: a.p_emoji, title: a.p_title, amount: a.p_amount, dir: a.p_dir, sort: mine.reduce((n, x) => Math.max(n, x.sort), 0) + 1 }; pg.rules.push(r); return { id: r.id };
+    },
+    piggy_rule_delete(S, u, a) { const pg = rpcs._pg(S); pg.rules = pg.rules.filter((x) => !(x.id === a.p_id && x.owner === u.id)); return null; },
+    piggy_rule_order(S, u, a) { rpcs._pg(S).rules.forEach((r) => { const i = (a.p_ids || []).indexOf(r.id); if (r.owner === u.id && i >= 0) r.sort = i + 1; }); return null; },
+    piggy_entry_save(S, u, a) {
+      const space = rpcs._capSpace(S, u); if (!space) throw new Error('要先登入才能用存錢筒'); const pg = rpcs._pg(S); const today = rpcs._pgToday();
+      if (a.p_on_date > today) throw new Error('日期不能選未來');
+      const before = rpcs._pgBal(S, space, u.id); let e;
+      if (a.p_id) { e = pg.entries.find((x) => x.id === a.p_id && x.owner === u.id && x.author === u.id && x.kind === 'normal'); if (!e) throw new Error('找不到這一筆'); Object.assign(e, { dir: a.p_dir, amount: a.p_amount, emoji: a.p_emoji, title: a.p_title, note: a.p_note || '', on_date: a.p_on_date }); }
+      else { e = { id: 'pe' + (++S.n), space, owner: u.id, author: u.id, kind: 'normal', dir: a.p_dir, amount: a.p_amount, emoji: a.p_emoji, title: a.p_title, note: a.p_note || '', on_date: a.p_on_date, created_at: new Date().toISOString() }; pg.entries.push(e); }
+      const g = pg.goals.find((x) => x.space === space && x.owner === u.id && !x.done_at); const after = rpcs._pgBal(S, space, u.id);
+      const full = !!(g && before < g.target && after >= g.target);
+      if (full) rpcs._pgNotify(S, u, space, rpcs._pgOther(S, u, space), 'piggy_full', { goal: g.id, title: g.title });
+      return { id: e.id, full };
+    },
+    piggy_entry_delete(S, u, a) {
+      const space = rpcs._capSpace(S, u); const pg = rpcs._pg(S); const e = pg.entries.find((x) => x.id === a.p_id && x.space === space); if (!e) return null;
+      if (!(e.owner === u.id || (e.author === u.id && e.kind === 'boost'))) throw new Error('只能刪自己的');
+      pg.entries = pg.entries.filter((x) => x !== e);
+      if (e.kind === 'buy' && e.goal_id && !pg.goals.some((g) => g.space === space && g.owner === e.owner && !g.done_at)) { const g = pg.goals.find((x) => x.id === e.goal_id); if (g) g.done_at = null; }
+      return null;
+    },
+    piggy_boost(S, u, a) {
+      const space = rpcs._capSpace(S, u); const to = space && rpcs._pgOther(S, u, space);
+      if (!to || !rpcs._pgSee(S, u, space, to)) throw new Error('現在看不到對方的存錢筒');
+      const e = { id: 'pe' + (++S.n), space, owner: to, author: u.id, kind: 'boost', dir: 'in', amount: a.p_amount, emoji: '💝', title: (rpcs._pgName(S, space, u.id) + '加碼').slice(0, 20), note: a.p_note || '', on_date: rpcs._pgToday(), created_at: new Date().toISOString() };
+      rpcs._pg(S).entries.push(e); rpcs._pgNotify(S, u, space, to, 'piggy_boost', { amount: a.p_amount }); return { id: e.id };
+    },
+    piggy_goal_save(S, u, a) {
+      const space = rpcs._capSpace(S, u); if (!space) throw new Error('要先登入才能用存錢筒'); const pg = rpcs._pg(S);
+      if (a.p_id) { const g = pg.goals.find((x) => x.id === a.p_id && x.owner === u.id && !x.done_at); if (!g) throw new Error('找不到這個目標'); Object.assign(g, { emoji: a.p_emoji, title: a.p_title, target: a.p_target }); return { id: g.id }; }
+      if (pg.goals.some((x) => x.space === space && x.owner === u.id && !x.done_at)) throw new Error('一次存一個目標，先完成或刪掉現在的');
+      const g = { id: 'pgl' + (++S.n), space, owner: u.id, emoji: a.p_emoji, title: a.p_title, target: a.p_target, done_at: null, created_at: new Date().toISOString() }; pg.goals.push(g); return { id: g.id };
+    },
+    piggy_goal_delete(S, u, a) { const pg = rpcs._pg(S); pg.goals = pg.goals.filter((x) => !(x.id === a.p_id && x.owner === u.id && !x.done_at)); return null; },
+    piggy_goal_buy(S, u, a) {
+      const space = rpcs._capSpace(S, u); const pg = rpcs._pg(S); const g = pg.goals.find((x) => x.id === a.p_id && x.owner === u.id && !x.done_at); if (!g) throw new Error('找不到這個目標');
+      pg.entries.push({ id: 'pe' + (++S.n), space, owner: u.id, author: u.id, kind: 'buy', dir: 'out', amount: g.target, emoji: g.emoji, title: g.title, note: '', on_date: rpcs._pgToday(), goal_id: g.id, created_at: new Date().toISOString() });
+      g.done_at = new Date().toISOString(); return null;
+    },
+    piggy_heart(S, u, a) {
+      const space = rpcs._capSpace(S, u); const pg = rpcs._pg(S); const e = pg.entries.find((x) => x.id === a.p_entry && x.space === space);
+      if (!e || e.owner === u.id || !rpcs._pgSee(S, u, space, e.owner)) throw new Error('找不到這一筆');
+      const h = pg.reacts.find((r) => r.entry_id === e.id && r.author === u.id && r.kind === 'heart');
+      if (h) { pg.reacts = pg.reacts.filter((r) => r !== h); return false; }
+      pg.reacts.push({ id: 'prx' + (++S.n), entry_id: e.id, author: u.id, kind: 'heart', body: '', created_at: new Date().toISOString() });
+      rpcs._pgNotify(S, u, space, e.owner, 'piggy_heart', { title: e.title }); return true;
+    },
+    piggy_cheer(S, u, a) {
+      const space = rpcs._capSpace(S, u); const pg = rpcs._pg(S); const e = pg.entries.find((x) => x.id === a.p_entry && x.space === space);
+      if (!e || e.owner === u.id || !rpcs._pgSee(S, u, space, e.owner)) throw new Error('找不到這一筆');
+      const body = (a.p_body || '').trim(); if (!body || body.length > 50) throw new Error('鼓勵的話要 1 到 50 個字');
+      if (pg.reacts.filter((r) => r.entry_id === e.id && r.author === u.id && r.kind === 'cheer').length >= 3) throw new Error('每一筆最多寫 3 句鼓勵');
+      const r = { id: 'prx' + (++S.n), entry_id: e.id, author: u.id, kind: 'cheer', body, created_at: new Date().toISOString() }; pg.reacts.push(r);
+      rpcs._pgNotify(S, u, space, e.owner, 'piggy_cheer', { title: e.title }); return { id: r.id };
+    },
+    piggy_cheer_delete(S, u, a) { const pg = rpcs._pg(S); pg.reacts = pg.reacts.filter((r) => !(r.id === a.p_id && r.author === u.id && r.kind === 'cheer')); return null; },
     countdown_delete(S, u, a) {
       const space = rpcs._capSpace(S, u); const c = (S.countdowns || []).find((x) => x.id === a.p_id);
       if (c && space && rpcs._cdVisible(S, u, c, space)) S.countdowns = S.countdowns.filter((x) => x !== c);

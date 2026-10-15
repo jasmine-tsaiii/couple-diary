@@ -1857,7 +1857,8 @@ alter table public.notifications add constraint notifications_kind_check check (
   'new_happy', 'new_task_record', 'task_submitted', 'task_approved',
   'partner_request', 'partner_joined', 'anniversary', 'cloud_reflect', 'write_nudge',
   'quiz_partner_done', 'quiz_revealed', 'daily_partner_done', 'daily_revealed', 'note_new', 'countdown',
-  'values_partner_done', 'values_revealed', 'daily_remind'));
+  'values_partner_done', 'values_revealed', 'daily_remind',
+  'piggy_heart', 'piggy_cheer', 'piggy_boost', 'piggy_full'));
 -- Email 信裡「取消收信」連結用的暗號：每個人一組亂數，不用登入就能取消
 alter table public.notify_prefs add column if not exists unsub_token uuid not null default gen_random_uuid();
 
@@ -2080,7 +2081,8 @@ alter table public.notifications add constraint notifications_kind_check check (
   'new_happy', 'new_task_record', 'task_submitted', 'task_approved',
   'partner_request', 'partner_joined', 'anniversary', 'cloud_reflect', 'write_nudge',
   'quiz_partner_done', 'quiz_revealed', 'daily_partner_done', 'daily_revealed', 'note_new', 'countdown',
-  'values_partner_done', 'values_revealed', 'daily_remind'));
+  'values_partner_done', 'values_revealed', 'daily_remind',
+  'piggy_heart', 'piggy_cheer', 'piggy_boost', 'piggy_full'));
 
 -- 目前這一對：主人 + 已同意的另一半（排序好，方便比對）
 create or replace function public.quiz_members(p_space uuid) returns uuid[]
@@ -3091,6 +3093,390 @@ begin
   return v_n;
 end $$;
 revoke all on function public.notify_daily_question() from public, anon, authenticated;
+
+-- ============================================================
+-- 獎勵存錢筒（2026-10-15，Jasmine 決定：每人一個、自己記不用對方通過、免費）
+-- 自己定獎勵規則（運動 30 分鐘 = 50），做到就記一筆；設一個存錢目標，看進度 %，存滿按「買了！」記成花費。
+-- 另一半看得到你的存錢筒，可以在每一筆按愛心、寫鼓勵（50 字，每人每筆最多 3 句）、加碼，不能改你的紀錄。
+-- App 只記數字，不經手真的錢。表不開放直接讀寫，全部走下面的函式；主人暫停分享時，另一半看不到主人的存錢筒。
+-- 通知只放小鈴鐺（emailed_at 先填上，不寄信；send-push 沒列這幾種，也不推播）。
+-- ============================================================
+create table if not exists public.piggy_profiles (
+  space       uuid not null references auth.users (id) on delete cascade,
+  owner       uuid not null references auth.users (id) on delete cascade,
+  created_at  timestamptz not null default now(),
+  primary key (space, owner)
+);
+create table if not exists public.piggy_rules (
+  id          uuid primary key default gen_random_uuid(),
+  space       uuid not null references auth.users (id) on delete cascade,
+  owner       uuid not null references auth.users (id) on delete cascade,
+  emoji       text not null default '⭐' check (char_length(emoji) between 1 and 16),
+  title       text not null check (char_length(title) between 1 and 20),
+  amount      integer not null check (amount between 1 and 100000),
+  dir         text not null default 'in' check (dir in ('in', 'out')),
+  sort        integer not null default 0,
+  created_at  timestamptz not null default now()
+);
+create index if not exists piggy_rules_owner on public.piggy_rules (space, owner, sort);
+create table if not exists public.piggy_goals (
+  id          uuid primary key default gen_random_uuid(),
+  space       uuid not null references auth.users (id) on delete cascade,
+  owner       uuid not null references auth.users (id) on delete cascade,
+  emoji       text not null default '🎁' check (char_length(emoji) between 1 and 16),
+  title       text not null check (char_length(title) between 1 and 20),
+  target      integer not null check (target between 1 and 10000000),
+  done_at     timestamptz,
+  created_at  timestamptz not null default now()
+);
+create index if not exists piggy_goals_owner on public.piggy_goals (space, owner, created_at);
+-- kind：normal 自己記的、boost 另一半加碼、buy 存滿按「買了！」
+create table if not exists public.piggy_entries (
+  id          uuid primary key default gen_random_uuid(),
+  space       uuid not null references auth.users (id) on delete cascade,
+  owner       uuid not null references auth.users (id) on delete cascade,
+  author      uuid not null references auth.users (id) on delete cascade,
+  kind        text not null default 'normal' check (kind in ('normal', 'boost', 'buy')),
+  dir         text not null check (dir in ('in', 'out')),
+  amount      integer not null check (amount between 1 and 10000000),
+  emoji       text not null default '⭐' check (char_length(emoji) between 1 and 16),
+  title       text not null check (char_length(title) between 1 and 20),
+  note        text not null default '' check (char_length(note) <= 100),
+  on_date     date not null,
+  goal_id     uuid references public.piggy_goals (id) on delete set null,
+  created_at  timestamptz not null default now(),
+  updated_at  timestamptz not null default now()
+);
+create index if not exists piggy_entries_owner on public.piggy_entries (space, owner, on_date desc, created_at desc);
+create table if not exists public.piggy_reactions (
+  id          uuid primary key default gen_random_uuid(),
+  entry_id    uuid not null references public.piggy_entries (id) on delete cascade,
+  author      uuid not null references auth.users (id) on delete cascade,
+  kind        text not null check (kind in ('heart', 'cheer')),
+  body        text not null default '' check (char_length(body) <= 50),
+  created_at  timestamptz not null default now()
+);
+create unique index if not exists piggy_reactions_heart on public.piggy_reactions (entry_id, author) where kind = 'heart';
+create index if not exists piggy_reactions_entry on public.piggy_reactions (entry_id);
+alter table public.piggy_profiles enable row level security;
+alter table public.piggy_rules enable row level security;
+alter table public.piggy_goals enable row level security;
+alter table public.piggy_entries enable row level security;
+alter table public.piggy_reactions enable row level security;
+revoke all on public.piggy_profiles, public.piggy_rules, public.piggy_goals, public.piggy_entries, public.piggy_reactions from anon, authenticated;
+
+-- 看得到某人的存錢筒：自己的；或是這本日記現在這一對的另一個人（主人暫停分享時，另一半看不到主人的）
+create or replace function public.piggy_can_see(p_space uuid, p_owner uuid) returns boolean
+language sql stable security definer set search_path = public as $$
+  select auth.uid() is not null and auth.uid() = any(public.quiz_members(p_space)) and p_owner = any(public.quiz_members(p_space))
+    and (p_owner = auth.uid() or not (p_owner = p_space and public.space_paused(p_space)))
+$$;
+revoke all on function public.piggy_can_see(uuid, uuid) from public, anon, authenticated;
+
+create or replace function public.piggy_balance(p_space uuid, p_owner uuid) returns bigint
+language sql stable security definer set search_path = public as $$
+  select coalesce(sum(case when dir = 'in' then amount else -amount end), 0)::bigint from public.piggy_entries where space = p_space and owner = p_owner
+$$;
+revoke all on function public.piggy_balance(uuid, uuid) from public, anon, authenticated;
+
+-- 這一對的另一個人
+create or replace function public.piggy_other(p_space uuid) returns uuid
+language sql stable security definer set search_path = public as $$
+  select m from unnest(public.quiz_members(p_space)) m where m <> auth.uid() limit 1
+$$;
+revoke all on function public.piggy_other(uuid) from public, anon, authenticated;
+
+create or replace function public.piggy_notify(p_space uuid, p_to uuid, p_kind text, p_extra jsonb) returns void
+language plpgsql security definer set search_path = public as $$
+begin
+  if p_to is null or p_to = auth.uid() then return; end if;
+  insert into public.notifications (recipient, space_owner, actor, actor_name, kind, extra, emailed_at)
+    values (p_to, p_space, auth.uid(), coalesce(public.space_member_name(p_space, auth.uid()), ''), p_kind, p_extra, now());
+end $$;
+revoke all on function public.piggy_notify(uuid, uuid, text, jsonb) from public, anon, authenticated;
+
+-- 存進來之後剛好超過目標：通知另一半一次
+create or replace function public.piggy_check_full(p_space uuid, p_owner uuid, p_before bigint) returns boolean
+language plpgsql security definer set search_path = public as $$
+declare g public.piggy_goals; v_after bigint := public.piggy_balance(p_space, p_owner);
+begin
+  select * into g from public.piggy_goals where space = p_space and owner = p_owner and done_at is null order by created_at desc limit 1;
+  if g.id is null or p_before >= g.target or v_after < g.target then return false; end if;
+  if p_owner = auth.uid() and not exists (select 1 from public.notifications where kind = 'piggy_full' and actor = p_owner and extra->>'goal' = g.id::text) then
+    perform public.piggy_notify(p_space, public.piggy_other(p_space), 'piggy_full', jsonb_build_object('goal', g.id, 'title', g.title));
+  end if;
+  return true;
+end $$;
+revoke all on function public.piggy_check_full(uuid, uuid, bigint) from public, anon, authenticated;
+
+-- 讀一個人的存錢筒。p_who：'me' 或 'partner'；p_month 'YYYY-MM' 是帳本那個月，空的是最近 20 筆
+create or replace function public.piggy_get(p_who text, p_month text) returns jsonb
+language plpgsql security definer set search_path = public as $$
+declare
+  v_space uuid := public.quiz_space();
+  v_me uuid := auth.uid();
+  v_owner uuid;
+  v_from date;
+  v_to date;
+  v_members uuid[];
+begin
+  if v_space is null or v_me is null then return jsonb_build_object('none', true); end if;
+  v_owner := case when p_who = 'partner' then public.piggy_other(v_space) else v_me end;
+  if v_owner is null then return jsonb_build_object('none', true); end if;
+  if not public.piggy_can_see(v_space, v_owner) then return jsonb_build_object('paused', true); end if;
+  v_members := public.quiz_members(v_space);
+  -- 第一次打開自己的：放 3 條範例規則（之後全刪掉也不會再放）
+  if v_owner = v_me and not exists (select 1 from public.piggy_profiles where space = v_space and owner = v_me) then
+    insert into public.piggy_profiles (space, owner) values (v_space, v_me) on conflict do nothing;
+    if not exists (select 1 from public.piggy_rules where space = v_space and owner = v_me) then
+      insert into public.piggy_rules (space, owner, emoji, title, amount, dir, sort) values
+        (v_space, v_me, '🏃', '運動 30 分鐘', 50, 'in', 1),
+        (v_space, v_me, '😴', '12 點前睡', 30, 'in', 2),
+        (v_space, v_me, '📚', '讀書 1 小時', 30, 'in', 3);
+    end if;
+  end if;
+  if coalesce(p_month, '') ~ '^\d{4}-\d{2}$' then
+    v_from := to_date(p_month || '-01', 'YYYY-MM-DD');
+    v_to := (v_from + interval '1 month')::date;
+  end if;
+  return jsonb_build_object(
+    'me', v_owner = v_me,
+    'name', coalesce(public.space_member_name(v_space, v_owner), ''),
+    'balance', public.piggy_balance(v_space, v_owner),
+    'rules', case when v_owner = v_me then (select coalesce(jsonb_agg(jsonb_build_object('id', r.id, 'emoji', r.emoji, 'title', r.title, 'amount', r.amount, 'dir', r.dir) order by r.sort, r.created_at), '[]'::jsonb)
+      from public.piggy_rules r where r.space = v_space and r.owner = v_me) else '[]'::jsonb end,
+    'goal', (select jsonb_build_object('id', g.id, 'emoji', g.emoji, 'title', g.title, 'target', g.target, 'created_at', g.created_at)
+      from public.piggy_goals g where g.space = v_space and g.owner = v_owner and g.done_at is null order by g.created_at desc limit 1),
+    'done_goals', (select coalesce(jsonb_agg(x order by x->>'done_at' desc), '[]'::jsonb) from (
+      select jsonb_build_object('id', g.id, 'emoji', g.emoji, 'title', g.title, 'target', g.target, 'created_at', g.created_at, 'done_at', g.done_at) x
+      from public.piggy_goals g where g.space = v_space and g.owner = v_owner and g.done_at is not null order by g.done_at desc limit 20) d),
+    'month', case when v_from is null then null else jsonb_build_object(
+      'in', (select coalesce(sum(amount), 0) from public.piggy_entries where space = v_space and owner = v_owner and dir = 'in' and on_date >= v_from and on_date < v_to),
+      'out', (select coalesce(sum(amount), 0) from public.piggy_entries where space = v_space and owner = v_owner and dir = 'out' and on_date >= v_from and on_date < v_to)) end,
+    'entries', (select coalesce(jsonb_agg(x order by (x->>'on_date') desc, (x->>'created_at') desc), '[]'::jsonb) from (
+      select jsonb_build_object('id', e.id, 'kind', e.kind, 'dir', e.dir, 'amount', e.amount, 'emoji', e.emoji, 'title', e.title, 'note', e.note,
+        'on_date', e.on_date, 'created_at', e.created_at, 'mine', e.author = v_me,
+        'author_name', coalesce(public.space_member_name(v_space, e.author), ''),
+        'hearts', (select coalesce(jsonb_agg(coalesce(public.space_member_name(v_space, r.author), '')), '[]'::jsonb) from public.piggy_reactions r
+          where r.entry_id = e.id and r.kind = 'heart' and r.author = any(v_members)),
+        'heart_mine', exists (select 1 from public.piggy_reactions r where r.entry_id = e.id and r.kind = 'heart' and r.author = v_me),
+        'cheers', (select coalesce(jsonb_agg(jsonb_build_object('id', r.id, 'body', r.body, 'mine', r.author = v_me,
+            'author_name', coalesce(public.space_member_name(v_space, r.author), ''), 'created_at', r.created_at) order by r.created_at), '[]'::jsonb)
+          from public.piggy_reactions r where r.entry_id = e.id and r.kind = 'cheer' and r.author = any(v_members))) x
+      from public.piggy_entries e where e.space = v_space and e.owner = v_owner
+        and (v_from is null or (e.on_date >= v_from and e.on_date < v_to))
+      order by e.on_date desc, e.created_at desc limit case when v_from is null then 20 else 1000 end) d)
+  );
+end $$;
+
+-- 規則：新增（p_id 空的）或修改，只能改自己的
+create or replace function public.piggy_rule_save(p_id uuid, p_emoji text, p_title text, p_amount integer, p_dir text) returns jsonb
+language plpgsql security definer set search_path = public as $$
+declare v_space uuid := public.quiz_space(); v_title text := btrim(coalesce(p_title, '')); v_id uuid;
+begin
+  if v_space is null or auth.uid() is null then raise exception '要先登入才能用存錢筒'; end if;
+  if char_length(v_title) not between 1 and 20 then raise exception '規則名稱要 1 到 20 個字'; end if;
+  if coalesce(p_amount, 0) not between 1 and 100000 then raise exception '金額要在 1 到 100,000 之間'; end if;
+  if coalesce(p_dir, '') not in ('in', 'out') then raise exception '不認得這個種類'; end if;
+  if char_length(coalesce(p_emoji, '')) not between 1 and 16 then raise exception '選一個圖示'; end if;
+  if p_id is not null then
+    update public.piggy_rules set emoji = p_emoji, title = v_title, amount = p_amount, dir = p_dir
+      where id = p_id and space = v_space and owner = auth.uid() returning id into v_id;
+    if v_id is null then raise exception '找不到這條規則'; end if;
+    return jsonb_build_object('id', v_id);
+  end if;
+  perform pg_advisory_xact_lock(hashtext('piggy:' || auth.uid()::text));
+  if (select count(*) from public.piggy_rules where space = v_space and owner = auth.uid()) >= 30 then raise exception '規則最多 30 條，先刪掉一些不用的吧'; end if;
+  insert into public.piggy_rules (space, owner, emoji, title, amount, dir, sort)
+    values (v_space, auth.uid(), p_emoji, v_title, p_amount, p_dir,
+      coalesce((select max(sort) from public.piggy_rules where space = v_space and owner = auth.uid()), 0) + 1)
+    returning id into v_id;
+  return jsonb_build_object('id', v_id);
+end $$;
+create or replace function public.piggy_rule_delete(p_id uuid) returns void
+language sql security definer set search_path = public as $$
+  delete from public.piggy_rules where id = p_id and owner = auth.uid() and space = public.quiz_space()
+$$;
+-- 排順序：照傳進來的 id 順序
+create or replace function public.piggy_rule_order(p_ids uuid[]) returns void
+language sql security definer set search_path = public as $$
+  update public.piggy_rules r set sort = array_position(p_ids, r.id)
+    where r.owner = auth.uid() and r.space = public.quiz_space() and r.id = any(p_ids)
+$$;
+
+-- 記一筆（自己的存錢筒）：p_id 空的是新增。日期是今天和過去 30 天內。回傳 full：這一筆讓目標存滿了
+create or replace function public.piggy_entry_save(p_id uuid, p_dir text, p_amount integer, p_emoji text, p_title text, p_note text, p_on_date date) returns jsonb
+language plpgsql security definer set search_path = public as $$
+declare
+  v_space uuid := public.quiz_space();
+  v_today date := (now() at time zone 'Asia/Taipei')::date;
+  v_title text := btrim(coalesce(p_title, ''));
+  v_note text := btrim(coalesce(p_note, ''));
+  v_before bigint;
+  e public.piggy_entries;
+begin
+  if v_space is null or auth.uid() is null then raise exception '要先登入才能用存錢筒'; end if;
+  if char_length(v_title) not between 1 and 20 then raise exception '寫一下做了什麼（20 個字以內）'; end if;
+  if char_length(v_note) > 100 then raise exception '備註最多 100 個字'; end if;
+  if coalesce(p_amount, 0) not between 1 and 100000 then raise exception '金額要在 1 到 100,000 之間'; end if;
+  if coalesce(p_dir, '') not in ('in', 'out') then raise exception '不認得這個種類'; end if;
+  if char_length(coalesce(p_emoji, '')) not between 1 and 16 then raise exception '選一個圖示'; end if;
+  if p_on_date is null or p_on_date > v_today then raise exception '日期不能選未來'; end if;
+  perform pg_advisory_xact_lock(hashtext('piggy:' || auth.uid()::text));
+  v_before := public.piggy_balance(v_space, auth.uid());
+  if p_id is not null then
+    select * into e from public.piggy_entries where id = p_id and space = v_space and owner = auth.uid() and author = auth.uid() and kind = 'normal' for update;
+    if e.id is null then raise exception '找不到這一筆'; end if;
+    if p_on_date <> e.on_date and p_on_date < v_today - 30 then raise exception '日期只能選最近 30 天'; end if;
+    update public.piggy_entries set dir = p_dir, amount = p_amount, emoji = p_emoji, title = v_title, note = v_note, on_date = p_on_date, updated_at = now()
+      where id = p_id;
+  else
+    if p_on_date < v_today - 30 then raise exception '日期只能選最近 30 天'; end if;
+    if (select count(*) from public.piggy_entries where space = v_space and owner = auth.uid()) >= 10000 then raise exception '存錢筒的紀錄滿了'; end if;
+    insert into public.piggy_entries (space, owner, author, kind, dir, amount, emoji, title, note, on_date)
+      values (v_space, auth.uid(), auth.uid(), 'normal', p_dir, p_amount, p_emoji, v_title, v_note, p_on_date)
+      returning * into e;
+  end if;
+  return jsonb_build_object('id', e.id, 'full', public.piggy_check_full(v_space, auth.uid(), v_before));
+end $$;
+
+-- 刪一筆：自己存錢筒裡的都能刪；另一半能刪自己加碼的那筆。刪掉「買了！」那筆，目標會回到存錢中（如果現在沒有別的目標）
+create or replace function public.piggy_entry_delete(p_id uuid) returns void
+language plpgsql security definer set search_path = public as $$
+declare v_space uuid := public.quiz_space(); e public.piggy_entries;
+begin
+  select * into e from public.piggy_entries where id = p_id and space = v_space;
+  if e.id is null or not public.piggy_can_see(v_space, e.owner) then return; end if;
+  if not (e.owner = auth.uid() or (e.author = auth.uid() and e.kind = 'boost')) then raise exception '只能刪自己的'; end if;
+  delete from public.piggy_entries where id = p_id;
+  if e.kind = 'buy' and e.goal_id is not null
+    and not exists (select 1 from public.piggy_goals where space = v_space and owner = e.owner and done_at is null) then
+    update public.piggy_goals set done_at = null where id = e.goal_id;
+  end if;
+end $$;
+
+-- 幫另一半加碼：記進對方的存錢筒
+create or replace function public.piggy_boost(p_amount integer, p_note text) returns jsonb
+language plpgsql security definer set search_path = public as $$
+declare
+  v_space uuid := public.quiz_space();
+  v_to uuid;
+  v_note text := btrim(coalesce(p_note, ''));
+  v_id uuid;
+begin
+  if v_space is null or auth.uid() is null then raise exception '要先登入才能加碼'; end if;
+  v_to := public.piggy_other(v_space);
+  if v_to is null or not public.piggy_can_see(v_space, v_to) then raise exception '現在看不到對方的存錢筒'; end if;
+  if coalesce(p_amount, 0) not between 1 and 100000 then raise exception '金額要在 1 到 100,000 之間'; end if;
+  if char_length(v_note) > 100 then raise exception '想說的話最多 100 個字'; end if;
+  insert into public.piggy_entries (space, owner, author, kind, dir, amount, emoji, title, note, on_date)
+    values (v_space, v_to, auth.uid(), 'boost', 'in', p_amount, '💝',
+      left(coalesce(nullif(public.space_member_name(v_space, auth.uid()), ''), '對方') || '加碼', 20), v_note, (now() at time zone 'Asia/Taipei')::date)
+    returning id into v_id;
+  perform public.piggy_notify(v_space, v_to, 'piggy_boost', jsonb_build_object('amount', p_amount));
+  return jsonb_build_object('id', v_id);
+end $$;
+
+-- 目標：一次一個。p_id 空的是新增
+create or replace function public.piggy_goal_save(p_id uuid, p_emoji text, p_title text, p_target integer) returns jsonb
+language plpgsql security definer set search_path = public as $$
+declare v_space uuid := public.quiz_space(); v_title text := btrim(coalesce(p_title, '')); v_id uuid;
+begin
+  if v_space is null or auth.uid() is null then raise exception '要先登入才能用存錢筒'; end if;
+  if char_length(v_title) not between 1 and 20 then raise exception '目標名稱要 1 到 20 個字'; end if;
+  if coalesce(p_target, 0) not between 1 and 10000000 then raise exception '目標金額要在 1 到 10,000,000 之間'; end if;
+  if char_length(coalesce(p_emoji, '')) not between 1 and 16 then raise exception '選一個圖示'; end if;
+  perform pg_advisory_xact_lock(hashtext('piggy:' || auth.uid()::text));
+  if p_id is not null then
+    update public.piggy_goals set emoji = p_emoji, title = v_title, target = p_target
+      where id = p_id and space = v_space and owner = auth.uid() and done_at is null returning id into v_id;
+    if v_id is null then raise exception '找不到這個目標'; end if;
+    return jsonb_build_object('id', v_id);
+  end if;
+  if exists (select 1 from public.piggy_goals where space = v_space and owner = auth.uid() and done_at is null) then raise exception '一次存一個目標，先完成或刪掉現在的'; end if;
+  if (select count(*) from public.piggy_goals where space = v_space and owner = auth.uid()) >= 500 then raise exception '目標太多了'; end if;
+  insert into public.piggy_goals (space, owner, emoji, title, target) values (v_space, auth.uid(), p_emoji, v_title, p_target) returning id into v_id;
+  return jsonb_build_object('id', v_id);
+end $$;
+create or replace function public.piggy_goal_delete(p_id uuid) returns void
+language sql security definer set search_path = public as $$
+  delete from public.piggy_goals where id = p_id and owner = auth.uid() and space = public.quiz_space() and done_at is null
+$$;
+-- 存滿了，按「買了！」：記一筆花費，目標移到「完成過的」
+create or replace function public.piggy_goal_buy(p_id uuid) returns void
+language plpgsql security definer set search_path = public as $$
+declare v_space uuid := public.quiz_space(); g public.piggy_goals;
+begin
+  perform pg_advisory_xact_lock(hashtext('piggy:' || auth.uid()::text));
+  select * into g from public.piggy_goals where id = p_id and space = v_space and owner = auth.uid() and done_at is null for update;
+  if g.id is null then raise exception '找不到這個目標'; end if;
+  insert into public.piggy_entries (space, owner, author, kind, dir, amount, emoji, title, note, on_date, goal_id)
+    values (v_space, auth.uid(), auth.uid(), 'buy', 'out', g.target, g.emoji, g.title, '', (now() at time zone 'Asia/Taipei')::date, g.id);
+  update public.piggy_goals set done_at = now() where id = g.id;
+end $$;
+
+-- 愛心：只能按對方存錢筒裡的，按第二次取消。回傳現在有沒有按
+create or replace function public.piggy_heart(p_entry uuid) returns boolean
+language plpgsql security definer set search_path = public as $$
+declare v_space uuid := public.quiz_space(); e public.piggy_entries;
+begin
+  select * into e from public.piggy_entries where id = p_entry and space = v_space;
+  if e.id is null or e.owner = auth.uid() or not public.piggy_can_see(v_space, e.owner) then raise exception '找不到這一筆'; end if;
+  if exists (select 1 from public.piggy_reactions where entry_id = p_entry and author = auth.uid() and kind = 'heart') then
+    delete from public.piggy_reactions where entry_id = p_entry and author = auth.uid() and kind = 'heart';
+    return false;
+  end if;
+  insert into public.piggy_reactions (entry_id, author, kind) values (p_entry, auth.uid(), 'heart');
+  if not exists (select 1 from public.notifications where recipient = e.owner and actor = auth.uid() and kind = 'piggy_heart' and read_at is null) then
+    perform public.piggy_notify(v_space, e.owner, 'piggy_heart', jsonb_build_object('title', e.title));
+  end if;
+  return true;
+end $$;
+-- 寫鼓勵：對方存錢筒裡的每一筆，每人最多 3 句、每句 50 字
+create or replace function public.piggy_cheer(p_entry uuid, p_body text) returns jsonb
+language plpgsql security definer set search_path = public as $$
+declare v_space uuid := public.quiz_space(); v_body text := btrim(coalesce(p_body, '')); e public.piggy_entries; v_id uuid;
+begin
+  select * into e from public.piggy_entries where id = p_entry and space = v_space;
+  if e.id is null or e.owner = auth.uid() or not public.piggy_can_see(v_space, e.owner) then raise exception '找不到這一筆'; end if;
+  if char_length(v_body) not between 1 and 50 then raise exception '鼓勵的話要 1 到 50 個字'; end if;
+  perform pg_advisory_xact_lock(hashtext('piggy-cheer:' || p_entry::text));
+  if (select count(*) from public.piggy_reactions where entry_id = p_entry and author = auth.uid() and kind = 'cheer') >= 3 then raise exception '每一筆最多寫 3 句鼓勵'; end if;
+  insert into public.piggy_reactions (entry_id, author, kind, body) values (p_entry, auth.uid(), 'cheer', v_body) returning id into v_id;
+  perform public.piggy_notify(v_space, e.owner, 'piggy_cheer', jsonb_build_object('title', e.title));
+  return jsonb_build_object('id', v_id);
+end $$;
+create or replace function public.piggy_cheer_delete(p_id uuid) returns void
+language sql security definer set search_path = public as $$
+  delete from public.piggy_reactions where id = p_id and author = auth.uid() and kind = 'cheer'
+$$;
+
+revoke all on function public.piggy_get(text, text) from public, anon;
+revoke all on function public.piggy_rule_save(uuid, text, text, integer, text) from public, anon;
+revoke all on function public.piggy_rule_delete(uuid) from public, anon;
+revoke all on function public.piggy_rule_order(uuid[]) from public, anon;
+revoke all on function public.piggy_entry_save(uuid, text, integer, text, text, text, date) from public, anon;
+revoke all on function public.piggy_entry_delete(uuid) from public, anon;
+revoke all on function public.piggy_boost(integer, text) from public, anon;
+revoke all on function public.piggy_goal_save(uuid, text, text, integer) from public, anon;
+revoke all on function public.piggy_goal_delete(uuid) from public, anon;
+revoke all on function public.piggy_goal_buy(uuid) from public, anon;
+revoke all on function public.piggy_heart(uuid) from public, anon;
+revoke all on function public.piggy_cheer(uuid, text) from public, anon;
+revoke all on function public.piggy_cheer_delete(uuid) from public, anon;
+grant execute on function public.piggy_get(text, text) to authenticated;
+grant execute on function public.piggy_rule_save(uuid, text, text, integer, text) to authenticated;
+grant execute on function public.piggy_rule_delete(uuid) to authenticated;
+grant execute on function public.piggy_rule_order(uuid[]) to authenticated;
+grant execute on function public.piggy_entry_save(uuid, text, integer, text, text, text, date) to authenticated;
+grant execute on function public.piggy_entry_delete(uuid) to authenticated;
+grant execute on function public.piggy_boost(integer, text) to authenticated;
+grant execute on function public.piggy_goal_save(uuid, text, text, integer) to authenticated;
+grant execute on function public.piggy_goal_delete(uuid) to authenticated;
+grant execute on function public.piggy_goal_buy(uuid) to authenticated;
+grant execute on function public.piggy_heart(uuid) to authenticated;
+grant execute on function public.piggy_cheer(uuid, text) to authenticated;
+grant execute on function public.piggy_cheer_delete(uuid) to authenticated;
 
 -- 改完函式後請 API 重新讀一次（不然 App 可能還是說找不到新的函式）
 notify pgrst, 'reload schema';
