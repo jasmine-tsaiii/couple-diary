@@ -1282,3 +1282,10 @@ h1, h2, .title-xl, .topbar h1 { font-family: var(--serif); font-weight: 600; let
 :root[data-mode="dark"] .pola { background: #F1EADB; }
 .home-head .couple .home-days { align-self: center; grid-column: auto; grid-row: auto; margin-top: 0; }
 .home-head .title-xl, .home-head.has-cd .title-xl { font-size: clamp(19px, 5.6vw, 23px); }
+/* 啾啾縮小，和名字排成一列，比較不佔空間 */
+.home-head .couple { flex-direction: row; justify-content: center; gap: 10px; margin-top: 10px; }
+.home-head .couple .mascot { margin-bottom: 0; }
+.couple-text { display: flex; flex-direction: column; gap: 1px; align-items: flex-start; }
+.home-head .couple .couple-text .home-days { align-self: flex-start; }
+.couple-text { min-width: 0; }
+@media (max-width: 360px) { .couple-names { letter-spacing: .06em; font-size: 14px; } }

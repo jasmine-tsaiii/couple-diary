@@ -17,7 +17,7 @@ function quickRecord(text) {
 function coupleBlock(a, b) {
   const names = [a, b].filter((x) => x && x !== '對方' && x !== '我');
   const days = togetherDays();
-  return `<div class="couple">${mascotHtml('happy', 92)}${names.length === 2 ? `<div class="couple-names">${esc(names[0])}<span aria-hidden="true">・</span>${esc(names[1])}</div>` : ''}${days ? `<div class="small muted home-days">在一起第 ${days} 天</div>` : ''}</div>`;
+  return `<div class="couple">${mascotHtml('happy', 52)}<div class="couple-text">${names.length === 2 ? `<div class="couple-names">${esc(names[0])}<span aria-hidden="true">・</span>${esc(names[1])}</div>` : ''}${days ? `<div class="small muted home-days">在一起第 ${days} 天</div>` : ''}</div></div>`;
 }
 // 每天一題：用兩個圓圈表示誰寫了（實心＝寫好了、虛線＝還沒寫），不用一整句說明
 // 自己還沒寫時是 #daily-tip（可以按叉叉今天先不要）；寫好了就只剩一張小卡等對方或看答案
