@@ -1,4 +1,4 @@
-// 2026-10-20 新風格（奶油淺黃）：預設底色、這一週小記號、底部選單英文小字、一起九宮格、主題背景「啾啾粉」換回舊配色
+// 2026-10-20 新風格（純白底＋奶油淺黃點綴）：預設底色、首頁啾啾＋名字、抽一張回憶、這一週小記號、底部選單英文小字、一起九宮格、主題背景「啾啾粉」換回舊配色
 const { chromium } = require('playwright');
 const fs = require('fs');
 const U = (process.env.U || 'http://localhost:8770/');
@@ -11,7 +11,9 @@ const U = (process.env.U || 'http://localhost:8770/');
   const p = await ctx.newPage(); p.on('pageerror', (e) => errs.push(e.message)); p.on('dialog', (d) => d.accept());
   const bg = () => p.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue('--bg').trim());
   await p.goto(U + '#/'); await p.waitForTimeout(700);
-  log('cream default bg', (await bg()) === '#F7F1E0');
+  log('white default bg', (await bg()) === '#FFFFFF');
+  log('couple bird on home', await p.locator('.home-head .couple .mascot').count() === 1);
+  log('no draw row without old records', await p.locator('#home-draw').count() === 0);
   log('no week strip without records', await p.locator('.week-strip').count() === 0);
   await p.evaluate(async () => {
     const d = (n) => { const x = new Date(); x.setDate(x.getDate() - n); return `${x.getFullYear()}-${String(x.getMonth() + 1).padStart(2, '0')}-${String(x.getDate()).padStart(2, '0')}`; };
@@ -26,6 +28,11 @@ const U = (process.env.U || 'http://localhost:8770/');
   log('today marked', await p.locator('.week-strip a.today').count() === 1);
   log('tab labels zh', (await p.$$eval('#tabbar .tab span', (e) => e.map((x) => x.textContent).join(','))) === '今天,紀錄,一起,我的');
   log('tab labels en', (await p.$$eval('#tabbar .tab em', (e) => e.map((x) => x.textContent).join(','))) === 'Today,Records,Together,Me');
+  log('draw row', await p.locator('#home-draw').count() === 1 && (await p.textContent('#home-draw summary')).includes('抽一張回憶'));
+  await p.evaluate(() => document.querySelectorAll('.celebrate').forEach((e) => e.remove()));
+  await p.click('#home-draw summary'); await p.waitForTimeout(500);
+  log('draw shows old happy', (await p.textContent('#draw-body')).includes('很久以前') && await p.locator('#draw-body a[href="#/view/a3"]').count() === 1);
+  await p.screenshot({ path: (process.env.SHOT_DIR || '.') + '/home-v2.png', fullPage: true });
   log('quick btn text kept', (await p.$$eval('.quick-btn', (e) => e.map((x) => x.textContent.trim()).join(','))) === '記美好,記烏雲,記吵架');
   await p.goto(U + '#/together'); await p.waitForTimeout(900);
   log('together grid', await p.evaluate(() => getComputedStyle(document.querySelector('.nav-list')).display === 'grid' && document.getElementById('app').classList.contains('together-page')));
@@ -35,8 +42,10 @@ const U = (process.env.U || 'http://localhost:8770/');
   await p.evaluate(() => document.querySelectorAll('.celebrate').forEach((e) => e.remove()));
   await p.click('[data-skin-pick="pink"]'); await p.waitForTimeout(300);
   log('pink skin old bg', (await bg()) === '#FBF7F2');
+  await p.click('[data-skin-pick="cream"]'); await p.waitForTimeout(300);
+  log('cream skin', (await bg()) === '#F7F1E0');
   await p.click('[data-skin-pick=""]'); await p.waitForTimeout(300);
-  log('back to cream', (await bg()) === '#F7F1E0');
+  log('back to white', (await bg()) === '#FFFFFF');
   console.log('errors', errs);
   await b.close();
 })();

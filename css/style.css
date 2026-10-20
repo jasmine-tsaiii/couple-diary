@@ -1,35 +1,37 @@
 :root {
-  /* 2026-10-20 新風格「奶油淺黃」：紙張底色、低彩度三色。舊的粉紅配色收在主題背景「啾啾粉」（data-skin="pink"） */
-  --bg: #F7F1E0;
-  --card: #FDFAF0;
-  --line: #E6DDC4;
-  --field: #D9CDAE;
+  /* 2026-10-20 新風格：純白底＋奶油淺黃點綴、低彩度三色。奶油淺黃底色收在主題背景「奶油淺黃」（data-skin="cream"），舊的粉紅配色在「啾啾粉」（data-skin="pink"） */
+  --bg: #FFFFFF;
+  --card: #FFFFFF;
+  --line: #EDE8DC;
+  --field: #DCD4C1;
   --ink: #2E2A22;
   --muted: #6E6756;
   --soft: #575144;
   --eyebrow: #8A6A26;
   --happy: #9A5A26;
   --happy-dark: #6F3E17;
-  --happy-bg: #F3E2CB;
+  --happy-bg: #FAF0DC;
   --cloud: #6E6756;
   --cloud-dark: #4E493D;
-  --cloud-bg: #EAE4D4;
+  --cloud-bg: #F4F1EA;
   --fight: #46525E;
   --fight-dark: #313A43;
-  --fight-bg: #E0E3E0;
+  --fight-bg: #EEF0F0;
   --lock: #5A4F6B;
-  --lock-bg: #ECE6E6;
-  --open-bg: #F3DFD3; --open-ink: #6B2A20;
-  --progress-bg: #F1E5C2; --progress-ink: #5E420E;
-  --resolved-bg: #E1E9D9; --resolved-ink: #2F4F2F;
+  --lock-bg: #F4F0F2;
+  --open-bg: #FAEBE3; --open-ink: #6B2A20;
+  --progress-bg: #FBF3DA; --progress-ink: #5E420E;
+  --resolved-bg: #EAF1E4; --resolved-ink: #2F4F2F;
   --happy-text: #9A5A26; --cloud-text: #615A4B; --fight-text: #46525E;
   --accent: var(--happy);
   --accent-text: var(--happy-text);
   --accent-dark: var(--happy-dark);
   --accent-bg: var(--happy-bg);
-  --seg: #EEE6D0;
-  --dash: #C9BB98;
-  --press: #F9F4E6;
+  --seg: #F8F3E6;
+  --dash: #D3C7AA;
+  --press: #FCF8EE;
+  --paper-note: #FCF6E6;
+  --tape: #F1E2B4;
   --danger: #9B2C1F;
   --danger-line: #E8C4BE;
   --toast-bg: #2E2A22;
@@ -815,6 +817,13 @@ body.quiz-focus #app { padding-bottom: calc(96px + env(safe-area-inset-bottom));
 .mission-pool { display: flex; flex-direction: column; gap: 6px; }
 .mission-card { font-size: 12.5px; line-height: 1.45; padding: 8px; border-radius: 10px; background: var(--lock-bg); color: var(--ink); border: 1px dashed var(--dash); }
 
+/* 主題背景「奶油淺黃」：2026-10-20 第一版的紙張底色（深色時用預設的深咖啡紙） */
+:root[data-skin="cream"][data-mode="light"] {
+  --bg: #F7F1E0; --card: #FDFAF0; --line: #E6DDC4; --field: #D9CDAE;
+  --happy-bg: #F3E2CB; --cloud-bg: #EAE4D4; --fight-bg: #E0E3E0; --lock-bg: #ECE6E6;
+  --open-bg: #F3DFD3; --progress-bg: #F1E5C2; --resolved-bg: #E1E9D9;
+  --seg: #EEE6D0; --dash: #C9BB98; --press: #F9F4E6; --paper-note: #FDFAF0; --tape: #EEDCA6;
+}
 /* 主題背景「啾啾粉」：2026-10-20 以前的預設配色 */
 :root[data-skin="pink"][data-mode="light"] {
   --bg: #FBF7F2;
@@ -1221,3 +1230,55 @@ h1, h2, .title-xl, .topbar h1 { font-family: var(--serif); font-weight: 600; let
 .list > .card.item .grow > div:first-child { font-family: var(--serif); font-weight: 600 !important; letter-spacing: .04em; }
 .home-head .title-xl { font-weight: 500; font-size: clamp(21px, 6.6vw, 27px); letter-spacing: .12em; }
 @media (max-width: 360px) { .together-page .nav-text .bold { letter-spacing: 0; font-size: 12px; } .together-page .nav-row { padding-left: 2px; padding-right: 2px; } }
+
+/* ===== 2026-10-20 第二版：純白底，首頁照「交換日記」提案（啾啾＋名字、每天一題兩個圓圈、七天、收起來的回憶） ===== */
+.home-head .couple { grid-column: 1 / -1; grid-row: 5; display: flex; flex-direction: column; align-items: center; gap: 2px; margin-top: 14px; }
+.home-head .couple .mascot { margin-bottom: 2px; }
+.couple-names { font-family: var(--serif); font-size: 15px; letter-spacing: .3em; color: var(--ink); }
+.couple-names span { color: var(--muted); }
+.home-head .couple .home-days { font-family: var(--serif); letter-spacing: .2em; font-size: 12px; margin: 0; }
+.quick-head { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+/* 每天一題：紙條＋膠帶 */
+.qc { position: relative; background: var(--paper-note); border: 1px solid var(--line); padding: 20px 16px 14px; margin-top: 10px; display: flex; flex-direction: column; gap: 6px; }
+.tape { position: absolute; top: -8px; left: 50%; width: 64px; height: 16px; margin-left: -32px; background: var(--tape); opacity: .85; transform: rotate(-2deg); }
+.qc .q { font-family: var(--serif); font-size: 16.5px; line-height: 1.6; letter-spacing: .02em; color: var(--ink); text-decoration: none; }
+.qc .card-x { color: var(--muted); }
+.qc.has-x .eyebrow { padding-right: 28px; }
+.qrow { display: flex; align-items: center; gap: 8px; margin-top: 6px; }
+.qrow .small { min-width: 0; }
+.av { width: 28px; height: 28px; border-radius: 50%; display: grid; place-items: center; font-family: var(--serif); font-size: 12px; flex: none; box-sizing: border-box; }
+.av.done { background: var(--ink); color: var(--card); }
+.av.todo { border: 1px dashed var(--muted); color: var(--muted); }
+.av + .av { margin-left: -6px; }
+.qbtn { margin-left: auto; flex: none; font-size: 13px; letter-spacing: .1em; padding: 7px 14px; border: 1px solid var(--ink); border-radius: 99px; color: var(--ink); text-decoration: none; font-family: var(--serif); }
+/* 收起來的列 */
+.home-rows { display: flex; flex-direction: column; }
+.home-row { border-bottom: 1px solid var(--line); position: relative; }
+.home-row:first-child { border-top: 1px solid var(--line); }
+.home-row > summary, .home-row-link { display: flex; align-items: center; gap: 12px; padding: 14px 2px; cursor: pointer; list-style: none; color: var(--ink); text-decoration: none; }
+.home-row > summary::-webkit-details-marker { display: none; }
+.home-row .lbl { display: flex; flex-direction: column; gap: 2px; min-width: 0; font-family: var(--serif); font-size: 14px; letter-spacing: .06em; }
+.home-row .lbl small { font-family: inherit; font-size: 11.5px; color: var(--muted); letter-spacing: .02em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.home-row .chev { margin-left: auto; color: var(--muted); font-family: var(--latin); font-size: 18px; transition: transform .2s; }
+.home-row[open] .chev { transform: rotate(90deg); }
+.thumbs { display: flex; flex: none; }
+.thumbs img, .thumbs i { width: 32px; height: 32px; display: block; object-fit: cover; border: 2px solid var(--card); box-shadow: 0 1px 3px rgba(0,0,0,.14); background: var(--happy-bg); }
+.thumbs > * + * { margin-left: -12px; transform: rotate(6deg); }
+.stack { position: relative; width: 30px; height: 30px; flex: none; margin: 0 4px 0 2px; }
+.stack i { position: absolute; inset: 0; background: var(--paper-note); border: 1px solid var(--line); }
+.stack i:nth-child(1) { transform: rotate(-8deg); }
+.stack i:nth-child(2) { transform: rotate(5deg); }
+.stack b { position: absolute; top: -6px; right: -7px; min-width: 16px; height: 16px; padding: 0 3px; box-sizing: border-box; border-radius: 99px; background: var(--happy); color: #fff; font-size: 10px; display: grid; place-items: center; font-weight: 600; }
+#new-from-other .home-row-link { padding-right: 40px; }
+#new-from-other-x { position: absolute; top: 50%; right: 0; margin-top: -16px; width: 32px; height: 32px; padding: 0; background: none; border: 0; color: var(--muted); font-size: 16px; line-height: 32px; cursor: pointer; }
+.home-row-body { padding: 4px 0 14px; }
+.pola { position: relative; background: #fff; padding: 8px 8px 30px; margin: 10px 18px 4px; box-shadow: 0 6px 16px rgba(60,45,30,.13); transform: rotate(-1.2deg); }
+.pola-photo { display: block; width: 100%; height: 150px; object-fit: cover; }
+.pola-photo.paper { background: var(--happy-bg); display: grid; place-items: center; }
+.pola-cap { position: absolute; left: 10px; right: 10px; bottom: 7px; font-family: var(--serif); font-size: 13px; color: #2E2A22; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pola-foot { display: flex; justify-content: space-between; gap: 8px; flex-wrap: wrap; margin-top: 12px; }
+.pola-foot .text-link { background: none; border: 0; padding: 0; font: inherit; color: var(--happy-text); cursor: pointer; text-decoration: none; }
+:root[data-mode="dark"] { --paper-note: var(--card); --tape: rgba(217, 182, 110, .35); }
+:root[data-mode="dark"] .pola { background: #F1EADB; }
+.home-head .couple .home-days { align-self: center; grid-column: auto; grid-row: auto; margin-top: 0; }
+.home-head .title-xl, .home-head.has-cd .title-xl { font-size: clamp(19px, 5.6vw, 23px); }

@@ -69,7 +69,7 @@ const U = (process.env.U || 'http://localhost:8770/');
 
   // 主題背景
   await p.goto(U + '#/settings/theme'); await p.waitForTimeout(900);
-  log('skin card', await p.locator('#skin-card [data-skin-pick]').count() === 6);
+  log('skin card', await p.locator('#skin-card [data-skin-pick]').count() === 7);
   await p.click('[data-skin-pick="paper"]'); await p.waitForTimeout(300);
   log('paper applied', (await skin()) === 'paper' && await p.evaluate(() => localStorage.getItem('skin')) === 'paper');
   await p.goto(U + '#/'); await p.waitForTimeout(800);

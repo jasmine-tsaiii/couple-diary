@@ -36,17 +36,15 @@ async function viewPartnerHome() {
       <div class="bold" style="color:var(--lock)">有 ${todo} 個任務可以解鎖</div>
       <div class="small" style="color:var(--lock)">完成任務、${esc(ownerName())}確認之後，就能看到上鎖的紀錄。</div>
     </a>` : '',
-    newFromOtherCard(all),
     CloudDB.isAnonymous() ? `<a class="card" href="#/bind" style="background:var(--fight-bg);border-color:transparent;gap:4px">
       <div class="bold" style="color:var(--fight-dark)">建立我的帳號，你也可以寫紀錄</div>
       <div class="small muted">你現在是用分享碼加入的，還沒有自己的帳號：只能看、做任務。用 Email 或 Google 建立帳號後，就能寫自己的美好和烏雲，也能一起寫吵架議題，換手機也不會不見 ›</div>
     </a>` : '',
     quizTipHtml(quizQ, 'start'),
-
-    dailyTipHtml(dailyQ),
   ];
   const tipHtml = tips.find((t) => t && t.trim()) || '';
   const cd = typeof countdownHome === 'function' ? await countdownHome() : { tile: '', ask: '' };
+  const homeRows = await homeRowsHtml(all);
 
   app.innerHTML = `
     <div class="home-head${cd.tile ? ' has-cd' : ''}">
@@ -55,10 +53,14 @@ async function viewPartnerHome() {
       <div class="row home-actions" style="gap:8px">${bellBtnHtml()}</div>
       ${cd.tile}
       ${cd.ask ? `<div class="home-cd">${cd.ask}</div>` : ''}
+      ${coupleBlock(ownerName(), info.name)}
     </div>
-    ${bound ? quickRecord('今天想記下什麼？') : `<div class="mascot-hello">${mascotHtml('happy', 110)}<div class="small muted">看看${esc(ownerName())}分享了什麼</div></div>`}
     ${tipHtml}
-    <div class="row between section-head"><div class="section-title">${bound ? '最近的紀錄' : '最近分享的紀錄'}</div>${recent.length ? '<a class="small see-all" href="#/records">看全部 ›</a>' : ''}</div>
+    ${dailyHomeCard(dailyQ)}
+    ${bound ? quickRecord('今天想記下什麼？') : `<div class="small muted mascot-hello">看看${esc(ownerName())}分享了什麼</div>`}
+    ${all.length ? weekStrip(all) : ''}
+    ${homeRows}
+    <div class="row between section-head"><div><span class="eyebrow">Lately</span><div class="section-title">${bound ? '最近的紀錄' : '最近分享的紀錄'}</div></div>${recent.length ? '<a class="small see-all" href="#/records">看全部 ›</a>' : ''}</div>
     <div class="list" id="recent">${recent.length ? '' : bound ? `<div class="empty">還沒有紀錄<a class="btn small" href="#/new/happy">寫下第一個美好時刻</a></div>` : `<div class="empty">${esc(ownerName())}還沒有分享紀錄給你</div>`}</div>
   `;
   bindQuizTip();
@@ -67,6 +69,7 @@ async function viewPartnerHome() {
   const box = document.getElementById('recent');
   for (const r of recent) box.appendChild(await listItem(r));
   bindNewFromOther(all);
+  bindMemoryRow(all);
   if (!tourDone('partner')) showTour('partner');
 }
 

@@ -5,13 +5,72 @@
 // 首頁上方的「今天想記下什麼？」：三個大按鈕直接開始寫
 function quickRecord(text) {
   return `<div class="card quick-rec">
-    <div class="quick-head">${mascotHtml('happy', 64)}<div><span class="eyebrow">Write It Down</span><div class="bold">${text}</div></div></div>
+    <div class="quick-head"><span class="eyebrow">Write It Down</span><span class="small muted">${text}</span></div>
     <div class="quick-btns">
       <a class="quick-btn theme-happy" href="#/new/happy">${ICON.heart}<i class="mk mk-happy" aria-hidden="true"></i><span>記美好</span></a>
       <a class="quick-btn theme-cloud" href="#/new/cloud">${ICON.cloud}<i class="mk mk-cloud" aria-hidden="true"></i><span>記烏雲</span></a>
       <a class="quick-btn theme-fight" href="#/new/fight">${ICON.bolt}<i class="mk mk-fight" aria-hidden="true"></i><span>記吵架</span></a>
     </div>
   </div>`;
+}
+// 首頁中間：啾啾＋兩個人的名字＋在一起第幾天（2026-10-20 新風格「交換日記」）
+function coupleBlock(a, b) {
+  const names = [a, b].filter((x) => x && x !== '對方' && x !== '我');
+  const days = togetherDays();
+  return `<div class="couple">${mascotHtml('happy', 92)}${names.length === 2 ? `<div class="couple-names">${esc(names[0])}<span aria-hidden="true">・</span>${esc(names[1])}</div>` : ''}${days ? `<div class="small muted home-days">在一起第 ${days} 天</div>` : ''}</div>`;
+}
+// 每天一題：用兩個圓圈表示誰寫了（實心＝寫好了、虛線＝還沒寫），不用一整句說明
+// 自己還沒寫時是 #daily-tip（可以按叉叉今天先不要）；寫好了就只剩一張小卡等對方或看答案
+function dailyHomeCard(d) {
+  if (!d || d.noPair) return '';
+  const todo = !d.mine;
+  if (todo) { try { if (localStorage.getItem('dailyTipHidden') === d.st.today) return ''; } catch (e) { /* 略過 */ } }
+  const first = (n) => [...String(n || '').trim()][0] || '?';
+  const other = d.otherName || otherName();
+  const av = (n, done, who) => `<span class="av ${done ? 'done' : 'todo'}" title="${esc(who)}${done ? '寫好了' : '還沒寫'}" aria-label="${esc(who)}${done ? '寫好了' : '還沒寫'}">${esc(first(n))}</span>`;
+  const state = d.revealed ? '兩個人都寫好了' : todo ? (d.otherDone ? `${esc(other)}寫好了，換你` : '兩個人都還沒寫') : `等${esc(other)}寫`;
+  const btn = todo ? '寫答案' : d.revealed ? '看答案' : '看看';
+  return `<div class="qc${todo ? ' has-x' : ''}" id="${todo ? 'daily-tip' : 'daily-home'}"><i class="tape" aria-hidden="true"></i>
+    ${todo ? `<button class="card-x" id="daily-tip-x" aria-label="今天先不要">${ICON.x}</button>` : ''}
+    <span class="eyebrow">Today's Question</span>
+    <a class="q" href="#/daily">${esc(d.text)}</a>
+    <div class="qrow">${av(myName(), d.mine, '你')}${av(other, d.otherDone, other)}<span class="small muted">${state}</span><a class="qbtn" href="#/daily">${btn}</a></div>
+  </div>`;
+}
+// 收起來的兩列：抽一張回憶（隨機一則一週以前的美好）、對方的新紀錄；想看再點開
+const memPool = (all) => {
+  const cut = new Date(`${today()}T12:00:00`); cut.setDate(cut.getDate() - 7);
+  const k = `${cut.getFullYear()}-${String(cut.getMonth() + 1).padStart(2, '0')}-${String(cut.getDate()).padStart(2, '0')}`;
+  return all.filter((r) => r.type === 'happy' && DATE_RE.test(r.date || '') && r.date <= k);
+};
+async function memoryCardHtml(r) {
+  const url = r.photoIds && r.photoIds.length ? await thumbUrl(r.photoIds[0]) : '';
+  const ago = Math.round((Date.parse(today()) - Date.parse(r.date)) / 86400000);
+  return `<div class="pola"><i class="tape" aria-hidden="true"></i>${url ? `<img class="pola-photo" src="${url}" alt="">` : `<div class="pola-photo paper">${mascotHtml('happy', 64)}</div>`}<span class="pola-cap">${esc(r.title)}</span></div>
+    <div class="pola-foot small"><span class="muted">${shortDate(r.date)}・${ago} 天前</span><span><button type="button" class="text-link" id="draw-again">↻ 再抽一張</button>　<a class="text-link" href="#/view/${esc(r.id)}">看那一天 ›</a></span></div>`;
+}
+async function memoryRowHtml(all) {
+  const pool = memPool(all);
+  if (!pool.length) return '';
+  const withPhoto = pool.filter((r) => r.photoIds && r.photoIds.length).slice(0, 2);
+  const urls = (await Promise.all(withPhoto.map((r) => thumbUrl(r.photoIds[0])))).filter(Boolean);
+  const thumbs = urls.length ? urls.map((u) => `<img src="${u}" alt="">`).join('') : '<i></i><i></i>';
+  return `<details class="home-row" id="home-draw"><summary><span class="thumbs" aria-hidden="true">${thumbs}</span><span class="lbl">抽一張回憶<small>從 ${pool.length} 個美好時刻裡隨機抽</small></span><span class="chev" aria-hidden="true">›</span></summary><div class="home-row-body" id="draw-body"></div></details>`;
+}
+function bindMemoryRow(all) {
+  const d = document.getElementById('home-draw');
+  if (!d) return;
+  const pool = memPool(all);
+  let last = null;
+  const draw = async () => {
+    const left = pool.length > 1 ? pool.filter((r) => r !== last) : pool;
+    last = left[Math.floor(Math.random() * left.length)];
+    const body = document.getElementById('draw-body');
+    body.innerHTML = await memoryCardHtml(last);
+    const again = document.getElementById('draw-again');
+    if (again) { if (pool.length < 2) again.remove(); else again.addEventListener('click', draw); }
+  };
+  d.addEventListener('toggle', () => { if (d.open && !last) draw(); });
 }
 // 這一週：最近七天，每天下面用小記號標出記了什麼（● 美好、○ 烏雲、◆ 吵架），點了看那天的紀錄
 function weekStrip(all) {
@@ -146,7 +205,6 @@ async function viewHome() {
       <div class="bold" style="color:var(--lock)">${esc(partnerName())}出了 ${myTodo} 個任務給你</div>
       <div class="small" style="color:var(--lock)">完成任務、${esc(partnerName())}確認之後，就能看到那則上鎖的紀錄 ›</div>
     </a>` : '',
-    newFromOtherCard(all),
     // 試用中：在 LINE/IG 裡打開的警告、iPhone Safari 分頁有紀錄時的註冊提醒，比填名字更要緊
     isGuest() ? inAppNotice() : '',
     showGuestCard && IOS_SAFARI_TAB && all.length ? guestCard : '',
@@ -178,28 +236,29 @@ async function viewHome() {
     </a>` : '',
     showA2hsCard ? a2hsCardHtml() : '',
     showGuestCard ? guestCard : '',
-
-    dailyTipHtml(dailyQ),
   ];
   const tipHtml = tips.find((t) => t && t.trim()) || '';
   // 倒數日：首頁不加卡片，標題右邊放一張小日曆（最近的那一個）
   const cd = typeof countdownHome === 'function' ? await countdownHome() : { tile: '', ask: '' };
+  const homeRows = await homeRowsHtml(all);
 
   app.innerHTML = `
     <div class="home-head${cd.tile ? ' has-cd' : ''}">
       <div class="hello">${NAMES.me ? `嗨，${esc(NAMES.me)}・` : ''}${cd.tile ? `<span class="nowrap">${longDate(today()).replace(/^\d+ 年 /, '')}</span>` : `今天是 <span class="nowrap">${longDate(today())}</span>`}</div>
       <h1 class="title-xl">${esc(diaryTitle())}</h1>
-      ${togetherDays() ? `<div class="small muted home-days">在一起第 ${togetherDays()} 天</div>` : ''}
       ${cd.tile}
       ${cd.ask ? `<div class="home-cd">${cd.ask}</div>` : ''}
       <div class="row home-actions" style="gap:8px">
         ${isGuest() ? '<a class="btn small secondary" href="#/login" id="home-login">登入</a>' : ''}
         ${bellBtnHtml()}
       </div>
+      ${coupleBlock(NAMES.me, hasPartner || !usingCloud() ? (isPartner() ? ownerName() : NAMES.partner) : '')}
     </div>
-    ${quickRecord('今天想記下什麼？')}
     ${tipHtml}
+    ${dailyHomeCard(dailyQ)}
+    ${quickRecord('今天想記下什麼？')}
     ${all.length ? weekStrip(all) : ''}
+    ${homeRows}
     <div class="row between section-head"><div><span class="eyebrow">Lately</span><div class="section-title">最近的紀錄</div></div>${recent.length ? '<a class="small see-all" href="#/records">看全部 ›</a>' : ''}</div>
     <div class="list" id="recent">${recent.length ? '' : examples ? examplesBlock(['happy', 'cloud', 'fight']) : `<div class="empty">還沒有任何紀錄<a class="btn small" href="#/new/happy">寫下第一個美好時刻</a></div>`}</div>
   `;
@@ -246,6 +305,7 @@ async function viewHome() {
   const box = document.getElementById('recent');
   for (const r of recent) box.appendChild(await listItem(r));
   bindNewFromOther(all);
+  bindMemoryRow(all);
   if (!all.length && !tourDone('owner')) showTour('owner');
 }
 
@@ -327,13 +387,18 @@ function newFromOtherCard(all) {
   initSeen(all);
   const fresh = all.filter(isNewFromOther).sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
   if (!fresh.length) return '';
-  return `<div class="card" id="new-from-other" style="gap:4px;position:relative;padding-right:40px">
-    <a href="#/view/${esc(fresh[0].id)}" style="display:flex;flex-direction:column;gap:4px;color:inherit;text-decoration:none">
-      <div class="row" style="gap:8px"><span class="new-dot" aria-hidden="true"></span><span class="bold">${esc(otherName())}最近寫了 ${fresh.length} 則新的</span></div>
-      <div class="small muted">${fresh.slice(0, 3).map((r) => `${TYPES[r.type].short}「${esc(r.title)}」`).join('、')}${fresh.length > 3 ? '…' : ''}，點這裡從最新的開始看 ›</div>
+  return `<div class="home-row" id="new-from-other">
+    <a href="#/view/${esc(fresh[0].id)}" class="home-row-link">
+      <span class="stack" aria-hidden="true"><i></i><i></i><i></i><b>${fresh.length > 9 ? '9+' : fresh.length}</b></span>
+      <span class="lbl"><span>${esc(otherName())}最近寫了 ${fresh.length} 則新的</span><small>${fresh.slice(0, 2).map((r) => `${TYPES[r.type].short}「${esc(r.title)}」`).join('、')}${fresh.length > 2 ? '…' : ''}</small></span>
     </a>
-    <button type="button" id="new-from-other-x" aria-label="看過了，關掉" title="看過了，關掉" style="position:absolute;top:6px;right:6px;width:32px;height:32px;padding:0;background:none;border:0;color:var(--muted);font-size:18px;line-height:32px;cursor:pointer">✕</button>
+    <button type="button" id="new-from-other-x" aria-label="看過了，關掉" title="看過了，關掉">✕</button>
   </div>`;
+}
+// 首頁收起來的那幾列（對方的新紀錄在上，抽一張回憶在下）
+async function homeRowsHtml(all) {
+  const rows = newFromOtherCard(all) + await memoryRowHtml(all);
+  return rows ? `<div class="home-rows">${rows}</div>` : '';
 }
 function bindNewFromOther(all) {
   const x = document.getElementById('new-from-other-x');

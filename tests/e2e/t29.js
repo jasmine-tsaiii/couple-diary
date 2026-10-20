@@ -28,6 +28,6 @@ const U = (process.env.U || 'http://localhost:8770/');
   await p.screenshot({ path: 'm3-clear.png' });
   await p.waitForTimeout(3000);
   await p.goto(U + '#/'); await p.waitForTimeout(800);
-  log('home colors changed', await p.evaluate(() => document.querySelector('.quick-head svg, .mascot-hello svg').outerHTML.includes('#F8C8B4')));
+  log('home colors changed', await p.evaluate(() => document.querySelector('.couple svg, .quick-head svg, .mascot-hello svg').outerHTML.includes('#F8C8B4')));
   console.log('errors', errs); await b.close();
 })();
