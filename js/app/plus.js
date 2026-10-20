@@ -375,7 +375,8 @@ function capsuleTipHtml(list) {
 
 // ---------- 主題背景（存在這支手機，不影響對方） ----------
 const SKINS = [
-  { key: '', name: '啾啾粉', free: true, sw: ['#FBF7F2', '#A33A52', '#F6E4E8'] },
+  { key: '', name: '奶油淺黃', free: true, sw: ['#F7F1E0', '#9A5A26', '#F3E2CB'] },
+  { key: 'pink', name: '啾啾粉', free: true, sw: ['#FBF7F2', '#A33A52', '#F6E4E8'] },
   { key: 'paper', name: '手帳紙', free: true, sw: ['#F4EEDF', '#9C4A3A', '#E6DCC6'] },
   { key: 'night', name: '夜空', sw: ['#141A33', '#E2B65A', '#2A3260'] },
   { key: 'sakura', name: '櫻花', sw: ['#FFF3F5', '#C2477A', '#FCE1EA'] },
@@ -424,7 +425,7 @@ function skinCard() {
       <span class="skin-sw" aria-hidden="true">${s.sw.map((c) => `<i style="background:${c}"></i>`).join('')}</span>
       <span class="skin-name">${esc(s.name)}${s.free ? '' : ` <span class="skin-lock" aria-label="Plus">${ICON.lock}</span>`}</span>
     </button>`).join('')}</div>
-    <div class="small muted">換整個 App 的配色和紙紋，只會改這支手機。有鎖頭的是 Plus 主題，可以先點來預覽。選了主題就用主題的配色，手機是深色模式也一樣；想要深色就選啾啾粉或夜空。</div>
+    <div class="small muted">換整個 App 的配色和紙紋，只會改這支手機。有鎖頭的是 Plus 主題，可以先點來預覽。選了主題就用主題的配色，手機是深色模式也一樣；想要深色就選奶油淺黃、啾啾粉或夜空。</div>
   </div>`;
 }
 document.addEventListener('click', (ev) => {

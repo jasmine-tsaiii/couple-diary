@@ -5,13 +5,35 @@
 // 首頁上方的「今天想記下什麼？」：三個大按鈕直接開始寫
 function quickRecord(text) {
   return `<div class="card quick-rec">
-    <div class="quick-head">${mascotHtml('happy', 64)}<div class="bold">${text}</div></div>
+    <div class="quick-head">${mascotHtml('happy', 64)}<div><span class="eyebrow">Write It Down</span><div class="bold">${text}</div></div></div>
     <div class="quick-btns">
-      <a class="quick-btn theme-happy" href="#/new/happy">${ICON.heart}<span>記美好</span></a>
-      <a class="quick-btn theme-cloud" href="#/new/cloud">${ICON.cloud}<span>記烏雲</span></a>
-      <a class="quick-btn theme-fight" href="#/new/fight">${ICON.bolt}<span>記吵架</span></a>
+      <a class="quick-btn theme-happy" href="#/new/happy">${ICON.heart}<i class="mk mk-happy" aria-hidden="true"></i><span>記美好</span></a>
+      <a class="quick-btn theme-cloud" href="#/new/cloud">${ICON.cloud}<i class="mk mk-cloud" aria-hidden="true"></i><span>記烏雲</span></a>
+      <a class="quick-btn theme-fight" href="#/new/fight">${ICON.bolt}<i class="mk mk-fight" aria-hidden="true"></i><span>記吵架</span></a>
     </div>
   </div>`;
+}
+// 這一週：最近七天，每天下面用小記號標出記了什麼（● 美好、○ 烏雲、◆ 吵架），點了看那天的紀錄
+function weekStrip(all) {
+  const WD = ['SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT'];
+  const t = today();
+  const days = [];
+  for (let i = 6; i >= 0; i -= 1) {
+    const d = new Date(`${t}T12:00:00`);
+    d.setDate(d.getDate() - i);
+    const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    days.push({ key, wd: WD[d.getDay()], dn: d.getDate() });
+  }
+  const inWeek = all.filter((r) => r.date >= days[0].key && r.date <= t);
+  const cnt = (type) => inWeek.filter((r) => r.type === type).length;
+  const sum = [['happy', '美好'], ['cloud', '烏雲'], ['fight', '吵架']].filter(([k]) => cnt(k)).map(([k, l]) => `${cnt(k)} ${l}`).join('・');
+  const cells = days.map((d) => {
+    const types = all.filter((r) => r.date === d.key).map((r) => r.type).filter((x) => REC_TYPES.includes(x));
+    const marks = types.slice(0, 3).map((x) => `<i class="mk mk-${x}"></i>`).join('');
+    const label = `${d.dn} 日${types.length ? `，${types.length} 則` : ''}`;
+    return `<a href="#/records" class="${d.key === t ? 'today' : ''}" aria-label="${label}"><span class="wd">${d.wd}</span><span class="dn">${d.dn}</span><span class="marks">${marks}</span></a>`;
+  }).join('');
+  return `<div class="week-wrap"><div class="week-head"><span class="eyebrow">This Week</span><span class="small muted">${sum || '這週還沒有紀錄'}</span></div><div class="week-strip">${cells}</div></div>`;
 }
 const TILE_ICON = {
   card: '<svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="3" width="16" height="18" rx="2.5"/><path d="M12 15.5s-3.5-2.1-3.5-4.4A1.9 1.9 0 0 1 12 10a1.9 1.9 0 0 1 3.5 1.1c0 2.3-3.5 4.4-3.5 4.4z"/></svg>',
@@ -177,7 +199,8 @@ async function viewHome() {
     </div>
     ${quickRecord('今天想記下什麼？')}
     ${tipHtml}
-    <div class="row between section-head"><div class="section-title">最近的紀錄</div>${recent.length ? '<a class="small see-all" href="#/records">看全部 ›</a>' : ''}</div>
+    ${all.length ? weekStrip(all) : ''}
+    <div class="row between section-head"><div><span class="eyebrow">Lately</span><div class="section-title">最近的紀錄</div></div>${recent.length ? '<a class="small see-all" href="#/records">看全部 ›</a>' : ''}</div>
     <div class="list" id="recent">${recent.length ? '' : examples ? examplesBlock(['happy', 'cloud', 'fight']) : `<div class="empty">還沒有任何紀錄<a class="btn small" href="#/new/happy">寫下第一個美好時刻</a></div>`}</div>
   `;
   if (document.getElementById('names-card')) {

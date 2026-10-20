@@ -500,7 +500,9 @@ function renderTabbar(route) {
   document.body.classList.toggle('no-tabbar', route === null);
   if (route === null) return;
   if (REC_TYPES.includes(route)) { setRecType(route); route = 'records'; }
-  const tab = (href, icon, label, on, key) => `<a class="tab${on ? ' on' : ''}" href="${href}" data-tab="${key}"${on ? ' aria-current="page"' : ''}>${icon}<span>${label}</span></a>`;
+  // 2026-10-20 新風格：每個分頁上面一行英文斜體小字（圖示留著但不顯示，舊樣式的主題還能用）
+  const EN = { home: 'Today', records: 'Records', together: 'Together', me: 'Me', tasks: 'Tasks' };
+  const tab = (href, icon, label, on, key) => `<a class="tab${on ? ' on' : ''}" href="${href}" data-tab="${key}"${on ? ' aria-current="page"' : ''}>${icon}<em aria-hidden="true">${EN[key]}</em><span>${label}</span></a>`;
   const unboundPartner = isPartner() && !CloudDB.isBoundPartner();
   tabbar.innerHTML = [
     tab('#/', ICON.home, '今天', route === 'home', 'home'),
