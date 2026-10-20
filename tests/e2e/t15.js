@@ -34,7 +34,7 @@ const U = (process.env.U || 'http://localhost:8770/');
   await p.goto(U + '#/settings'); await p.waitForTimeout(600);
   await p.fill('#set-me', 'Jasmine'); await p.fill('#set-since', '2026-09-20'); await p.click('#save-names'); await p.waitForTimeout(400);
   await p.goto(U + '#/'); await p.waitForTimeout(500);
-  log('together', await p.textContent('.title-xl + .small'));
+  log('together', await p.textContent('.home-head .home-days'));
   // 標籤改名
   await p.goto(U + '#/settings'); await p.waitForTimeout(600);
   answers = ['開心']; await p.click('[data-edit-tag="開新"]'); await p.waitForTimeout(800);
