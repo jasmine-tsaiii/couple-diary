@@ -1,72 +1,78 @@
 :root {
-  --bg: #FBF7F2;
+  /* 2026-10-20 新風格：純白底＋奶油淺黃點綴、低彩度三色。奶油淺黃底色收在主題背景「奶油淺黃」（data-skin="cream"），舊的粉紅配色在「啾啾粉」（data-skin="pink"） */
+  --bg: #FFFFFF;
   --card: #FFFFFF;
-  --line: #EFE6DD;
-  --field: #E3D8CE;
-  --ink: #2B2320;
-  --muted: #6B5E57;
-  --soft: #5A4D46;
-  --happy: #A33A52;
-  --happy-dark: #7E2A3E;
-  --happy-bg: #F6E4E8;
-  --cloud: #8A5A12;
-  --cloud-dark: #6A450D;
-  --cloud-bg: #F5EAD6;
-  --fight: #3E4C8A;
-  --fight-dark: #2C3868;
-  --fight-bg: #E6E9F4;
-  --lock: #4B3A66;
-  --lock-bg: #EDE6F2;
-  --open-bg: #FBE9E7; --open-ink: #6B2A20;
-  --progress-bg: #FBF0D9; --progress-ink: #5E420E;
-  --resolved-bg: #E3F0E6; --resolved-ink: #25502F;
-  --happy-text: #A33A52; --cloud-text: #8A5A12; --fight-text: #3E4C8A;
+  --line: #EDE8DC;
+  --field: #DCD4C1;
+  --ink: #2E2A22;
+  --muted: #6E6756;
+  --soft: #575144;
+  --eyebrow: #8A6A26;
+  --happy: #9A5A26;
+  --happy-dark: #6F3E17;
+  --happy-bg: #FAF0DC;
+  --cloud: #6E6756;
+  --cloud-dark: #4E493D;
+  --cloud-bg: #F4F1EA;
+  --fight: #46525E;
+  --fight-dark: #313A43;
+  --fight-bg: #EEF0F0;
+  --lock: #5A4F6B;
+  --lock-bg: #F4F0F2;
+  --open-bg: #FAEBE3; --open-ink: #6B2A20;
+  --progress-bg: #FBF3DA; --progress-ink: #5E420E;
+  --resolved-bg: #EAF1E4; --resolved-ink: #2F4F2F;
+  --happy-text: #9A5A26; --cloud-text: #615A4B; --fight-text: #46525E;
   --accent: var(--happy);
   --accent-text: var(--happy-text);
   --accent-dark: var(--happy-dark);
   --accent-bg: var(--happy-bg);
-  --seg: #F1E9E1;
-  --dash: #C9B8AB;
-  --press: #FAF6F1;
+  --seg: #F8F3E6;
+  --dash: #D3C7AA;
+  --press: #FCF8EE;
+  --paper-note: #FCF6E6;
+  --tape: #F1E2B4;
   --danger: #9B2C1F;
   --danger-line: #E8C4BE;
-  --toast-bg: #2B2320;
-  --toast-ink: #FFFFFF;
+  --toast-bg: #2E2A22;
+  --toast-ink: #FDFAF0;
+  --serif: "Noto Serif TC", "Songti TC", serif;
+  --latin: "Cormorant Garamond", "Times New Roman", serif;
 }
-/* 深色模式：跟著手機設定，或在設定頁手動選（<html data-theme="dark|light">） */
+/* 深色模式：跟著手機設定，或在設定頁手動選（<html data-theme="dark|light">）；深咖啡紙色 */
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
     color-scheme: dark;
-    --bg: #1C1816; --card: #27211E; --line: #3A312C; --field: #4A3F39;
-    --ink: #F2EAE4; --muted: #B5A79E; --soft: #CDBFB6;
-    --happy: #B8475F; --happy-dark: #F2A7B8; --happy-bg: #3A2229;
-    --happy-text: #F2A7B8; --cloud-text: #E9C27F; --fight-text: #AEB9EE;
-    --cloud: #9A6A1E; --cloud-dark: #E9C27F; --cloud-bg: #362A17;
-    --fight: #5566B0; --fight-dark: #AEB9EE; --fight-bg: #232941;
-    --lock: #C3B2E3; --lock-bg: #2C2536;
-    --open-bg: #3E2320; --open-ink: #F4AFA3;
-    --progress-bg: #3A2F18; --progress-ink: #EBC87E;
-    --resolved-bg: #1D3324; --resolved-ink: #9FD3AC;
-    --seg: #302824; --dash: #5E514A; --press: #2F2824;
+    --bg: #1E1B16; --card: #28241D; --line: #3A342A; --field: #4A4336;
+    --ink: #F1EADB; --muted: #B4AA96; --soft: #CFC5B0; --eyebrow: #D9B66E;
+    --happy: #A2622B; --happy-dark: #EBC193; --happy-bg: #3A2C1E;
+    --happy-text: #E8B37E; --cloud-text: #CFC5B0; --fight-text: #B3BEC9;
+    --cloud: #8E8676; --cloud-dark: #D2C9B6; --cloud-bg: #2E2A23;
+    --fight: #6F7C89; --fight-dark: #C3CCD6; --fight-bg: #252A2E;
+    --lock: #CDBFD9; --lock-bg: #2E2A33;
+    --open-bg: #3E2720; --open-ink: #F0B7A0;
+    --progress-bg: #3A311B; --progress-ink: #E8CB87;
+    --resolved-bg: #22301F; --resolved-ink: #A9D0A0;
+    --seg: #2C2720; --dash: #5C5444; --press: #2B261F;
     --danger: #F09A8C; --danger-line: #5A2E28;
-    --toast-bg: #F2EAE4; --toast-ink: #1C1816;
+    --toast-bg: #F1EADB; --toast-ink: #1E1B16;
   }
 }
 :root[data-theme="dark"] {
   color-scheme: dark;
-  --bg: #1C1816; --card: #27211E; --line: #3A312C; --field: #4A3F39;
-  --ink: #F2EAE4; --muted: #B5A79E; --soft: #CDBFB6;
-  --happy: #B8475F; --happy-dark: #F2A7B8; --happy-bg: #3A2229;
-    --happy-text: #F2A7B8; --cloud-text: #E9C27F; --fight-text: #AEB9EE;
-  --cloud: #9A6A1E; --cloud-dark: #E9C27F; --cloud-bg: #362A17;
-  --fight: #5566B0; --fight-dark: #AEB9EE; --fight-bg: #232941;
-  --lock: #C3B2E3; --lock-bg: #2C2536;
-  --open-bg: #3E2320; --open-ink: #F4AFA3;
-  --progress-bg: #3A2F18; --progress-ink: #EBC87E;
-  --resolved-bg: #1D3324; --resolved-ink: #9FD3AC;
-  --seg: #302824; --dash: #5E514A; --press: #2F2824;
+  --bg: #1E1B16; --card: #28241D; --line: #3A342A; --field: #4A4336;
+  --ink: #F1EADB; --muted: #B4AA96; --soft: #CFC5B0; --eyebrow: #D9B66E;
+  --happy: #A2622B; --happy-dark: #EBC193; --happy-bg: #3A2C1E;
+  --happy-text: #E8B37E; --cloud-text: #CFC5B0; --fight-text: #B3BEC9;
+  --cloud: #8E8676; --cloud-dark: #D2C9B6; --cloud-bg: #2E2A23;
+  --fight: #6F7C89; --fight-dark: #C3CCD6; --fight-bg: #252A2E;
+  --lock: #CDBFD9; --lock-bg: #2E2A33;
+  --open-bg: #3E2720; --open-ink: #F0B7A0;
+  --progress-bg: #3A311B; --progress-ink: #E8CB87;
+  --resolved-bg: #22301F; --resolved-ink: #A9D0A0;
+  --seg: #2C2720; --dash: #5C5444; --press: #2B261F;
   --danger: #F09A8C; --danger-line: #5A2E28;
-  --toast-bg: #F2EAE4; --toast-ink: #1C1816;
+  --toast-bg: #F1EADB; --toast-ink: #1E1B16;
 }
 
 * { box-sizing: border-box; }
@@ -811,6 +817,66 @@ body.quiz-focus #app { padding-bottom: calc(96px + env(safe-area-inset-bottom));
 .mission-pool { display: flex; flex-direction: column; gap: 6px; }
 .mission-card { font-size: 12.5px; line-height: 1.45; padding: 8px; border-radius: 10px; background: var(--lock-bg); color: var(--ink); border: 1px dashed var(--dash); }
 
+/* 主題背景「奶油淺黃」：2026-10-20 第一版的紙張底色（深色時用預設的深咖啡紙） */
+:root[data-skin="cream"][data-mode="light"] {
+  --bg: #F7F1E0; --card: #FDFAF0; --line: #E6DDC4; --field: #D9CDAE;
+  --happy-bg: #F3E2CB; --cloud-bg: #EAE4D4; --fight-bg: #E0E3E0; --lock-bg: #ECE6E6;
+  --open-bg: #F3DFD3; --progress-bg: #F1E5C2; --resolved-bg: #E1E9D9;
+  --seg: #EEE6D0; --dash: #C9BB98; --press: #F9F4E6; --paper-note: #FDFAF0; --tape: #EEDCA6;
+}
+/* 主題背景「啾啾粉」：2026-10-20 以前的預設配色 */
+:root[data-skin="pink"][data-mode="light"] {
+  --bg: #FBF7F2;
+  --card: #FFFFFF;
+  --line: #EFE6DD;
+  --field: #E3D8CE;
+  --ink: #2B2320;
+  --muted: #6B5E57;
+  --soft: #5A4D46;
+  --happy: #A33A52;
+  --happy-dark: #7E2A3E;
+  --happy-bg: #F6E4E8;
+  --cloud: #8A5A12;
+  --cloud-dark: #6A450D;
+  --cloud-bg: #F5EAD6;
+  --fight: #3E4C8A;
+  --fight-dark: #2C3868;
+  --fight-bg: #E6E9F4;
+  --lock: #4B3A66;
+  --lock-bg: #EDE6F2;
+  --open-bg: #FBE9E7; --open-ink: #6B2A20;
+  --progress-bg: #FBF0D9; --progress-ink: #5E420E;
+  --resolved-bg: #E3F0E6; --resolved-ink: #25502F;
+  --happy-text: #A33A52; --cloud-text: #8A5A12; --fight-text: #3E4C8A;
+  --accent: var(--happy);
+  --accent-text: var(--happy-text);
+  --accent-dark: var(--happy-dark);
+  --accent-bg: var(--happy-bg);
+  --seg: #F1E9E1;
+  --dash: #C9B8AB;
+  --press: #FAF6F1;
+  --danger: #9B2C1F;
+  --danger-line: #E8C4BE;
+  --toast-bg: #2B2320;
+  --toast-ink: #FFFFFF;
+}
+:root[data-skin="pink"][data-mode="dark"] {
+  color-scheme: dark;
+  --bg: #1C1816; --card: #27211E; --line: #3A312C; --field: #4A3F39;
+  --ink: #F2EAE4; --muted: #B5A79E; --soft: #CDBFB6;
+  --happy: #B8475F; --happy-dark: #F2A7B8; --happy-bg: #3A2229;
+    --happy-text: #F2A7B8; --cloud-text: #E9C27F; --fight-text: #AEB9EE;
+  --cloud: #9A6A1E; --cloud-dark: #E9C27F; --cloud-bg: #362A17;
+  --fight: #5566B0; --fight-dark: #AEB9EE; --fight-bg: #232941;
+  --lock: #C3B2E3; --lock-bg: #2C2536;
+  --open-bg: #3E2320; --open-ink: #F4AFA3;
+  --progress-bg: #3A2F18; --progress-ink: #EBC87E;
+  --resolved-bg: #1D3324; --resolved-ink: #9FD3AC;
+  --seg: #302824; --dash: #5E514A; --press: #2F2824;
+  --danger: #F09A8C; --danger-line: #5A2E28;
+  --toast-bg: #F2EAE4; --toast-ink: #1C1816;
+}
+
 /* 主題背景：淺色時換配色和紙紋（data-mode 由 applyTheme 設定）；夜空一律深色 */
 body { background: var(--paper, none), var(--bg); background-attachment: fixed; }
 :root[data-skin="paper"][data-mode="light"] {
@@ -1087,3 +1153,139 @@ button.pg-ent-main { cursor: pointer; }
 .pg-move { display: flex; flex: none; }
 .pg-move .icon-btn { width: 36px; height: 36px; font-size: 16px; }
 .pg-move .icon-btn:disabled { opacity: .3; }
+
+/* ===== 2026-10-20 新風格：紙本質感（明體標題、細線、英文小標、扁平紙卡） ===== */
+h1, h2, .title-xl, .topbar h1 { font-family: var(--serif); font-weight: 600; letter-spacing: .08em; }
+.home-head .title-xl { font-weight: 600; letter-spacing: .1em; }
+.section-title { font-family: var(--serif); font-weight: 600; letter-spacing: .12em; font-size: 15px; }
+.eyebrow { display: block; font-family: var(--latin); font-style: normal; font-weight: 600; font-size: 11px; letter-spacing: .26em; text-transform: uppercase; color: var(--eyebrow); line-height: 1.4; }
+.card { border-radius: 6px; border-color: var(--line); box-shadow: none; }
+.item { border-radius: 6px; }
+.btn { border-radius: 10px; }
+.btn.small { border-radius: 9px; }
+.input, textarea.input, select.input { border-radius: 8px; }
+.seg { border-radius: 9px; }
+.seg button { border-radius: 7px; }
+.quiz-person, .share-sec, .stat-tile, .pg-sum > div, .skin-opt { border-radius: 8px; }
+.thumb { border-radius: 4px; }
+
+/* 底部選單：英文斜體小字＋中文，細線，中間是墨色的＋ */
+.tabbar { background: var(--bg); border-top: 1px solid var(--line); align-items: center; padding-top: 6px; }
+.tab { justify-content: center; gap: 1px; font-size: 12.5px; }
+.tab > svg { display: none; }
+.tab em { font-family: var(--latin); font-style: italic; font-weight: 600; font-size: 10px; letter-spacing: .18em; text-transform: uppercase; color: var(--muted); }
+.tab span { font-family: var(--serif); letter-spacing: .14em; }
+.tab.on { color: var(--ink); font-weight: 700; }
+.tab.on em { color: var(--eyebrow); }
+.tab-add { width: 46px; height: 46px; margin-top: -2px; background: var(--ink); color: var(--bg); box-shadow: none; }
+.tab-add svg { width: 22px; height: 22px; }
+.tab.has-new::after { top: 2px; left: calc(50% + 14px); }
+
+/* 首頁：今天想記下什麼（三格細線，用形狀分美好／烏雲／吵架） */
+.quick-rec { background: transparent; border: 0; padding: 0; gap: 10px; }
+.quick-head { font-family: var(--serif); font-weight: 500; letter-spacing: .1em; font-size: 16px; }
+.quick-head .bold { font-weight: 500; }
+.quick-btns { gap: 0; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }
+.quick-btn { min-height: 54px; border-radius: 0; background: transparent !important; color: var(--ink) !important; flex-direction: column; gap: 6px; font-family: var(--serif); font-weight: 500; letter-spacing: .14em; font-size: 14px; }
+.quick-btn + .quick-btn { border-left: 1px solid var(--line); }
+.quick-btn svg { display: none; }
+.mk { display: inline-block; width: 8px; height: 8px; flex: none; border-radius: 50%; }
+.mk-happy { background: var(--happy); }
+.mk-cloud { border: 1.5px solid var(--cloud); width: 6px; height: 6px; }
+.mk-fight { background: var(--fight); border-radius: 0; transform: rotate(45deg); width: 7px; height: 7px; }
+/* 這一週：七天，每天下面用小記號標出記了什麼 */
+.week-strip { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); text-align: center; }
+.week-strip a { display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 4px 0; text-decoration: none; color: var(--muted); }
+.week-strip .wd { font-family: var(--latin); font-size: 10px; letter-spacing: .14em; }
+.week-strip .dn { font-family: var(--latin); font-size: 18px; font-weight: 600; line-height: 1; color: var(--ink); }
+.week-strip .today .dn { border-bottom: 1.5px solid var(--ink); }
+.week-strip .marks { display: flex; gap: 3px; height: 9px; align-items: center; }
+.week-head { display: flex; justify-content: space-between; align-items: baseline; }
+
+/* 一起：九宮格，每格只有圖示、名稱和一行狀態 */
+.together-page .nav-list { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); background: transparent; border: 0; border-top: 1px solid var(--line); border-left: 1px solid var(--line); border-radius: 0; overflow: visible; }
+.together-page .nav-row { flex-direction: column; justify-content: flex-start; gap: 6px; padding: 16px 6px 12px; min-height: 112px; border-right: 1px solid var(--line); border-bottom: 1px solid var(--line); text-align: center; position: relative; }
+.together-page .nav-row + .nav-row { border-top: 0; }
+.together-page .nav-icon { background: transparent; width: 30px; height: 30px; color: var(--ink); }
+.together-page .nav-icon svg { width: 24px; height: 24px; stroke-width: 1.5; }
+.together-page .nav-text { align-items: center; gap: 3px; }
+.together-page .nav-text .bold { font-family: var(--serif); font-weight: 500; font-size: 13px; letter-spacing: .08em; line-height: 1.35; }
+.together-page .nav-text .small { white-space: normal; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; font-size: 11px; line-height: 1.4; }
+.together-page .nav-chev { display: none; }
+.together-page .nav-badge { position: absolute; top: 6px; right: 6px; margin: 0; font-size: 10px; padding: 1px 6px; }
+.together-page .section-title { margin-top: 10px; }
+.nav-group-head { display: flex; flex-direction: column; gap: 2px; margin-top: 6px; }
+.nav-group-head .section-title { margin-top: 0; }
+.week-wrap { display: flex; flex-direction: column; gap: 8px; padding: 10px 0 12px; border-bottom: 1px solid var(--line); }
+.section-head .eyebrow { margin-bottom: 2px; }
+.quick-head > div { display: flex; flex-direction: column; gap: 2px; }
+/* 一起的九宮格只留名稱和狀態小標籤，說明文字收起來（點進去才看） */
+.together-page .nav-text .small { display: none; }
+.together-page .nav-row { min-height: 96px; justify-content: center; }
+/* 紀錄列表：從一張張卡片改成細線分隔的列，字比較少、比較整齊 */
+.list > .card.item { background: transparent; border: 0; border-bottom: 1px solid var(--line); border-radius: 0; padding: 12px 2px; }
+.list > .card.item:first-child { border-top: 1px solid var(--line); }
+.list { gap: 0; }
+.list > .card.item .thumb { width: 44px; height: 44px; }
+.list > .card.item .grow > div:first-child { font-family: var(--serif); font-weight: 600 !important; letter-spacing: .04em; }
+.home-head .title-xl { font-weight: 500; font-size: clamp(21px, 6.6vw, 27px); letter-spacing: .12em; }
+@media (max-width: 360px) { .together-page .nav-text .bold { letter-spacing: 0; font-size: 12px; } .together-page .nav-row { padding-left: 2px; padding-right: 2px; } }
+
+/* ===== 2026-10-20 第二版：純白底，首頁照「交換日記」提案（啾啾＋名字、每天一題兩個圓圈、七天、收起來的回憶） ===== */
+.home-head .couple { grid-column: 1 / -1; grid-row: 5; display: flex; flex-direction: column; align-items: center; gap: 2px; margin-top: 14px; }
+.home-head .couple .mascot { margin-bottom: 2px; }
+.couple-names { font-family: var(--serif); font-size: 15px; letter-spacing: .3em; color: var(--ink); }
+.couple-names span { color: var(--muted); }
+.home-head .couple .home-days { font-family: var(--serif); letter-spacing: .2em; font-size: 12px; margin: 0; }
+.quick-head { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+/* 每天一題：紙條＋膠帶 */
+.qc { position: relative; background: var(--paper-note); border: 1px solid var(--line); padding: 20px 16px 14px; margin-top: 10px; display: flex; flex-direction: column; gap: 6px; }
+.tape { position: absolute; top: -8px; left: 50%; width: 64px; height: 16px; margin-left: -32px; background: var(--tape); opacity: .85; transform: rotate(-2deg); }
+.qc .q { font-family: var(--serif); font-size: 16.5px; line-height: 1.6; letter-spacing: .02em; color: var(--ink); text-decoration: none; }
+.qc .card-x { color: var(--muted); }
+.qc.has-x .eyebrow { padding-right: 28px; }
+.qrow { display: flex; align-items: center; gap: 8px; margin-top: 6px; }
+.qrow .small { min-width: 0; }
+.av { width: 28px; height: 28px; border-radius: 50%; display: grid; place-items: center; font-family: var(--serif); font-size: 12px; flex: none; box-sizing: border-box; }
+.av.done { background: var(--ink); color: var(--card); }
+.av.todo { border: 1px dashed var(--muted); color: var(--muted); }
+.av + .av { margin-left: -6px; }
+.qbtn { margin-left: auto; flex: none; font-size: 13px; letter-spacing: .1em; padding: 7px 14px; border: 1px solid var(--ink); border-radius: 99px; color: var(--ink); text-decoration: none; font-family: var(--serif); }
+/* 收起來的列 */
+.home-rows { display: flex; flex-direction: column; }
+.home-row { border-bottom: 1px solid var(--line); position: relative; }
+.home-row:first-child { border-top: 1px solid var(--line); }
+.home-row > summary, .home-row-link { display: flex; align-items: center; gap: 12px; padding: 14px 2px; cursor: pointer; list-style: none; color: var(--ink); text-decoration: none; }
+.home-row > summary::-webkit-details-marker { display: none; }
+.home-row .lbl { display: flex; flex-direction: column; gap: 2px; min-width: 0; font-family: var(--serif); font-size: 14px; letter-spacing: .06em; }
+.home-row .lbl small { font-family: inherit; font-size: 11.5px; color: var(--muted); letter-spacing: .02em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.home-row .chev { margin-left: auto; color: var(--muted); font-family: var(--latin); font-size: 18px; transition: transform .2s; }
+.home-row[open] .chev { transform: rotate(90deg); }
+.thumbs { display: flex; flex: none; }
+.thumbs img, .thumbs i { width: 32px; height: 32px; display: block; object-fit: cover; border: 2px solid var(--card); box-shadow: 0 1px 3px rgba(0,0,0,.14); background: var(--happy-bg); }
+.thumbs > * + * { margin-left: -12px; transform: rotate(6deg); }
+.stack { position: relative; width: 30px; height: 30px; flex: none; margin: 0 4px 0 2px; }
+.stack i { position: absolute; inset: 0; background: var(--paper-note); border: 1px solid var(--line); }
+.stack i:nth-child(1) { transform: rotate(-8deg); }
+.stack i:nth-child(2) { transform: rotate(5deg); }
+.stack b { position: absolute; top: -6px; right: -7px; min-width: 16px; height: 16px; padding: 0 3px; box-sizing: border-box; border-radius: 99px; background: var(--happy); color: #fff; font-size: 10px; display: grid; place-items: center; font-weight: 600; }
+#new-from-other .home-row-link { padding-right: 40px; }
+#new-from-other-x { position: absolute; top: 50%; right: 0; margin-top: -16px; width: 32px; height: 32px; padding: 0; background: none; border: 0; color: var(--muted); font-size: 16px; line-height: 32px; cursor: pointer; }
+.home-row-body { padding: 4px 0 14px; }
+.pola { position: relative; background: #fff; padding: 8px 8px 30px; margin: 10px 18px 4px; box-shadow: 0 6px 16px rgba(60,45,30,.13); transform: rotate(-1.2deg); }
+.pola-photo { display: block; width: 100%; height: 150px; object-fit: cover; }
+.pola-photo.paper { background: var(--happy-bg); display: grid; place-items: center; }
+.pola-cap { position: absolute; left: 10px; right: 10px; bottom: 7px; font-family: var(--serif); font-size: 13px; color: #2E2A22; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pola-foot { display: flex; justify-content: space-between; gap: 8px; flex-wrap: wrap; margin-top: 12px; }
+.pola-foot .text-link { background: none; border: 0; padding: 0; font: inherit; color: var(--happy-text); cursor: pointer; text-decoration: none; }
+:root[data-mode="dark"] { --paper-note: var(--card); --tape: rgba(217, 182, 110, .35); }
+:root[data-mode="dark"] .pola { background: #F1EADB; }
+.home-head .couple .home-days { align-self: center; grid-column: auto; grid-row: auto; margin-top: 0; }
+.home-head .title-xl, .home-head.has-cd .title-xl { font-size: clamp(19px, 5.6vw, 23px); }
+/* 啾啾縮小，和名字排成一列，比較不佔空間 */
+.home-head .couple { flex-direction: row; justify-content: center; gap: 10px; margin-top: 10px; }
+.home-head .couple .mascot { margin-bottom: 0; }
+.couple-text { display: flex; flex-direction: column; gap: 1px; align-items: flex-start; }
+.home-head .couple .couple-text .home-days { align-self: flex-start; }
+.couple-text { min-width: 0; }
+@media (max-width: 360px) { .couple-names { letter-spacing: .06em; font-size: 14px; } }

@@ -10,9 +10,11 @@ function navRow({ href, icon, title, sub = '', badge = '', id = '' }) {
     <span class="nav-chev">${ICON.chevron}</span>
   </a>`;
 }
+const GROUP_EN = { 一起做: 'For Two', 收藏: 'Keepsakes', 搶先看: 'Coming Soon', 我們: 'Us', 設定: 'Settings', 更多: 'More' };
 const navGroup = (title, rows) => {
   const body = rows.filter(Boolean).join('');
-  return body ? `<h2 class="section-title">${title}</h2><div class="card nav-list">${body}</div>` : '';
+  const en = GROUP_EN[title] ? `<span class="eyebrow" aria-hidden="true">${GROUP_EN[title]}</span>` : '';
+  return body ? `<div class="nav-group-head">${en}<h2 class="section-title">${title}</h2></div><div class="card nav-list">${body}</div>` : '';
 };
 
 // ---------- 重新認識你：狀態 ----------
@@ -70,7 +72,7 @@ function bindQuizTip() {
 
 // ---------- 一起（#/together） ----------
 async function viewTogether() {
-  app.className = '';
+  app.className = 'together-page';
   const partner = isPartner();
   const guest = isGuest();
   const cloud = usingCloud();

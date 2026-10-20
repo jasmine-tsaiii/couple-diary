@@ -252,9 +252,9 @@ function applyTheme(t = currentTheme()) {
   if (t === 'light' || t === 'dark') root.dataset.theme = t; else delete root.dataset.theme;
   const dark = t === 'dark' || (t === 'system' && window.matchMedia && matchMedia('(prefers-color-scheme: dark)').matches);
   root.dataset.mode = dark || skin === 'night' ? 'dark' : 'light';
-  const skinBg = { paper: '#F4EEDF', sakura: '#FFF3F5', xmas: '#F6F1E7' }[skin];
+  const skinBg = { paper: '#F4EEDF', sakura: '#FFF3F5', xmas: '#F6F1E7', pink: '#FBF7F2', cream: '#F7F1E0' }[skin];
   const meta = document.querySelector('meta[name="theme-color"]');
-  if (meta) meta.setAttribute('content', skin === 'night' ? '#141A33' : dark ? '#1C1816' : skinBg || '#FBF7F2');
+  if (meta) meta.setAttribute('content', skin === 'night' ? '#141A33' : dark ? (skin === 'pink' ? '#1C1816' : '#1E1B16') : skinBg || '#FFFFFF');
 }
 applyTheme();
 if (window.matchMedia) { try { matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => applyTheme()); } catch (e) { /* 舊瀏覽器 */ } }
@@ -270,7 +270,7 @@ document.addEventListener('click', (ev) => {
   const b = ev.target.closest && ev.target.closest('[data-theme-pick]');
   if (!b) return;
   try { localStorage.setItem('theme', b.dataset.themePick); } catch (e) { /* 存不了就只改這次 */ }
-  // 手帳紙、櫻花、聖誕是淺色主題：改選深色時換回啾啾粉，不然按了看起來沒反應
+  // 手帳紙、櫻花、聖誕是淺色主題：改選深色時換回預設的純白，不然按了看起來沒反應
   const sk = document.documentElement.dataset.skin;
   if (b.dataset.themePick !== 'light' && (sk === 'paper' || sk === 'sakura' || sk === 'xmas') && typeof endSkinPreview === 'function') {
     endSkinPreview();
@@ -279,7 +279,7 @@ document.addEventListener('click', (ev) => {
       try { localStorage.removeItem('skin'); } catch (e) { /* 存不了就只改這次 */ }
       delete document.documentElement.dataset.skin;
       document.querySelectorAll('[data-skin-pick]').forEach((x) => { const on = x.dataset.skinPick === ''; x.classList.toggle('on', on); x.setAttribute('aria-pressed', String(on)); });
-      toast('深色模式用啾啾粉配色');
+      toast('深色模式用預設配色');
     }
   }
   applyTheme(b.dataset.themePick);

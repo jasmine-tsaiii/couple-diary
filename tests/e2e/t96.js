@@ -69,7 +69,7 @@ const U = (process.env.U || 'http://localhost:8770/');
 
   // 主題背景
   await p.goto(U + '#/settings/theme'); await p.waitForTimeout(900);
-  log('skin card', await p.locator('#skin-card [data-skin-pick]').count() === 5);
+  log('skin card', await p.locator('#skin-card [data-skin-pick]').count() === 7);
   await p.click('[data-skin-pick="paper"]'); await p.waitForTimeout(300);
   log('paper applied', (await skin()) === 'paper' && await p.evaluate(() => localStorage.getItem('skin')) === 'paper');
   await p.goto(U + '#/'); await p.waitForTimeout(800);
@@ -104,10 +104,10 @@ const U = (process.env.U || 'http://localhost:8770/');
   await p.screenshot({ path: SHOT('skin-sakura-on-dark-phone.png') });
   await p.click('#skin-end'); await p.waitForTimeout(300);
   await p.click('[data-skin-pick=""]'); await p.waitForTimeout(300);
-  log('system dark + default is dark', (await bg()) === '#1C1816');
+  log('system dark + default is dark', (await bg()) === '#1E1B16');
   await p.click('[data-skin-pick="paper"]'); await p.waitForTimeout(300);
-  // 選了深色外觀：換回啾啾粉，變深色
+  // 選了深色外觀：換回預設的奶油淺黃，變深色
   await p.click('[data-theme-pick="dark"]'); await p.waitForTimeout(300);
-  log('dark pick resets light skin', (await skin()) === '' && (await bg()) === '#1C1816' && await p.evaluate(() => localStorage.getItem('skin')) === null);
+  log('dark pick resets light skin', (await skin()) === '' && (await bg()) === '#1E1B16' && await p.evaluate(() => localStorage.getItem('skin')) === null);
   log('errors', errs); await b.close();
 })();
